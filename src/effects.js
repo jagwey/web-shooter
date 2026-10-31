@@ -12,6 +12,36 @@ const FRAME_MS = 33;
 export const FX_PRESETS = ["classic", "mint", "neon", "low"];
 
 const LOOKS = {
+  spiderman: {
+    quality: "full",
+    trail: [255, 60, 60],
+    glow: "#ff3b3b",
+    beam: [255, 85, 85],
+    fiber: [130, 190, 255],
+    head: "#ffffff",
+    fine: [255, 120, 120],
+    particle: [255, 220, 220],
+  },
+  miles: {
+    quality: "full",
+    trail: [255, 30, 80],
+    glow: "#ff0055",
+    beam: [255, 215, 0],
+    fiber: [255, 80, 120],
+    head: "#ffd700",
+    fine: [255, 200, 50],
+    particle: [255, 220, 100],
+  },
+  symbiote: {
+    quality: "full",
+    trail: [147, 51, 234],
+    glow: "#c084fc",
+    beam: [168, 85, 247],
+    fiber: [216, 180, 254],
+    head: "#d8b4fe",
+    fine: [192, 132, 252],
+    particle: [243, 232, 255],
+  },
   classic: {
     quality: "full",
     trail: [160, 220, 255],
@@ -75,7 +105,7 @@ export function createWebFx(ctx, hooks = {}) {
 
   function setPreset(name) {
     const key = name === "light" ? "low" : name;
-    look = LOOKS[key] || LOOKS.mint;
+    look = LOOKS[key] || LOOKS.spiderman || LOOKS.mint;
   }
 
   function full() {

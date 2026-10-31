@@ -32,6 +32,24 @@ pub struct Settings {
     pub bindings: Vec<Binding>,
     #[serde(default)]
     pub camera_device_id: String,
+    #[serde(default = "default_target_fps")]
+    pub target_fps: u32,
+    #[serde(default = "default_sound_enabled")]
+    pub sound_enabled: bool,
+    #[serde(default = "default_theme")]
+    pub theme: String,
+}
+
+fn default_target_fps() -> u32 {
+    120
+}
+
+fn default_sound_enabled() -> bool {
+    true
+}
+
+fn default_theme() -> String {
+    "spiderman".into()
 }
 
 impl Default for Settings {
@@ -44,9 +62,12 @@ impl Default for Settings {
             idle_release_secs: 20,
             monitor_mode: "one".into(),
             monitor_id: String::new(),
-            fx_preset: "mint".into(),
+            fx_preset: "spiderman".into(),
             bindings: default_bindings(),
             camera_device_id: String::new(),
+            target_fps: 120,
+            sound_enabled: true,
+            theme: "spiderman".into(),
         }
     }
 }
@@ -80,8 +101,14 @@ impl Settings {
         if !matches!(self.monitor_mode.as_str(), "one" | "all") {
             self.monitor_mode = "one".into();
         }
-        if !matches!(self.fx_preset.as_str(), "classic" | "mint" | "neon" | "low" | "light") {
-            self.fx_preset = "mint".into();
+        if !matches!(self.fx_preset.as_str(), "classic" | "mint" | "neon" | "low" | "light" | "spiderman" | "miles" | "symbiote") {
+            self.fx_preset = "spiderman".into();
+        }
+        if !matches!(self.theme.as_str(), "spiderman" | "miles" | "symbiote" | "mint" | "neon") {
+            self.theme = "spiderman".into();
+        }
+        if self.target_fps != 60 && self.target_fps != 120 {
+            self.target_fps = 120;
         }
         self.idle_release_secs = self.idle_release_secs.clamp(5, 300);
         self.bindings.retain(|item| {

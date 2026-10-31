@@ -33,10 +33,13 @@ self.onmessage = async (event) => {
       }
       const result = landmarker.detectForVideo(message.bitmap, message.time);
       message.bitmap?.close?.();
-      const landmarks = result.landmarks?.[0] ?? null;
+      const hands = result.landmarks || [];
+      const handedness = result.handedness ? result.handedness.map((h) => h[0]?.categoryName || "") : [];
       self.postMessage({
         type: "landmarks",
-        landmarks,
+        landmarks: hands[0] ?? null,
+        hands,
+        handedness,
         time: message.time,
         ms: performance.now() - started,
       });
@@ -45,6 +48,8 @@ self.onmessage = async (event) => {
       self.postMessage({
         type: "landmarks",
         landmarks: null,
+        hands: [],
+        handedness: [],
         time: message.time,
         ms: performance.now() - started,
         message: String(error?.message || error),
@@ -61,7 +66,7 @@ async function createLandmarker(vision, model, delegate) {
         delegate,
       },
       runningMode: "VIDEO",
-      numHands: 1,
+      numHands: 2,
       minHandDetectionConfidence: 0.5,
       minHandPresenceConfidence: 0.5,
       minTrackingConfidence: 0.5,

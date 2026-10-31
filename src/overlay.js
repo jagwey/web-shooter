@@ -15,15 +15,15 @@ const fx = createWebFx(ctx, {
 });
 
 let frame = { x: 0, y: 0, width: 1, height: 1 };
-let tether = null;
-let preset = "mint";
+const tethers = new Map();
+let preset = "spiderman";
 let running = false;
 let frames = 0;
 let fpsStamp = performance.now();
 const dprCap = { full: 1.5, low: 1 };
 
 function fit() {
-  const cap = preset === "low" ? dprCap.low : dprCap.full;
+  const cap = preset === "low" || preset === "light" ? dprCap.low : dprCap.full;
   const ratio = Math.min(window.devicePixelRatio || 1, cap);
   const width = Math.max(2, Math.floor(window.innerWidth * ratio));
   const height = Math.max(2, Math.floor(window.innerHeight * ratio));
@@ -38,7 +38,7 @@ function kick() {
 }
 
 function loop(now) {
-  const busy = fx.hasWork() || tether;
+  const busy = fx.hasWork() || tethers.size > 0;
   if (!busy) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     running = false;
@@ -47,7 +47,9 @@ function loop(now) {
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   fx.draw(now);
-  if (tether) drawTether(tether);
+  for (const line of tethers.values()) {
+    drawTether(line);
+  }
   frames += 1;
   if (now - fpsStamp >= 500) {
     const fps = Math.round((frames * 1000) / (now - fpsStamp));
@@ -78,8 +80,24 @@ function drawTether(line) {
   ctx.globalCompositeOperation = "lighter";
 
   const isLow = preset === "low" || preset === "light";
-  const glowColor = preset === "neon" ? "#ff4dff" : preset === "classic" ? "#00d9ff" : "#9cf0c4";
-  const coreColor = preset === "neon" ? "rgba(124, 255, 107, 0.9)" : preset === "classic" ? "rgba(210, 245, 255, 0.95)" : "rgba(216, 255, 233, 0.95)";
+  let glowColor = "#9cf0c4";
+  let coreColor = "rgba(216, 255, 233, 0.95)";
+  if (preset === "spiderman") {
+    glowColor = "#ff3b3b";
+    coreColor = "rgba(255, 255, 255, 0.98)";
+  } else if (preset === "miles") {
+    glowColor = "#ff0055";
+    coreColor = "rgba(255, 220, 100, 0.95)";
+  } else if (preset === "symbiote") {
+    glowColor = "#c084fc";
+    coreColor = "rgba(235, 215, 255, 0.95)";
+  } else if (preset === "neon") {
+    glowColor = "#ff4dff";
+    coreColor = "rgba(124, 255, 107, 0.9)";
+  } else if (preset === "classic") {
+    glowColor = "#00d9ff";
+    coreColor = "rgba(210, 245, 255, 0.95)";
+  }
 
   ctx.strokeStyle = glowColor;
   ctx.lineWidth = isLow ? 3 : 6;
@@ -120,7 +138,7 @@ listen("overlay-frame", (event) => {
 });
 
 listen("overlay-preset", (event) => {
-  preset = event.payload?.preset || "mint";
+  preset = event.payload?.preset || "spiderman";
   fx.setPreset(preset);
 });
 
@@ -130,12 +148,17 @@ listen("overlay-shot", (event) => {
 });
 
 listen("overlay-tether", (event) => {
-  tether = event.payload;
+  const key = event.payload?.id ?? 0;
+  tethers.set(key, event.payload);
   kick();
 });
 
-listen("overlay-clear", () => {
-  tether = null;
+listen("overlay-clear", (event) => {
+  if (event.payload?.id !== undefined) {
+    tethers.delete(event.payload.id);
+  } else {
+    tethers.clear();
+  }
 });
 
 window.addEventListener("resize", fit);

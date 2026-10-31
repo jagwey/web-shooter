@@ -2,6 +2,7 @@ import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, removeBinding, u
 import { emitTo, inDesktop, invoke, listen } from "./desktop.js";
 import { classifyGesture } from "./gestures.js";
 import { getLang, initI18n, setLang, t } from "./i18n.js";
+import { isAudioEnabled, playFling, playGrab, playImpact, playThwip, setAudioEnabled } from "./sound.js";
 import "./style.css";
 
 const video = document.getElementById("video");
@@ -23,9 +24,10 @@ const state = {
   missStreak: 0,
   detectTimer: 0,
   idleTimer: 0,
-  lastGesture: null,
-  grab: null,
-  samples: [],
+  hands: [
+    { lastGesture: null, grab: null, samples: [] },
+    { lastGesture: null, grab: null, samples: [] },
+  ],
   lastHit: "",
   holders: [],
   windowCount: 0,
@@ -77,6 +79,7 @@ function wireChrome() {
     }
   });
   document.getElementById("cameraRetry").addEventListener("click", () => startCamera());
+
   const camSelect = document.getElementById("cameraSelect");
   if (camSelect) {
     camSelect.addEventListener("change", async (e) => {
@@ -92,6 +95,16 @@ function wireChrome() {
       }
     });
   }
+
+  const soundToggle = document.getElementById("soundToggle");
+  if (soundToggle) {
+    soundToggle.addEventListener("click", () => {
+      state.settings.soundEnabled = !state.settings.soundEnabled;
+      setAudioEnabled(state.settings.soundEnabled);
+      persist();
+    });
+  }
+
   document.getElementById("autostartToggle").addEventListener("click", () => {
     state.settings.startWithWindows = !state.settings.startWithWindows;
     persist();
@@ -103,6 +116,7 @@ function wireChrome() {
   document.getElementById("testShot").addEventListener("click", async () => {
     if (!state.overlay?.visible) await toggleOverlay();
     emitTo("overlay", "overlay-shot", { x: 0.62, y: 0.72 });
+    playThwip();
   });
   document.getElementById("bindKind").addEventListener("change", syncBindForm);
   document.getElementById("bindAction").addEventListener("change", syncBindForm);
@@ -113,6 +127,10 @@ function wireChrome() {
     state.controlVisible = document.visibilityState !== "hidden";
     considerCold();
   });
+
+  // Guarantee clean camera teardown when page/app unloads
+  window.addEventListener("beforeunload", () => stopCamera(true));
+  window.addEventListener("pagehide", () => stopCamera(true));
 }
 
 async function boot() {
@@ -120,6 +138,9 @@ async function boot() {
   const loaded = await invoke("get_settings");
   state.settings = loaded?.unsupported ? fallbackSettings() : loaded;
   if (state.settings.lang) initI18n(state.settings.lang);
+  applyTheme(state.settings.theme || "spiderman");
+  setAudioEnabled(state.settings.soundEnabled !== false);
+
   await refreshDesktop();
   listen("monitors-changed", (event) => {
     state.monitors = event.payload.monitors || [];
@@ -138,7 +159,7 @@ async function boot() {
     document.getElementById("fpsValue").textContent = String(state.renderFps);
   });
   listen("web-impact", (event) => hitAt(event.payload.x, event.payload.y, true));
-  listen("binding-fired", (event) => runAction(event.payload, null, true));
+  listen("binding-fired", (event) => runActionForHand(0, event.payload, null, true));
   listen("shell-hidden", () => {
     state.controlVisible = false;
     considerCold();
@@ -170,9 +191,12 @@ function fallbackSettings() {
     idleReleaseSecs: 20,
     monitorMode: "one",
     monitorId: "",
-    fxPreset: "mint",
+    fxPreset: "spiderman",
     bindings: defaultBindings(),
     cameraDeviceId: "",
+    targetFps: 120,
+    soundEnabled: true,
+    theme: "spiderman",
   };
 }
 
@@ -236,7 +260,7 @@ async function toggleOverlay() {
   if (!result || result.unsupported) return;
   state.overlay = result;
   if (result.visible) {
-    emitTo("overlay", "overlay-preset", { preset: state.settings.fxPreset });
+    emitTo("overlay", "overlay-preset", { preset: state.settings.theme || state.settings.fxPreset });
     emitTo("overlay", "overlay-frame", result);
     if (state.cameraWanted) await startCamera();
   }
@@ -257,7 +281,7 @@ async function persist() {
     if (frame && !frame.unsupported) {
       state.overlay = frame;
       emitTo("overlay", "overlay-frame", frame);
-      emitTo("overlay", "overlay-preset", { preset: state.settings.fxPreset });
+      emitTo("overlay", "overlay-preset", { preset: state.settings.theme || state.settings.fxPreset });
     }
   }
   render();
@@ -269,10 +293,11 @@ async function startCamera() {
   setMessage("cameraMessage", "");
   setMessage("onboardCameraMessage", "");
   try {
+    const targetFps = state.settings?.targetFps || 120;
     const videoConstraints = {
       width: { ideal: 640 },
       height: { ideal: 480 },
-      frameRate: { ideal: 30, max: 30 },
+      frameRate: { ideal: targetFps >= 120 ? 60 : 30, max: targetFps >= 120 ? 120 : 60 },
     };
     if (state.settings?.cameraDeviceId) {
       videoConstraints.deviceId = { exact: state.settings.cameraDeviceId };
@@ -319,12 +344,22 @@ function stopCamera(user) {
   clearTimeout(state.detectTimer);
   clearTimeout(state.idleTimer);
   stopTracks();
-  cancelGrab(false);
+  for (let i = 0; i < state.hands.length; i += 1) {
+    cancelGrab(i, false);
+  }
   render();
 }
 
 function stopTracks() {
-  state.stream?.getTracks().forEach((track) => track.stop());
+  if (state.stream) {
+    state.stream.getTracks().forEach((track) => {
+      try {
+        track.stop();
+      } catch {
+        /* ignore */
+      }
+    });
+  }
   state.stream = null;
   video.srcObject = null;
 }
@@ -356,7 +391,8 @@ function onWorker(event) {
   }
   if (message.type === "landmarks") {
     state.inFlight = false;
-    onHand(message.landmarks, message.ms || 16);
+    const hands = message.hands && message.hands.length ? message.hands : message.landmarks ? [message.landmarks] : [];
+    onHands(hands, message.ms || 16);
   }
 }
 
@@ -368,11 +404,11 @@ function scheduleDetect(delay) {
 
 async function detectTick() {
   if (!state.stream || !state.workerReady || state.inFlight) {
-    scheduleDetect(40);
+    scheduleDetect(35);
     return;
   }
   if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-    scheduleDetect(40);
+    scheduleDetect(35);
     return;
   }
   try {
@@ -380,40 +416,59 @@ async function detectTick() {
     state.inFlight = true;
     state.worker.postMessage({ type: "frame", bitmap, time: performance.now() }, [bitmap]);
   } catch {
-    scheduleDetect(80);
+    scheduleDetect(70);
   }
 }
 
-function onHand(landmarks, detectMs) {
-  const gesture = classifyGesture(landmarks);
-  const action = actionFor(state.settings.bindings, "gesture", gesture);
-  const edge = gesture !== state.lastGesture;
-  document.getElementById("handValue").textContent = landmarks ? t("handYes") : t("handNo");
-  if (!landmarks) {
+function onHands(hands, detectMs) {
+  if (!hands || hands.length === 0) {
     state.missStreak += 1;
-    if (state.grab) releaseGrab();
+    document.getElementById("handValue").textContent = t("handNo");
+    for (let i = 0; i < state.hands.length; i += 1) {
+      if (state.hands[i].grab) releaseGrab(i);
+      state.hands[i].lastGesture = null;
+    }
     armIdleRelease();
   } else {
     state.missStreak = 0;
     clearTimeout(state.idleTimer);
-    const point = screenPoint(landmarks[8]);
-    if (state.grab && action !== "grab") {
-      releaseGrab();
-    } else if (action === "grab" && !edge) {
-      moveGrab(point);
-    } else if (edge) {
-      runAction(action, point, true);
+    document.getElementById("handValue").textContent = hands.length >= 2 ? t("handBoth") : t("handOne");
+
+    for (let i = 0; i < Math.min(hands.length, 2); i += 1) {
+      const landmarks = hands[i];
+      const handState = state.hands[i];
+      const gesture = classifyGesture(landmarks);
+      const action = actionFor(state.settings.bindings, "gesture", gesture);
+      const edge = gesture !== handState.lastGesture;
+      const point = screenPoint(landmarks[8]);
+
+      if (handState.grab && action !== "grab") {
+        releaseGrab(i);
+      } else if (action === "grab" && !edge) {
+        moveGrab(i, point);
+      } else if (edge) {
+        runActionForHand(i, action, point, true);
+      }
+      handState.lastGesture = gesture;
+    }
+
+    for (let i = hands.length; i < state.hands.length; i += 1) {
+      if (state.hands[i].grab) releaseGrab(i);
+      state.hands[i].lastGesture = null;
     }
   }
-  state.lastGesture = gesture;
-  const gap = nextGap(Boolean(landmarks), detectMs);
+
+  const gap = nextGap(hands.length > 0, detectMs);
   scheduleDetect(gap);
 }
 
 function nextGap(hand, detectMs) {
   if (!hand) return state.missStreak > 6 ? 250 : 80;
-  if (state.settings.fxPreset === "low" || state.settings.fxPreset === "light") return Math.max(33, detectMs);
-  return Math.min(40, Math.max(8, detectMs * 1.15));
+  const targetFps = state.settings?.targetFps || 120;
+  if (targetFps <= 60 || state.settings?.fxPreset === "low" || state.settings?.fxPreset === "light") {
+    return Math.max(16, detectMs);
+  }
+  return Math.min(30, Math.max(6, detectMs * 1.05));
 }
 
 function armIdleRelease() {
@@ -437,18 +492,19 @@ function screenPoint(landmark) {
   };
 }
 
-function runAction(action, point, edge) {
+function runActionForHand(handIndex, action, point, edge) {
   if (!action || !edge) return;
   if (action === "shoot" && point) {
     emitTo("overlay", "overlay-shot", { x: point.nx, y: point.ny });
+    playThwip();
     return;
   }
   if (action === "grab" && point) {
-    beginGrab(point);
+    beginGrab(handIndex, point);
     return;
   }
   if (action === "cancel") {
-    cancelGrab(true);
+    cancelGrab(handIndex, true);
     return;
   }
   if (action === "overlay_toggle") {
@@ -458,10 +514,10 @@ function runAction(action, point, edge) {
   if (action === "show_control") invoke("show_control");
 }
 
-async function beginGrab(point) {
+async function beginGrab(handIndex, point) {
   const found = await invoke("window_at", { x: point.sx, y: point.sy });
   if (!found || found.unsupported || !found.hwnd) return;
-  state.grab = {
+  state.hands[handIndex].grab = {
     hwnd: found.hwnd,
     winX: found.x,
     winY: found.y,
@@ -470,28 +526,31 @@ async function beginGrab(point) {
     startSx: point.sx,
     startSy: point.sy,
   };
-  state.samples = [{ t: performance.now(), x: point.sx, y: point.sy }];
+  state.hands[handIndex].samples = [{ t: performance.now(), x: point.sx, y: point.sy }];
   state.lastHit = found.title;
-  sendTether(point, found);
+  sendTether(handIndex, point, found);
+  playGrab();
   render();
 }
 
-async function moveGrab(point) {
-  if (!state.grab) {
-    await beginGrab(point);
+async function moveGrab(handIndex, point) {
+  const handState = state.hands[handIndex];
+  if (!handState.grab) {
+    await beginGrab(handIndex, point);
     return;
   }
-  const x = Math.round(state.grab.winX + (point.sx - state.grab.startSx));
-  const y = Math.round(state.grab.winY + (point.sy - state.grab.startSy));
-  const moved = await invoke("move_window", { hwnd: state.grab.hwnd, x, y });
-  state.samples.push({ t: performance.now(), x: point.sx, y: point.sy });
-  if (state.samples.length > 8) state.samples.shift();
-  sendTether(point, moved && moved.hwnd ? moved : { ...state.grab, x, y });
+  const x = Math.round(handState.grab.winX + (point.sx - handState.grab.startSx));
+  const y = Math.round(handState.grab.winY + (point.sy - handState.grab.startSy));
+  const moved = await invoke("move_window", { hwnd: handState.grab.hwnd, x, y });
+  handState.samples.push({ t: performance.now(), x: point.sx, y: point.sy });
+  if (handState.samples.length > 8) handState.samples.shift();
+  sendTether(handIndex, point, moved && moved.hwnd ? moved : { ...handState.grab, x, y });
 }
 
-function sendTether(point, win) {
+function sendTether(handIndex, point, win) {
   const frame = state.overlay || { x: 0, y: 0, width: 1, height: 1 };
   emitTo("overlay", "overlay-tether", {
+    id: handIndex,
     x0: point.nx,
     y0: point.ny,
     x1: (win.x + win.width / 2 - frame.x) / frame.width,
@@ -499,16 +558,17 @@ function sendTether(point, win) {
   });
 }
 
-async function releaseGrab() {
-  const grab = state.grab;
-  state.grab = null;
-  emitTo("overlay", "overlay-clear", {});
+async function releaseGrab(handIndex) {
+  const handState = state.hands[handIndex];
+  const grab = handState.grab;
+  handState.grab = null;
+  emitTo("overlay", "overlay-clear", { id: handIndex });
   if (!grab) return;
 
   const now = performance.now();
-  let recent = state.samples.filter((sample) => now - sample.t < 160);
-  if (recent.length < 2 && state.samples.length >= 2) {
-    recent = state.samples.slice(-3);
+  let recent = handState.samples.filter((sample) => now - sample.t < 160);
+  if (recent.length < 2 && handState.samples.length >= 2) {
+    recent = handState.samples.slice(-3);
   }
 
   let vx = 0;
@@ -531,15 +591,23 @@ async function releaseGrab() {
       vx = (vx / speed) * maxSpeed;
       vy = (vy / speed) * maxSpeed;
     }
+    playFling(speed);
     await invoke("fling_window", { hwnd: grab.hwnd, vx, vy });
   }
   render();
 }
 
-function cancelGrab(clearWeb) {
-  state.grab = null;
+function cancelGrab(handIndex, clearWeb) {
+  if (handIndex !== undefined && state.hands[handIndex]) {
+    state.hands[handIndex].grab = null;
+    if (clearWeb) emitTo("overlay", "overlay-clear", { id: handIndex });
+  } else {
+    for (let i = 0; i < state.hands.length; i += 1) {
+      state.hands[i].grab = null;
+    }
+    if (clearWeb) emitTo("overlay", "overlay-clear", {});
+  }
   invoke("cancel_fling");
-  if (clearWeb) emitTo("overlay", "overlay-clear", {});
   render();
 }
 
@@ -553,6 +621,7 @@ async function hitAt(x, y, nudge) {
   }
   if (!found || !found.hwnd) return;
   state.lastHit = found.title || state.lastHit;
+  playImpact();
   if (nudge) await invoke("nudge_window", { hwnd: found.hwnd });
   render();
 }
@@ -630,9 +699,17 @@ function paintLiveStatus() {
 function render() {
   if (!state.settings) return;
   paintLang();
+  applyTheme(state.settings.theme || "spiderman");
+
   const overlayOn = Boolean(state.overlay?.visible);
   document.getElementById("overlayToggle").setAttribute("aria-pressed", String(overlayOn));
   document.getElementById("cameraToggle").setAttribute("aria-pressed", String(state.cameraWanted && !state.cameraPaused));
+
+  const soundToggle = document.getElementById("soundToggle");
+  if (soundToggle) {
+    soundToggle.setAttribute("aria-pressed", String(state.settings.soundEnabled !== false));
+  }
+
   document.getElementById("autostartToggle").setAttribute("aria-pressed", String(state.settings.startWithWindows));
   document.getElementById("idleToggle").setAttribute("aria-pressed", String(state.settings.releaseCameraWhenIdle));
   document.getElementById("cameraState").textContent = state.cameraPaused ? t("cameraPaused") : t("cameraHint");
@@ -641,10 +718,68 @@ function render() {
   document.getElementById("hitLabel").textContent = `${t("lastHit")}: ${state.lastHit || t("noHit")}`;
   document.getElementById("win32Label").textContent = state.win32 ? t("win32Ready") : t("win32Stub");
   document.getElementById("fpsValue").textContent = String(state.renderFps);
+
+  renderTheme();
+  renderFpsChips();
   renderMonitors(document.getElementById("monitorList"));
-  renderFx();
   renderBindings();
   syncBindForm();
+}
+
+function applyTheme(themeId) {
+  document.documentElement.dataset.theme = themeId || "spiderman";
+}
+
+function renderTheme() {
+  const root = document.getElementById("themeChips");
+  if (!root) return;
+  root.replaceChildren();
+  const themes = [
+    ["spiderman", "themeSpiderman"],
+    ["miles", "themeMiles"],
+    ["symbiote", "themeSymbiote"],
+    ["mint", "themeMint"],
+    ["neon", "themeNeon"],
+  ];
+  for (const [id, key] of themes) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip";
+    button.textContent = t(key);
+    const active = (state.settings.theme || "spiderman") === id;
+    button.setAttribute("aria-pressed", String(active));
+    button.addEventListener("click", async () => {
+      state.settings.theme = id;
+      state.settings.fxPreset = id;
+      applyTheme(id);
+      emitTo("overlay", "overlay-preset", { preset: id });
+      await persist();
+    });
+    root.append(button);
+  }
+}
+
+function renderFpsChips() {
+  const root = document.getElementById("fpsChips");
+  if (!root) return;
+  root.replaceChildren();
+  const options = [
+    [60, "fpsOption60"],
+    [120, "fpsOption120"],
+  ];
+  for (const [fps, key] of options) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip";
+    button.textContent = t(key);
+    const active = (state.settings.targetFps || 120) === fps;
+    button.setAttribute("aria-pressed", String(active));
+    button.addEventListener("click", async () => {
+      state.settings.targetFps = fps;
+      await persist();
+    });
+    root.append(button);
+  }
 }
 
 function renderMonitors(root) {
@@ -674,31 +809,6 @@ async function chooseMonitor(mode, id) {
   state.settings.monitorMode = mode;
   if (id) state.settings.monitorId = id;
   await persist();
-}
-
-function renderFx() {
-  const root = document.getElementById("fxChips");
-  root.replaceChildren();
-  const presets = [
-    ["classic", "fxClassic"],
-    ["mint", "fxMint"],
-    ["neon", "fxNeon"],
-    ["light", "fxLight"],
-  ];
-  for (const [id, key] of presets) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "chip";
-    button.textContent = t(key);
-    const active = state.settings.fxPreset === id || (id === "light" && state.settings.fxPreset === "low");
-    button.setAttribute("aria-pressed", String(active));
-    button.addEventListener("click", async () => {
-      state.settings.fxPreset = id;
-      emitTo("overlay", "overlay-preset", { preset: id });
-      await persist();
-    });
-    root.append(button);
-  }
 }
 
 function renderBindings() {

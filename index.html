@@ -83,17 +83,25 @@
         <button type="button" class="btn ghost" id="cameraRetry" hidden data-i18n="cameraRetry">Tekrar dene</button>
 
         <section class="card">
+          <h2 data-i18n="themeTitle">Tema</h2>
+          <div class="chips" id="themeChips"></div>
+        </section>
+
+        <section class="card">
           <h2 data-i18n="displays">Ekran</h2>
           <div class="monitor-list" id="monitorList"></div>
         </section>
 
-        <section class="card">
-          <h2 data-i18n="fxTitle">Efekt</h2>
-          <div class="chips" id="fxChips"></div>
-        </section>
-
         <details class="card">
-          <summary data-i18n="power">Güç</summary>
+          <summary data-i18n="power">Ayarlar & Güç</summary>
+          <button type="button" class="switch slim" id="soundToggle" aria-pressed="true">
+            <span class="knob" aria-hidden="true"></span>
+            <span><strong data-i18n="sound">Ses Efektleri (THWIP)</strong><small data-i18n="soundHint">Ağ atışında ve fırlatmada ses çal.</small></span>
+          </button>
+          <div class="row" style="margin-top: 8px; justify-content: space-between;">
+            <strong style="font-size: 0.9rem;" data-i18n="fpsSetting">Hedef FPS:</strong>
+            <div class="chips" id="fpsChips"></div>
+          </div>
           <button type="button" class="switch slim" id="autostartToggle" aria-pressed="false">
             <span class="knob" aria-hidden="true"></span>
             <span><strong data-i18n="autostart">Windows ile aç</strong><small data-i18n="autostartHint">Tepside başlar, kamerayı açmaz.</small></span>

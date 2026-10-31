@@ -14,6 +14,66 @@
   font-family: "Segoe UI", Bahnschrift, sans-serif;
 }
 
+[data-theme="spiderman"] {
+  --bg: #0b0f19;
+  --card: #121927;
+  --forest: #b91c1c;
+  --deep: #1e3a8a;
+  --mint: #ff4d4d;
+  --mint-strong: #ffffff;
+  --ink: #f8fafc;
+  --muted: #94a3b8;
+  --line: rgba(239, 68, 68, 0.35);
+}
+
+[data-theme="miles"] {
+  --bg: #09090b;
+  --card: #18181b;
+  --forest: #e11d48;
+  --deep: #854d0e;
+  --mint: #ffd700;
+  --mint-strong: #fff176;
+  --ink: #fafafa;
+  --muted: #a1a1aa;
+  --line: rgba(255, 215, 0, 0.35);
+}
+
+[data-theme="symbiote"] {
+  --bg: #07050b;
+  --card: #130f1c;
+  --forest: #6b21a8;
+  --deep: #3b0764;
+  --mint: #c084fc;
+  --mint-strong: #f3e8ff;
+  --ink: #faf5ff;
+  --muted: #c4b5fd;
+  --line: rgba(192, 132, 252, 0.35);
+}
+
+[data-theme="neon"] {
+  --bg: #0a0512;
+  --card: #160c24;
+  --forest: #c026d3;
+  --deep: #15803d;
+  --mint: #7cff6b;
+  --mint-strong: #fdf4ff;
+  --ink: #fdf4ff;
+  --muted: #e879f9;
+  --line: rgba(255, 77, 255, 0.35);
+}
+
+[data-theme="mint"] {
+  --bg: #07120e;
+  --card: #10261e;
+  --forest: #14532d;
+  --deep: #0d3b2e;
+  --mint: #9cf0c4;
+  --mint-strong: #e7fff3;
+  --ink: #f4fff8;
+  --muted: #b7d4c4;
+  --line: rgba(156, 240, 196, 0.28);
+}
+
 * { box-sizing: border-box; }
 
 html, body {
