@@ -681,6 +681,7 @@ function fallbackSettings() {
     bodyTracking: false,
     customFx: null,
     theme: "sakura",
+    sniperTarget: "gemini_web",
   };
 }
 
@@ -1277,10 +1278,48 @@ function onHands(hands, detectMs) {
       state.hands[i].votes = [];
     }
     checkPurpleStance(maxHands);
+    checkSniperStance(maxHands);
   }
 
   const gap = nextGap(hands.length > 0, detectMs);
   scheduleDetect(gap);
+}
+
+// Dual Finger Gun stance: both hands form a finger gun, held for SNIPER_HOLD_MS (350ms).
+// Crosshair is the midpoint between both index fingertips. Triggers askAiAt(crosshair).
+const SNIPER_HOLD_MS = 350;
+
+function checkSniperStance(handCount) {
+  if (handCount < 2) {
+    state.sniperSince = 0;
+    state.sniperFired = false;
+    return;
+  }
+  const hands = state.hands.slice(0, handCount);
+  const now = performance.now();
+  const points = hands.map((h) => h.landmarks);
+  if (!points[0] || !points[1]) return;
+  const isGun0 = isFingerGun(points[0]);
+  const isGun1 = isFingerGun(points[1]);
+  if (!isGun0 || !isGun1) {
+    state.sniperSince = 0;
+    state.sniperFired = false;
+    return;
+  }
+  state.sniperSince ||= now;
+  if (state.sniperFired || now - state.sniperSince < SNIPER_HOLD_MS) return;
+  state.sniperFired = true;
+
+  const tip0 = points[0][8];
+  const tip1 = points[1][8];
+  const midPoint = {
+    x: (tip0.x + tip1.x) / 2,
+    y: (tip0.y + tip1.y) / 2,
+  };
+  const targetPoint = screenPoint(midPoint);
+  targetPoint.nx = midPoint.x;
+  targetPoint.ny = midPoint.y;
+  askAiAt(targetPoint);
 }
 
 // Gojo stance: one hand thrust at the camera, the other back at the chest, held PURPLE_HOLD_MS.
@@ -1402,13 +1441,19 @@ function updateGestureHud(hands) {
     fist: { icon: "✊", title: "PENCERE TUTMA (Yumruk)" },
     palm: { icon: "🖐️", title: "SERBEST BIRAK / İPTAL" },
     flick: { icon: "👌", title: "FİSKE — GÖREV ÇUBUĞU" },
+    peace: { icon: "✌️", title: "SEKME KAPAT (Makas / V)" },
+    gun: { icon: "👉", title: "NİŞAN AL (AI Soru)" },
     gojo: { icon: "🤌", title: "GOJO İŞARETİ" },
     point: { icon: "👆", title: "HEDEFLEME (İşaret)" },
   };
 
   let info = ICONS[gesture] || { icon: "👋", title: "El Algılandı" };
-  if (hands.length >= 2 && hollowPurpleReady(hands, hands.map((hand) => classifyGesture(hand))) >= 0) {
-    info = { icon: "🟣", title: "HOLLOW PURPLE" };
+  if (hands.length >= 2) {
+    if (isFingerGun(hands[0]) && isFingerGun(hands[1])) {
+      info = { icon: "🎯", title: "AI SNIPER (Çift El Nişan)" };
+    } else if (hollowPurpleReady(hands, hands.map((hand) => classifyGesture(hand))) >= 0) {
+      info = { icon: "🟣", title: "HOLLOW PURPLE" };
+    }
   }
   if (icon) icon.textContent = info.icon;
   if (name) name.textContent = info.title;
@@ -2141,6 +2186,7 @@ function render() {
 
   renderTheme();
   renderCloseModeChips();
+  renderSniperTargetChips();
   renderAiProviderChips();
   renderFpsChips();
   renderMonitors(document.getElementById("monitorList"));
@@ -2205,6 +2251,31 @@ function renderCloseModeChips() {
     button.addEventListener("click", async () => {
       state.settings.closeMode = mode;
       await persist();
+    });
+    root.append(button);
+  }
+}
+
+function renderSniperTargetChips() {
+  const root = document.getElementById("sniperTargetChips");
+  if (!root) return;
+  root.replaceChildren();
+  const targets = [
+    ["gemini_web", "sniperTargetGemini"],
+    ["chat", "sniperTargetChat"],
+  ];
+  const current = state.settings.sniperTarget || "gemini_web";
+  for (const [target, key] of targets) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip";
+    button.textContent = t(key);
+    const active = current === target;
+    button.setAttribute("aria-pressed", String(active));
+    button.addEventListener("click", async () => {
+      state.settings.sniperTarget = target;
+      await persist();
+      renderSniperTargetChips();
     });
     root.append(button);
   }
