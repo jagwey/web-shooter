@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { FX_PRESETS } from "../src/effects.js";
-import { actionFor, defaultBindings, removeBinding, upsertBinding } from "../src/bindings.js";
+import { actionFor, defaultBindings, migrateBindings, removeBinding, upsertBinding } from "../src/bindings.js";
 
 test("default bindings cover shoot, grab, cancel, and overlay", () => {
   const bindings = defaultBindings();
   assert.equal(actionFor(bindings, "gesture", "web"), "shoot");
   assert.equal(actionFor(bindings, "gesture", "fist"), "grab");
   assert.equal(actionFor(bindings, "gesture", "palm"), "cancel");
-  assert.equal(actionFor(bindings, "gesture", "flick"), "hollow_purple");
+  assert.equal(actionFor(bindings, "gesture", "flick"), "minimize");
+  assert.equal(actionFor(bindings, "gesture", "gojo"), "hollow_purple");
   assert.equal(actionFor(bindings, "hotkey", "CommandOrControl+Alt+J"), "overlay_toggle");
   assert.equal(actionFor(bindings, "gesture", "point"), null);
 });
@@ -22,6 +23,16 @@ test("a new binding replaces the same input", () => {
   assert.equal(actionFor(next, "gesture", "web"), "wave");
   assert.equal(next.filter((item) => item.input.value === "web").length, 1);
   assert.equal(removeBinding(next, "custom").some((item) => item.id === "custom"), false);
+});
+
+test("old Gojo flick binding becomes gojo, and OK flick minimizes", () => {
+  const next = migrateBindings([
+    { id: "b-purple", action: "hollow_purple", input: { kind: "gesture", value: "flick" } },
+  ]);
+  assert.equal(actionFor(next, "gesture", "gojo"), "hollow_purple");
+  assert.equal(actionFor(next, "gesture", "flick"), "minimize");
+  const kept = migrateBindings(next.filter((item) => item.action !== "minimize"));
+  assert.equal(actionFor(kept, "gesture", "flick"), null);
 });
 
 test("effect presets include the performance mode", () => {

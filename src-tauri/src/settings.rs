@@ -133,7 +133,8 @@ fn default_bindings() -> Vec<Binding> {
         binding("b-web", "shoot", "gesture", "web"),
         binding("b-fist", "grab", "gesture", "fist"),
         binding("b-palm", "cancel", "gesture", "palm"),
-        binding("b-purple", "hollow_purple", "gesture", "flick"),
+        binding("b-flick", "minimize", "gesture", "flick"),
+        binding("b-purple", "hollow_purple", "gesture", "gojo"),
         binding("b-overlay", "overlay_toggle", "hotkey", "CommandOrControl+Alt+J"),
         binding("b-control", "show_control", "hotkey", "CommandOrControl+Alt+K"),
     ]
@@ -182,6 +183,24 @@ impl Settings {
         });
         if self.bindings.is_empty() {
             self.bindings = default_bindings();
+        } else {
+            let mut renamed = false;
+            for item in &mut self.bindings {
+                if item.action == "hollow_purple"
+                    && item.input.kind == "gesture"
+                    && item.input.value == "flick"
+                {
+                    item.input.value = "gojo".into();
+                    renamed = true;
+                }
+            }
+            let has_flick = self.bindings.iter().any(|item| {
+                item.input.kind == "gesture" && item.input.value == "flick"
+            });
+            if renamed && !has_flick {
+                self.bindings
+                    .push(binding("b-flick", "minimize", "gesture", "flick"));
+            }
         }
         self
     }

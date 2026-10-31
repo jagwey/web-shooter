@@ -14,6 +14,7 @@ commands.allow = [
   "window_at",
   "window_client",
   "move_window",
+  "place_window",
   "nudge_window",
   "fling_window",
   "cancel_fling",

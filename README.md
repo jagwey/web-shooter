@@ -193,12 +193,17 @@ Ağ, tarayıcıda sekmenin sayfa yüzeyine (`Chrome_RenderWidgetHostHWND` / Fire
 
 | Hareket / Jest | Parmak Durumu | Gerçekleşen Eylem | Görsel & Ses Efekti |
 |---|---|---|---|
-| 🤟 **Ağ Atışı (Web)** | İşaret + Serçe Açık | Pencereyi iter veya ağ atar | Dinamik Spoke Ağ + **THWIP!** |
-| 🕸️ **Ağı Tutma (Hold)** | Ağ Pozunu Koru | Sekmeyi ele bağlar, monitörler arası taşır | Gergin İpler + Dinamik Takip |
+| 🤟 **Ağ Atışı (Web)** | İşaret + Serçe Açık | Pencereyi tutar. Diğer ekrana savurursan site o monitöre gider | Dinamik Spoke Ağ + **THWIP!** |
+| 🕸️ **Ağı Tutma (Hold)** | Ağ Pozunu Koru | Sekmeyi ele bağlar. Hızlı savurma, yön diğer ekrana bakıyorsa pencereyi oraya oturtur | Gergin İpler + Dinamik Takip |
 | ✊ **Yumruk (Fist)** | Tüm Parmaklar Kapalı | Pencereyi kavrar ve serbestçe hareket ettirir | Çelik Halat + Gerilim Sesi |
 | 🖐️ **Açık Avuç (Palm)** | Tüm Parmaklar Açık | Tutulan pencereyi fırlatır / Kapatmayı iptal eder | Momentum Fırlatma / İptal Sesi |
+| 👌 **Fiske (OK)** | Başparmak + işaret halka, diğer üç parmak açık, **hedefe doğru savur** | Görev çubuğuna indir (`SW_MINIMIZE`). Kapatmaz. Duran OK eli tetiklemez | Kısa savurma |
 | 🤌 **Gojo işareti** | İşaret + Orta açık, yüzük + serçe kapalı | Tek başına kapatmaz | Mavi/kırmızı kıvılcım hazırlığı |
 | 🟣 **Hollow Purple** | **İki el** aynı işaret, biri kameraya ~1.5× yakın, **~0.4 sn** | Vurulan pencereye `WM_CLOSE` (shutdown değil) | **Hollow Purple** + Sub-Bass |
+
+**İkinci ekran / second screen:** ağ ile pencereyi tut, eli diğer monitöre doğru savur. Pencere oraya oturur. Tek ekranda savurma kenara yaslar.
+
+**English:** web-hold and fling toward the other display throws that window onto it. OK flick (thumb+index circle, other fingers out, fast stroke at the tab) minimizes to the taskbar — it does not close. Hollow Purple still sends `WM_CLOSE`.
 
 ---
 

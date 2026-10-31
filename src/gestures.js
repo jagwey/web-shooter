@@ -152,7 +152,7 @@ export function purpleFrontHand(hands, gestures) {
  */
 export function hollowPurpleReady(hands, gestures) {
   if (!hands || hands.length < 2 || !gestures || gestures.length < 2) return -1;
-  if (gestures[0] !== "flick" || gestures[1] !== "flick") return -1;
+  if (gestures[0] !== "gojo" || gestures[1] !== "gojo") return -1;
   if (handSpan(hands[0]) < MIN_SPAN || handSpan(hands[1]) < MIN_SPAN) return -1;
   const a = handSpan(hands[0]);
   const b = handSpan(hands[1]);
@@ -162,10 +162,44 @@ export function hollowPurpleReady(hands, gestures) {
   return front;
 }
 
-/** web, flick (Gojo purple), point, fist, palm, or null. */
+/**
+ * OK / flick pose from the reference photo: thumb and index meet in a circle,
+ * middle + ring + pinky stay extended. MediaPipe has no forearm, so the cocked
+ * wrist shows up as that circle sitting off the finger axis.
+ * Motion (a real flick) is checked separately — a still OK hand is not a flick.
+ */
+export function isFlickPose(points) {
+  if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
+  const wrist = points[0];
+  const palm = span(points[5], points[17]);
+  if (palm < 1e-4) return false;
+  const pinch = span(points[4], points[8]);
+  if (!(pinch < palm * 0.55)) return false;
+  if (isFingerExtended(points[8], points[6], wrist)) return false;
+  const middle = isFingerExtended(points[12], points[10], wrist);
+  const ring = isFingerExtended(points[16], points[14], wrist);
+  const pinky = isFingerExtended(points[20], points[18], wrist);
+  if (!middle || !ring || !pinky) return false;
+  return pinchOffAxis(points, palm);
+}
+
+function pinchOffAxis(points, palm) {
+  const axis = handAxis(points);
+  const len = Math.hypot(axis.x, axis.y);
+  if (len < 1e-4) return false;
+  const ux = axis.x / len;
+  const uy = axis.y / len;
+  const mx = (points[4].x + points[8].x) / 2 - points[0].x;
+  const my = (points[4].y + points[8].y) / 2 - points[0].y;
+  const side = Math.abs(mx * uy - my * ux);
+  return side > palm * 0.15;
+}
+
+/** web, flick (OK circle), gojo, point, fist, palm, or null. */
 export function classifyGesture(points) {
   if (isWebSign(points)) return "web";
-  if (isGojoSign(points)) return "flick";
+  if (isFlickPose(points)) return "flick";
+  if (isGojoSign(points)) return "gojo";
   if (isPoint(points)) return "point";
   if (isFist(points)) return "fist";
   if (isOpenPalm(points)) return "palm";
