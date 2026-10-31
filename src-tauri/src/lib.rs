@@ -379,7 +379,9 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     if let Some(icon) = app.default_window_icon() {
         builder = builder.icon(icon.clone());
     }
-    builder.build(app)?;
+    if let Err(err) = builder.build(app) {
+        eprintln!("[tray] Failed to build tray icon: {err}");
+    }
     Ok(())
 }
 
@@ -555,6 +557,8 @@ pub fn run() {
                 let _ = apply_autostart(app.handle(), true);
             }
             if let Some(window) = app.get_webview_window("control") {
+                let _ = window.maximize();
+                let _ = window.show();
                 let handle = window.clone();
                 window.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { api, .. } = event {
