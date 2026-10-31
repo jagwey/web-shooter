@@ -1,3 +1,5 @@
+import { shiftPinned } from "./target.js";
+
 /**
  * Cinematic web strand, impact web, particles, muzzle flash, and shockwave.
  * Motion is adapted from SpiderSense by Rittika Das (MIT).
@@ -216,17 +218,72 @@ export function createWebFx(ctx, hooks = {}) {
     return look.quality !== "low";
   }
 
-  // rect = target window in canvas px; web lands on the point and stays inside that window.
-  function shoot(x, y, rect = null) {
-    activeWeb = null;
+  function landWeb(web) {
     webImpact = {
-      x,
-      y,
-      rect,
+      x: web.targetX,
+      y: web.targetY,
+      rect: web.rect,
+      hwnd: web.hwnd ?? null,
       life: 1,
-      maxRadius: rect ? Math.hypot(rect.w, rect.h) : 320,
+      maxRadius: web.rect ? Math.hypot(web.rect.w, web.rect.h) : 320,
     };
+    spawnParticles(web.targetX, web.targetY, full() ? 70 : 12);
+    shockwave = { x: web.targetX, y: web.targetY, radius: 12, life: 1 };
+    muzzleFlash = { x: web.targetX, y: web.targetY, life: 1 };
+  }
+
+  function shiftLive(pin, rect) {
+    if (!pin) return pin;
+    const shifted = shiftPinned(pin, rect);
+    if (pin.targetX != null && pin.rect) {
+      const dx = rect.x - pin.rect.x;
+      const dy = rect.y - pin.rect.y;
+      shifted.targetX = pin.targetX + dx;
+      shifted.targetY = pin.targetY + dy;
+    }
+    return shifted;
+  }
+
+  // Slide the in-flight strand and the splash with the window they hit. Other hwnds are ignored.
+  function follow(rect, hwnd = null) {
+    if (!rect) return;
+    if (activeWeb && (hwnd == null || activeWeb.hwnd == null || activeWeb.hwnd === hwnd)) {
+      activeWeb = shiftLive(activeWeb, rect);
+    }
+    if (webImpact && (hwnd == null || webImpact.hwnd == null || webImpact.hwnd === hwnd)) {
+      webImpact = shiftLive(webImpact, rect);
+    }
+  }
+
+  function pin() {
+    if (webImpact) return { x: webImpact.x, y: webImpact.y, rect: webImpact.rect, hwnd: webImpact.hwnd };
+    if (activeWeb) return { x: activeWeb.targetX, y: activeWeb.targetY, rect: activeWeb.rect, hwnd: activeWeb.hwnd };
+    return null;
+  }
+
+  // rect = target window in canvas px. The strand flies from the hand to the client center, then sticks inside that rect.
+  function shoot(x, y, rect = null, hwnd = null) {
+    const targetX = rect ? rect.x + rect.w / 2 : x;
+    const targetY = rect ? rect.y + rect.h / 2 : y;
+    activeWeb = {
+      startX: x,
+      startY: y,
+      targetX,
+      targetY,
+      progress: 0,
+      age: 0,
+      opacity: 1,
+      rect,
+      hwnd,
+      landed: false,
+    };
+    webImpact = null;
+    muzzleFlash = { x, y, life: 1 };
     hooks.onImpact?.(x, y);
+    if (Math.hypot(targetX - x, targetY - y) < 24) {
+      activeWeb.landed = true;
+      landWeb(activeWeb);
+    }
   }
 
   function triggerPurple(x, y) {
@@ -270,7 +327,7 @@ export function createWebFx(ctx, hooks = {}) {
         size: 1 + Math.random() * 3,
       });
     }
-    const cap = full() ? 240 : 48;
+    const cap = full() ? 140 : 40;
     if (webParticles.length > cap) {
       webParticles = webParticles.slice(webParticles.length - cap);
     }
@@ -315,7 +372,7 @@ export function createWebFx(ctx, hooks = {}) {
     const distance = Math.hypot(dx, dy) || 1;
     const perpX = -dy / distance;
     const perpY = dx / distance;
-    const curveAmount = Math.min(distance * 0.18, 140);
+    const curveAmount = Math.min(distance * 0.24, 180);
     const controlX = (web.startX + web.targetX) / 2 + perpX * curveAmount;
     const controlY = (web.startY + web.targetY) / 2 + perpY * curveAmount;
 
@@ -338,7 +395,7 @@ export function createWebFx(ctx, hooks = {}) {
     }
 
     ctx.shadowColor = look.glow;
-    ctx.shadowBlur = full() ? 22 : 0;
+    ctx.shadowBlur = full() ? 16 : 0;
     strokeCurve(
       web.startX,
       web.startY,
@@ -346,12 +403,13 @@ export function createWebFx(ctx, hooks = {}) {
       controlY,
       currentX,
       currentY,
-      rgba(look.beam, 0.45),
-      full() ? 12 : 6,
+      rgba(look.beam, 0.5),
+      full() ? 16 : 8,
     );
 
-    ctx.shadowBlur = full() ? 10 : 0;
-    strokeCurve(web.startX, web.startY, controlX, controlY, currentX, currentY, "rgba(255, 255, 255, 0.98)", 3);
+    ctx.shadowBlur = 0;
+    strokeCurve(web.startX, web.startY, controlX, controlY, currentX, currentY, "rgba(8, 10, 18, 0.8)", full() ? 8 : 4);
+    strokeCurve(web.startX, web.startY, controlX, controlY, currentX, currentY, "rgba(255, 255, 255, 0.98)", full() ? 3.2 : 1.8);
 
     const fiberCount = full() ? 7 : 0;
     for (let i = 0; i < fiberCount; i += 1) {
@@ -376,16 +434,9 @@ export function createWebFx(ctx, hooks = {}) {
     ctx.fill();
     ctx.restore();
 
-    if (progress >= 1 && !webImpact) {
-      webImpact = {
-        x: web.targetX,
-        y: web.targetY,
-        life: 1,
-        maxRadius: Math.max(canvas.width, canvas.height) * 1.05,
-      };
-      spawnParticles(web.targetX, web.targetY, full() ? 90 : 12);
-      shockwave = { x: web.targetX, y: web.targetY, radius: 10, life: 1 };
-      hooks.onImpact?.(web.targetX, web.targetY);
+    if (progress >= 1 && !web.landed) {
+      web.landed = true;
+      landWeb(web);
     }
 
     if (web.age > 1150) {
@@ -415,7 +466,7 @@ export function createWebFx(ctx, hooks = {}) {
     const progress = 1 - impact.life;
     // Fast spread (first ~25% of life), then hold and fade.
     const radius = impact.maxRadius * Math.min(1, Math.pow(progress * 4, 0.6));
-    const spokes = 12;
+    const spokes = full() ? 16 : 10;
     const fade = Math.min(1, impact.life * 2.5);
 
     ctx.save();
@@ -425,19 +476,35 @@ export function createWebFx(ctx, hooks = {}) {
       ctx.clip();
     }
     ctx.shadowBlur = 0;
+    ctx.lineCap = "round";
+
+    if (progress < 0.22) {
+      const flash = 1 - progress / 0.22;
+      ctx.beginPath();
+      ctx.arc(impact.x, impact.y, 22 + (1 - flash) * 70, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.62 * flash})`;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(impact.x, impact.y, 10 + (1 - flash) * 28, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 246, 214, ${0.9 * flash})`;
+      ctx.fill();
+    }
 
     for (let i = 0; i < spokes; i += 1) {
       const angle = (Math.PI * 2 * i) / spokes;
       const endX = impact.x + Math.cos(angle) * radius;
       const endY = impact.y + Math.sin(angle) * radius;
-      const bend = radius * 0.035;
+      const bend = radius * 0.05;
       const controlX = impact.x + Math.cos(angle + Math.PI / 2) * bend;
       const controlY = impact.y + Math.sin(angle + Math.PI / 2) * bend;
       ctx.beginPath();
       ctx.moveTo(impact.x, impact.y);
       ctx.quadraticCurveTo(controlX, controlY, endX, endY);
-      ctx.strokeStyle = `rgba(255, 255, 255, ${0.9 * fade})`;
-      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = `rgba(0, 0, 0, ${0.55 * fade})`;
+      ctx.lineWidth = full() ? 5.5 : 3;
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.95 * fade})`;
+      ctx.lineWidth = full() ? 2.4 : 1.3;
       ctx.stroke();
     }
 
@@ -455,14 +522,14 @@ export function createWebFx(ctx, hooks = {}) {
         }
         const previousAngle = (Math.PI * 2 * (i - 1)) / spokes;
         const middleAngle = (previousAngle + angle) / 2;
-        const sag = ringRadius * (0.08 + r * 0.006);
+        const sag = ringRadius * (0.14 + r * 0.012);
         const controlRadius = ringRadius - sag;
         const controlX = impact.x + Math.cos(middleAngle) * controlRadius;
         const controlY = impact.y + Math.sin(middleAngle) * controlRadius;
         ctx.quadraticCurveTo(controlX, controlY, x, y);
       }
-      ctx.strokeStyle = `rgba(255, 255, 255, ${0.8 * fade})`;
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.88 * fade})`;
+      ctx.lineWidth = full() ? 1.7 : 1;
       ctx.stroke();
     }
 
@@ -488,7 +555,7 @@ export function createWebFx(ctx, hooks = {}) {
       ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
       ctx.fillStyle = rgba(look.particle, particle.life);
       ctx.shadowColor = look.glow;
-      ctx.shadowBlur = full() ? 10 : 0;
+      ctx.shadowBlur = full() ? 6 : 0;
       ctx.fill();
     }
     ctx.restore();
@@ -708,5 +775,5 @@ export function createWebFx(ctx, hooks = {}) {
     ctx.restore();
   }
 
-  return { shoot, triggerPurple, triggerShield, draw, setPreset, hasWork };
+  return { shoot, follow, pin, triggerPurple, triggerShield, draw, setPreset, hasWork };
 }

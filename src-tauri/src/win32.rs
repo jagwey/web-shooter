@@ -9,6 +9,11 @@ pub struct DesktopWindow {
     pub y: i32,
     pub width: i32,
     pub height: i32,
+    /// Page / client area in screen pixels. Overlay coverage uses this, not the outer frame.
+    pub client_x: i32,
+    pub client_y: i32,
+    pub client_width: i32,
+    pub client_height: i32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -26,6 +31,7 @@ mod platform {
     use windows::core::BOOL;
     use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT, TRUE, WPARAM};
     use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+    use windows::Win32::Graphics::Gdi::ClientToScreen;
     use windows::Win32::System::Threading::GetCurrentProcessId;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
@@ -35,9 +41,10 @@ mod platform {
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GA_ROOT, GWL_EXSTYLE, GetAncestor, GetClassNameW, GetForegroundWindow,
         GetWindowLongPtrW, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
-        GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, PostMessageW,
-        SetForegroundWindow, SetWindowPos, ShowWindow, WindowFromPoint, SW_MAXIMIZE, SW_MINIMIZE,
-        SW_RESTORE, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE, WS_EX_TOOLWINDOW,
+        EnumChildWindows, GetClientRect, GetWindowThreadProcessId, IsIconic,
+        IsWindow, IsWindowVisible, IsZoomed, PostMessageW, SetForegroundWindow, SetWindowPos,
+        ShowWindow, WindowFromPoint, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SWP_NOACTIVATE,
+        SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE, WS_EX_TOOLWINDOW,
     };
     use windows_registry::CURRENT_USER;
 
@@ -76,6 +83,81 @@ mod platform {
             name,
             "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd"
         )
+    }
+
+    /// Browser (and WebView2) page surface. The top-level frame includes the tab strip and toolbar.
+    fn is_tab_content(name: &str) -> bool {
+        matches!(
+            name,
+            "Chrome_RenderWidgetHostHWND" | "MozillaCompositorWindowClass" | "Intermediate D3D Window"
+        )
+    }
+
+    fn client_screen(hwnd: HWND) -> Option<(i32, i32, i32, i32)> {
+        let mut rect = RECT::default();
+        if unsafe { GetClientRect(hwnd, &mut rect) }.is_err() {
+            return None;
+        }
+        let mut origin = POINT { x: 0, y: 0 };
+        if unsafe { !ClientToScreen(hwnd, &mut origin).as_bool() } {
+            return None;
+        }
+        let width = rect.right - rect.left;
+        let height = rect.bottom - rect.top;
+        if width < 40 || height < 40 {
+            return None;
+        }
+        Some((origin.x, origin.y, width, height))
+    }
+
+    struct ContentSearch {
+        best: HWND,
+        area: i32,
+    }
+
+    unsafe extern "system" fn enum_content(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let search = &mut *(lparam.0 as *mut ContentSearch);
+        if unsafe { IsWindowVisible(hwnd).as_bool() } && is_tab_content(&class_name(hwnd)) {
+            if let Some((_, _, width, height)) = client_screen(hwnd) {
+                let area = width.saturating_mul(height);
+                if area > search.area {
+                    search.area = area;
+                    search.best = hwnd;
+                }
+            }
+        }
+        TRUE
+    }
+
+    /// Largest visible tab surface under `root`, or `root` when the window is not a browser.
+    fn content_of(root: HWND) -> HWND {
+        let mut search = ContentSearch {
+            best: HWND(std::ptr::null_mut()),
+            area: 0,
+        };
+        unsafe {
+            let _ = EnumChildWindows(Some(root), Some(enum_content), LPARAM(&mut search as *mut _ as isize));
+        }
+        if search.best.0.is_null() {
+            root
+        } else {
+            search.best
+        }
+    }
+
+    fn with_client(mut window: DesktopWindow, content: HWND) -> DesktopWindow {
+        if let Some((x, y, width, height)) = client_screen(content) {
+            window.client_x = x;
+            window.client_y = y;
+            window.client_width = width;
+            window.client_height = height;
+        } else {
+            window.client_x = window.x;
+            window.client_y = window.y;
+            window.client_width = window.width;
+            window.client_height = window.height;
+        }
+        window
     }
 
     fn is_cloaked(hwnd: HWND) -> bool {
@@ -124,14 +206,21 @@ mod platform {
         if width < 80 || height < 60 {
             return None;
         }
-        Some(DesktopWindow {
-            hwnd: hwnd.0 as isize as i64,
-            title,
-            x: rect.left,
-            y: rect.top,
-            width,
-            height,
-        })
+        Some(with_client(
+            DesktopWindow {
+                hwnd: hwnd.0 as isize as i64,
+                title,
+                x: rect.left,
+                y: rect.top,
+                width,
+                height,
+                client_x: rect.left,
+                client_y: rect.top,
+                client_width: width,
+                client_height: height,
+            },
+            content_of(hwnd),
+        ))
     }
 
     unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
@@ -174,6 +263,12 @@ mod platform {
         if !hwnd.0.is_null() {
             let target = root_of(hwnd);
             if let Some(desc) = describe(target) {
+                // A hit on the page itself beats "largest child" (devtools, side panels).
+                let desc = if is_tab_content(&class_name(hwnd)) {
+                    with_client(desc, hwnd)
+                } else {
+                    desc
+                };
                 return Ok(Some(desc));
             }
             if skipped_class(&class_name(target)) {
@@ -188,6 +283,12 @@ mod platform {
             }
         }
         Ok(None)
+    }
+
+    /// Fresh client rect for a window we already track. No full desktop enum.
+    pub fn window_client(raw: i64) -> Result<DesktopWindow, String> {
+        let (hwnd, desc) = checked_target(raw)?;
+        Ok(with_client(desc, content_of(hwnd)))
     }
 
     pub fn move_window(raw: i64, x: i32, y: i32) -> Result<DesktopWindow, String> {
@@ -418,7 +519,7 @@ mod platform {
 #[cfg(windows)]
 pub use platform::{
     camera_holders, close_active_tab, close_window, fling_window, get_foreground_window,
-    list_windows, minimize_window, move_window, nudge_window, window_at,
+    list_windows, minimize_window, move_window, nudge_window, window_at, window_client,
 };
 
 #[cfg(not(windows))]
@@ -428,6 +529,11 @@ pub fn list_windows() -> Result<Vec<DesktopWindow>, String> {
 
 #[cfg(not(windows))]
 pub fn window_at(_x: i32, _y: i32) -> Result<Option<DesktopWindow>, String> {
+    Err("win32-only".into())
+}
+
+#[cfg(not(windows))]
+pub fn window_client(_raw: i64) -> Result<DesktopWindow, String> {
     Err("win32-only".into())
 }
 
