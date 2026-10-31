@@ -2,7 +2,7 @@ import { FilesetResolver, HandLandmarker, PoseLandmarker } from "@mediapipe/task
 import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, migrateBindings, removeBinding, upsertBinding } from "./bindings.js";
 import { DEFAULT_MODELS, OPENAI_PRESETS, autoTileWorkspace, chatWithAi, fetchOllamaModels, optimizeSettingsWithAi, sendAiGreeting, testAiConnection } from "./ai.js";
 import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen } from "./desktop.js";
-import { classifyGesture, hollowPurpleReady, isFingerExtended, wristDepths } from "./gestures.js";
+import { classifyGesture, hollowPurpleReady, isFingerExtended, voteGesture, wristDepths } from "./gestures.js";
 import { createHandFilter, filterLandmarks, predict } from "./filter.js";
 import { registerCustomLook } from "./effects.js";
 import { clientOf } from "./target.js";
@@ -43,8 +43,8 @@ const state = {
   cameraExpanded: false,
   cameraMirrored: true,
   hands: [
-    { lastGesture: null, grab: null, samples: [], filter: null },
-    { lastGesture: null, grab: null, samples: [], filter: null },
+    { lastGesture: null, grab: null, samples: [], filter: null, votes: [] },
+    { lastGesture: null, grab: null, samples: [], filter: null, votes: [] },
   ],
   pendingCloses: new Map(),
   lastHit: "",
@@ -77,7 +77,6 @@ const GESTURE_KEYS = {
   gojo: "gestureGojo",
   point: "gesturePoint",
 };
-const STABLE_MS = 120;
 const ACTION_COOLDOWN_MS = 600;
 // Fast motion blurs the hand for a few frames; keep grabs alive instead of dropping the window.
 const MISS_GRACE_MS = 300;
@@ -789,7 +788,65 @@ async function ensurePose() {
   poseLoading = false;
 }
 
+const WORKER_BOOT_MS = 25000;
+
+/** Resolves {tag} once the worker's model is ready, or null (then the main-thread path runs). */
+function startWorker(sources) {
+  return new Promise((resolve) => {
+    let worker;
+    try {
+      worker = new Worker(new URL("./hands-worker.js", import.meta.url), { type: "module" });
+    } catch (err) {
+      console.warn("[MediaPipe] Worker unavailable", err);
+      resolve(null);
+      return;
+    }
+    const fail = (why) => {
+      console.warn("[MediaPipe] Worker failed, main thread fallback:", why);
+      clearTimeout(timer);
+      worker.terminate();
+      if (state.worker === worker) state.worker = null;
+      state.workerReady = false;
+      state.inFlight = false;
+      resolve(null);
+    };
+    const timer = setTimeout(() => fail("timeout"), WORKER_BOOT_MS);
+    worker.onerror = (event) => fail(event.message || "error");
+    worker.onmessage = (event) => {
+      const msg = event.data;
+      if (msg.type === "ready") {
+        clearTimeout(timer);
+        state.worker = worker;
+        state.workerReady = true;
+        state.delegate = msg.delegate;
+        worker.onerror = (e) => {
+          // A crash after boot: drop to the main thread and keep the camera loop alive.
+          console.warn("[MediaPipe] Worker crashed", e.message);
+          worker.terminate();
+          state.worker = null;
+          state.workerReady = false;
+          state.inFlight = false;
+          ensureLandmarker().then((lm) => lm && scheduleDetect(0));
+        };
+        resolve({ tag: msg.tag });
+      } else if (msg.type === "error") {
+        fail(msg.message);
+      } else if (msg.type === "hands") {
+        if (state.worker !== worker) return;
+        state.inFlight = false;
+        state.world = msg.world;
+        if (msg.pose) state.pose = { landmarks: msg.pose, at: performance.now() };
+        if (!state.stream) return;
+        // Round trip, not just inference: what the user actually feels.
+        onHands(msg.hands, performance.now() - state.sentAt);
+      }
+    };
+    worker.postMessage({ type: "init", sources });
+  });
+}
+
 async function ensureLandmarker() {
+  if (state.worker && state.workerReady) return state.worker;
   if (landmarker) return landmarker;
   if (landmarkerLoading) return null;
   landmarkerLoading = true;
@@ -800,8 +857,8 @@ async function ensureLandmarker() {
   // Sources to try: 1) Local wasm & model, 2) Official CDN
   const sources = [
     {
-      wasm: "/mediapipe",
-      model: "/models/hand_landmarker.task",
+      wasm: new URL("/mediapipe", location.href).href,
+      model: new URL("/models/hand_landmarker.task", location.href).href,
       tag: "Yerel",
     },
     {
@@ -810,6 +867,14 @@ async function ensureLandmarker() {
       tag: "CDN",
     },
   ];
+
+  // Worker first: detection off the main thread keeps UI, overlay and cursor smooth.
+  const ready = await startWorker(sources);
+  if (ready) {
+    landmarkerLoading = false;
+    if (modelLabel) modelLabel.textContent = `${t("modelReady")} · ${state.delegate} (${ready.tag}, worker)`;
+    return state.worker;
+  }
 
   for (const src of sources) {
     try {
@@ -825,9 +890,9 @@ async function ensureLandmarker() {
           },
           runningMode: "VIDEO",
           numHands: 2,
-          minHandDetectionConfidence: 0.4,
-          minHandPresenceConfidence: 0.3,
-          minTrackingConfidence: 0.3,
+          minHandDetectionConfidence: 0.6,
+          minHandPresenceConfidence: 0.5,
+          minTrackingConfidence: 0.5,
         });
         state.delegate = "GPU";
       } catch (gpuErr) {
@@ -839,9 +904,9 @@ async function ensureLandmarker() {
           },
           runningMode: "VIDEO",
           numHands: 2,
-          minHandDetectionConfidence: 0.4,
-          minHandPresenceConfidence: 0.3,
-          minTrackingConfidence: 0.3,
+          minHandDetectionConfidence: 0.6,
+          minHandPresenceConfidence: 0.5,
+          minTrackingConfidence: 0.5,
         });
         state.delegate = "CPU";
       }
@@ -1015,7 +1080,8 @@ function scheduleDetect(delay) {
 }
 
 async function detectTick() {
-  if (!state.stream || !landmarker || state.inFlight) {
+  const useWorker = Boolean(state.worker && state.workerReady);
+  if (!state.stream || !(useWorker || landmarker) || state.inFlight) {
     scheduleDetect(35);
     return;
   }
@@ -1038,6 +1104,24 @@ async function detectTick() {
     return;
   }
   state.lastVideoTime = video.currentTime;
+  if (useWorker) {
+    // One frame in flight; the worker's reply runs onHands, which schedules the next tick.
+    state.inFlight = true;
+    try {
+      const bitmap = await createImageBitmap(video);
+      if (!state.worker) {
+        bitmap.close();
+        state.inFlight = false;
+        return;
+      }
+      state.sentAt = performance.now();
+      state.worker.postMessage({ type: "frame", bitmap, time: state.sentAt, body: Boolean(state.settings?.bodyTracking) }, [bitmap]);
+    } catch {
+      state.inFlight = false;
+      scheduleDetect(30);
+    }
+    return;
+  }
   try {
     state.inFlight = true;
     const now = performance.now();
@@ -1045,6 +1129,7 @@ async function detectTick() {
     const detectMs = performance.now() - now;
 
     const hands = result.landmarks || [];
+    state.world = result.worldLandmarks || [];
     if (state.settings?.bodyTracking) {
       if (!poseLandmarker) ensurePose();
       else if (now - (state.pose?.at || 0) >= POSE_GAP_MS) {
@@ -1077,6 +1162,7 @@ function onHands(hands, detectMs) {
         if (state.hands[i].grab) releaseGrab(i);
         state.hands[i].lastGesture = null;
         state.hands[i].filter = null;
+        state.hands[i].votes = [];
       }
     }
     armIdleRelease();
@@ -1101,13 +1187,10 @@ function onHands(hands, detectMs) {
 
       handState.landmarks = landmarks;
 
-      // Debounce: a pose must hold STABLE_MS before it counts, so flicker between poses never fires.
-      const raw = classifyGesture(landmarks);
-      if (raw !== handState.pendingGesture) {
-        handState.pendingGesture = raw;
-        handState.pendingSince = now;
-      }
-      const gesture = now - handState.pendingSince >= STABLE_MS ? raw : handState.lastGesture;
+      // 3D world shape + 3-of-5 frame vote: one noisy frame can neither fire nor drop a pose.
+      const raw = classifyGesture(landmarks, state.world?.[i]);
+      handState.votes ||= [];
+      const gesture = voteGesture(handState.votes, raw, handState.lastGesture);
       const bound = actionFor(state.settings.bindings, "gesture", gesture);
       // Purple is two-handed only. Flick minimize waits for a real stroke, not a still OK hand.
       const flickOwned = gesture === "flick" && (bound == null || bound === "minimize");
@@ -1137,6 +1220,7 @@ function onHands(hands, detectMs) {
     for (let i = maxHands; i < state.hands.length; i += 1) {
       if (state.hands[i].grab) releaseGrab(i);
       state.hands[i].lastGesture = null;
+      state.hands[i].votes = [];
     }
     checkPurpleStance(maxHands);
   }
@@ -1718,6 +1802,7 @@ function considerCold() {
       state.worker.terminate();
       state.worker = null;
       state.workerReady = false;
+      state.inFlight = false;
     }
   }
 }

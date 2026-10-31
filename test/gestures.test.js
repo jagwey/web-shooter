@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyGesture, countExtendedFingers, isFlickPose, isWebSign, jointAngle } from "../src/gestures.js";
+import { classifyGesture, countExtendedFingers, isFlickPose, isWebSign, jointAngle, voteGesture } from "../src/gestures.js";
 
 function makeHand({ index, middle, ring, pinky }) {
   const points = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.82, z: 0 }));
@@ -54,8 +54,22 @@ test("web sign survives rotation", () => {
   assert.equal(isWebSign(rotate(hand, -35)), true);
 });
 
+function stopHand() {
+  const hand = makeHand({ index: true, middle: true, ring: true, pinky: true });
+  hand[7] = { x: 0.35, y: 0.42, z: 0 };
+  hand[8] = { x: 0.32, y: 0.28, z: 0 };
+  hand[19] = { x: 0.65, y: 0.42, z: 0 };
+  hand[20] = { x: 0.68, y: 0.28, z: 0 };
+  hand[2] = { x: 0.36, y: 0.78, z: 0 };
+  hand[3] = { x: 0.3, y: 0.74, z: 0 };
+  hand[4] = { x: 0.2, y: 0.68, z: 0 };
+  return hand;
+}
+
 test("open palm, fist, and point stay distinct", () => {
-  assert.equal(classifyGesture(makeHand({ index: true, middle: true, ring: true, pinky: true })), "palm");
+  assert.equal(classifyGesture(stopHand()), "palm");
+  // Fingers open but parallel, thumb tucked: a relaxed hand, not a cancel.
+  assert.equal(classifyGesture(makeHand({ index: true, middle: true, ring: true, pinky: true })), null);
   assert.equal(classifyGesture(makeHand({ index: false, middle: false, ring: false, pinky: false })), "fist");
   assert.equal(classifyGesture(makeHand({ index: true, middle: false, ring: false, pinky: false })), "point");
   assert.equal(classifyGesture(makeHand({ index: true, middle: true, ring: false, pinky: false })), "gojo");
@@ -118,4 +132,25 @@ test("a collapsed or half-open hand does not fire a web", () => {
   pinched[20] = { ...pinched[8] };
   pinched[18] = { ...pinched[6] };
   assert.equal(isWebSign(pinched), false);
+});
+
+test("world landmarks classify the same shape at any scale and depth", () => {
+  const hand = makeHand({ index: true, middle: false, ring: false, pinky: true });
+  // Metric world hand: tiny (metres) and offset in z, like MediaPipe worldLandmarks.
+  const world = hand.map((p) => ({ x: (p.x - 0.5) * 0.3, y: (p.y - 0.82) * 0.3, z: 0.02 }));
+  assert.equal(classifyGesture(hand, world), classifyGesture(hand));
+  // The image hand still gates size: a speck in the frame is not a gesture even with world data.
+  const speck = hand.map((p) => ({ x: 0.5 + (p.x - 0.5) * 0.1, y: 0.5 + (p.y - 0.82) * 0.1, z: 0 }));
+  assert.equal(classifyGesture(speck, world), null);
+});
+
+test("vote needs 3 of the last 5 frames to switch", () => {
+  const votes = [];
+  assert.equal(voteGesture(votes, "web", null), null);
+  assert.equal(voteGesture(votes, "fist", null), null);
+  assert.equal(voteGesture(votes, "web", null), null);
+  assert.equal(voteGesture(votes, "web", null), "web");
+  // One stray frame does not drop the held pose.
+  assert.equal(voteGesture(votes, null, "web"), "web");
+  assert.equal(votes.length, 5);
 });

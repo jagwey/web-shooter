@@ -738,3 +738,8 @@ body.overlay #overlayCanvas {
   .chips { grid-template-columns: repeat(2, 1fr); }
   .status-card { grid-template-columns: 96px 1fr; }
 }
+
+/* Onboarding reads as a focused dialog, not a full-width strip. */
+#onboarding { width: 100%; max-width: 560px; margin: 6vh auto 0; }
+#onboarding .step { padding: 24px; gap: 14px; }
+#onboarding .step h2 { font-size: 1.4rem; }

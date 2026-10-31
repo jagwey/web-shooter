@@ -115,6 +115,7 @@ flowchart TD
 | 35 | **Release v0.1.6** | #33–#34 onaylandı. | Sürüm 0.1.6 (package.json, tauri.conf.json, Cargo.toml) → build.bat → `gh release create v0.1.6` (exe + sig + latest.json). latest.json → 0.1.6, setup linki 200 (2026-10-31). |
 | 36 | **OK flick küçültür, ağ pencereyi diğer monitöre atar (#2) + v0.1.6 merge** | v0.1.6 işi stash'te kalmıştı, main'de #1/#2 vardı. | `git stash apply` + çakışma çözümü: upstream trackFlight/boneReach/flickImpulse korundu, pose derinliği, ağ ease/cache/DPR, eklem açısı guard'ı eklendi. 33/33 test. |
 | 37 | **Release v0.1.7** | Kullanıcı onayı. | Sürüm 0.1.7 → build.bat → `gh release create v0.1.7`. latest.json → 0.1.7, setup linki 200 (2026-10-31). Gerçek kamerayla test edilmedi. |
+| 38 | **Akıcılık + sağlam el hareketi (yayınlanmadı)** | Kasma, yanlış hareket. | MediaPipe worker'a taşındı (ImageBitmap). Jest hesabı 3D + world landmarks. 120 ms debounce yerine son 5 karede 3 oy. Avuç → "dur eli" (yelpaze + başparmak dışarı). Karşılama kartı ortalandı. 35/35 test, vite build OK. Gerçek kamerayla test edilmedi. |
 
 ---
 

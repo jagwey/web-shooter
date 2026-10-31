@@ -20,8 +20,9 @@ const FINGERS = [
 const EXTEND_ANGLE = 150;
 const CLOSED_ANGLE = 135;
 
+// 3D where z exists: a finger pointed at the lens no longer looks folded.
 function span(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
+  return Math.hypot(a.x - b.x, a.y - b.y, (a.z || 0) - (b.z || 0));
 }
 
 /**
@@ -32,11 +33,13 @@ function span(a, b) {
 export function boneReach(tip, pip, wrist) {
   const ax = pip.x - wrist.x;
   const ay = pip.y - wrist.y;
-  const pipLen2 = ax * ax + ay * ay;
+  const az = (pip.z || 0) - (wrist.z || 0);
+  const pipLen2 = ax * ax + ay * ay + az * az;
   if (pipLen2 < 1e-8) return 0;
   const tx = tip.x - wrist.x;
   const ty = tip.y - wrist.y;
-  return (tx * ax + ty * ay) / pipLen2;
+  const tz = (tip.z || 0) - (wrist.z || 0);
+  return (tx * ax + ty * ay + tz * az) / pipLen2;
 }
 
 export function isFingerExtended(tip, pip, wrist, mcp) {
@@ -53,13 +56,14 @@ export function isFingerClosed(tip, pip, wrist, mcp) {
 export function handAxis(points) {
   const wrist = points[0];
   const middle = points[9];
-  return { x: middle.x - wrist.x, y: middle.y - wrist.y };
+  return { x: middle.x - wrist.x, y: middle.y - wrist.y, z: (middle.z || 0) - (wrist.z || 0) };
 }
 
 function aheadOfPip(tip, pip, wrist, axis) {
-  const len = Math.hypot(axis.x, axis.y);
+  const len = Math.hypot(axis.x, axis.y, axis.z || 0);
   if (len < 1e-4) return false;
-  const project = (point) => ((point.x - wrist.x) * axis.x + (point.y - wrist.y) * axis.y) / len;
+  const project = (point) =>
+    ((point.x - wrist.x) * axis.x + (point.y - wrist.y) * axis.y + ((point.z || 0) - (wrist.z || 0)) * (axis.z || 0)) / len;
   return project(tip) > project(pip) * EXTEND_RATIO;
 }
 
@@ -108,7 +112,10 @@ export function isFist(points) {
 export function isOpenPalm(points) {
   if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
   const wrist = points[0];
-  return FINGERS.every((finger) => isFingerExtended(points[finger.tip], points[finger.pip], wrist, points[finger.pip - 1]));
+  if (!FINGERS.every((finger) => isFingerExtended(points[finger.tip], points[finger.pip], wrist, points[finger.pip - 1]))) return false;
+  // A deliberate "stop" hand: fingers fanned and thumb out. A relaxed, loosely open hand is not a cancel.
+  const palm = span(points[5], points[17]);
+  return span(points[8], points[20]) > palm * 1.25 && span(points[4], points[5]) > palm * 0.6;
 }
 
 export function isPoint(points) {
@@ -203,13 +210,16 @@ export function isFlickPose(points) {
 
 function pinchOffAxis(points, palm) {
   const axis = handAxis(points);
-  const len = Math.hypot(axis.x, axis.y);
+  const len = Math.hypot(axis.x, axis.y, axis.z);
   if (len < 1e-4) return false;
-  const ux = axis.x / len;
-  const uy = axis.y / len;
-  const mx = (points[4].x + points[8].x) / 2 - points[0].x;
-  const my = (points[4].y + points[8].y) / 2 - points[0].y;
-  const side = Math.abs(mx * uy - my * ux);
+  const u = [axis.x / len, axis.y / len, axis.z / len];
+  const m = [
+    (points[4].x + points[8].x) / 2 - points[0].x,
+    (points[4].y + points[8].y) / 2 - points[0].y,
+    ((points[4].z || 0) + (points[8].z || 0)) / 2 - (points[0].z || 0),
+  ];
+  // Distance of the pinch from the hand axis line (|m x u|).
+  const side = Math.hypot(m[1] * u[2] - m[2] * u[1], m[2] * u[0] - m[0] * u[2], m[0] * u[1] - m[1] * u[0]);
   return side > palm * 0.15;
 }
 
@@ -232,8 +242,26 @@ export function wristDepths(hands, pose) {
   return [w0.z, w1.z];
 }
 
-/** web, flick (OK circle), gojo, point, fist, palm, or null. */
-export function classifyGesture(points) {
+// World landmarks are metres (a palm is ~0.09); scale to image-like units so MIN_SPAN still means "a hand".
+const WORLD_PALM = 0.3;
+
+/** Metric 3D hand from MediaPipe worldLandmarks: rotation- and distance-proof, scaled for these checks. */
+export function worldShape(world) {
+  if (!world || world.length < 21) return null;
+  const len = span(world[0], world[9]);
+  if (len < 1e-6) return null;
+  const k = WORLD_PALM / len;
+  return world.map((p) => ({ x: p.x * k, y: p.y * k, z: p.z * k }));
+}
+
+/**
+ * web, flick (OK circle), gojo, point, fist, palm, or null.
+ * With world landmarks the finger shape is judged in true 3D; the image hand still gates size.
+ */
+export function classifyGesture(points, world = null) {
+  if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return null;
+  const shape = worldShape(world);
+  if (shape) points = shape;
   if (isWebSign(points)) return "web";
   if (isFlickPose(points)) return "flick";
   if (isGojoSign(points)) return "gojo";
@@ -241,4 +269,20 @@ export function classifyGesture(points) {
   if (isFist(points)) return "fist";
   if (isOpenPalm(points)) return "palm";
   return null;
+}
+
+export const VOTE_WINDOW = 5;
+export const VOTE_MIN = 3;
+
+/**
+ * Majority vote over the last VOTE_WINDOW raw frames. A pose wins with VOTE_MIN votes;
+ * otherwise the previous gesture holds, so one bad frame never fires or drops anything.
+ */
+export function voteGesture(votes, raw, last) {
+  votes.push(raw);
+  if (votes.length > VOTE_WINDOW) votes.shift();
+  const counts = new Map();
+  for (const v of votes) counts.set(v, (counts.get(v) || 0) + 1);
+  for (const [gesture, count] of counts) if (count >= VOTE_MIN) return gesture;
+  return last;
 }
