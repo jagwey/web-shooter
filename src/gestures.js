@@ -25,31 +25,76 @@ function span(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y, (a.z || 0) - (b.z || 0));
 }
 
+/** Distance scaled by camera aspect ratio to make 2D coordinates isotropic. */
+export function spanMetric(a, b, ar = 1.0) {
+  const dx = (a.x - b.x) * ar;
+  const dy = a.y - b.y;
+  const dz = ((a.z || 0) - (b.z || 0)) * ar;
+  return Math.hypot(dx, dy, dz);
+}
+
+/** Rigid anatomical palm centerline distance between wrist (0) and middle MCP (9). */
+export function palmReferenceScale(points, ar = 1.0) {
+  if (!points || points.length < 10) return 1.0;
+  return spanMetric(points[0], points[9], ar) || 1.0;
+}
+
+/**
+ * 3D joint vector dot product / cosine angle of joint vectors (MCP -> PIP and PIP -> TIP).
+ * Straight finger: cos phi ~ 1.0 (deflection phi ~ 0°). Curled: cos phi <= 0.25 or negative.
+ */
+export function jointCosine(mcp, pip, tip, ar = 1.0) {
+  if (!mcp || !pip || !tip) return 0;
+  // Vector u: MCP -> PIP
+  // Vector v: PIP -> TIP
+  const ux = (pip.x - mcp.x) * ar;
+  const uy = pip.y - mcp.y;
+  const uz = ((pip.z || 0) - (mcp.z || 0)) * ar;
+
+  const vx = (tip.x - pip.x) * ar;
+  const vy = tip.y - pip.y;
+  const vz = ((tip.z || 0) - (pip.z || 0)) * ar;
+
+  const lenU = Math.hypot(ux, uy, uz);
+  const lenV = Math.hypot(vx, vy, vz);
+  if (lenU < 1e-6 || lenV < 1e-6) return 0;
+  const dot = ux * vx + uy * vy + uz * vz;
+  return Math.max(-1, Math.min(1, dot / (lenU * lenV)));
+}
+
 /**
  * How far the fingertip sits along the wrist→PIP bone, in PIP-lengths.
  * MediaPipe Hands has no elbow; this bone is the orientation we actually have.
  * A folded finger falls short even when the hand is rotated.
  */
-export function boneReach(tip, pip, wrist) {
-  const ax = pip.x - wrist.x;
+export function boneReach(tip, pip, wrist, ar = 1.0) {
+  const ax = (pip.x - wrist.x) * ar;
   const ay = pip.y - wrist.y;
-  const az = (pip.z || 0) - (wrist.z || 0);
+  const az = ((pip.z || 0) - (wrist.z || 0)) * ar;
   const pipLen2 = ax * ax + ay * ay + az * az;
   if (pipLen2 < 1e-8) return 0;
-  const tx = tip.x - wrist.x;
+  const tx = (tip.x - wrist.x) * ar;
   const ty = tip.y - wrist.y;
-  const tz = (tip.z || 0) - (wrist.z || 0);
+  const tz = ((tip.z || 0) - (wrist.z || 0)) * ar;
   return (tx * ax + ty * ay + tz * az) / pipLen2;
 }
 
-export function isFingerExtended(tip, pip, wrist, mcp) {
-  if (mcp && jointAngle(mcp, pip, tip) < EXTEND_ANGLE) return false;
-  return boneReach(tip, pip, wrist) > EXTEND_RATIO;
+export function isFingerExtended(tip, pip, wrist, mcp, { minAngle = EXTEND_ANGLE, minReach = EXTEND_RATIO, minCos = 0.80, ar = 1.0 } = {}) {
+  if (mcp) {
+    const cos = jointCosine(mcp, pip, tip, ar);
+    const angle = jointAngle(mcp, pip, tip);
+    if (angle < minAngle && cos < minCos) return false;
+  }
+  return boneReach(tip, pip, wrist, ar) > minReach;
 }
 
-export function isFingerClosed(tip, pip, wrist, mcp) {
-  if (mcp && jointAngle(mcp, pip, tip) > CLOSED_ANGLE) return false;
-  return boneReach(tip, pip, wrist) <= CLOSED_RATIO;
+export function isFingerClosed(tip, pip, wrist, mcp, { maxAngle = CLOSED_ANGLE, maxReach = CLOSED_RATIO, maxCos = 0.25, ar = 1.0 } = {}) {
+  if (mcp) {
+    const cos = jointCosine(mcp, pip, tip, ar);
+    const angle = jointAngle(mcp, pip, tip);
+    if (angle > maxAngle && cos > maxCos) return false;
+  }
+  return boneReach(tip, pip, wrist, ar) <= maxReach;
 }
 
 /** Wrist → middle knuckle. Stand-in for the forearm, since the hand model stops at the wrist. */
@@ -59,12 +104,15 @@ export function handAxis(points) {
   return { x: middle.x - wrist.x, y: middle.y - wrist.y, z: (middle.z || 0) - (wrist.z || 0) };
 }
 
-function aheadOfPip(tip, pip, wrist, axis) {
-  const len = Math.hypot(axis.x, axis.y, axis.z || 0);
+function aheadOfPip(tip, pip, wrist, axis, ar = 1.0, extendRatio = EXTEND_RATIO) {
+  const ax = axis.x * ar;
+  const ay = axis.y;
+  const az = (axis.z || 0) * ar;
+  const len = Math.hypot(ax, ay, az);
   if (len < 1e-4) return false;
   const project = (point) =>
-    ((point.x - wrist.x) * axis.x + (point.y - wrist.y) * axis.y + ((point.z || 0) - (wrist.z || 0)) * (axis.z || 0)) / len;
-  return project(tip) > project(pip) * EXTEND_RATIO;
+    ((point.x - wrist.x) * ar * ax + (point.y - wrist.y) * ay + ((point.z || 0) - (wrist.z || 0)) * ar * az) / len;
+  return project(tip) > project(pip) * extendRatio;
 }
 
 export function jointAngle(a, b, c) {
@@ -87,20 +135,77 @@ export function countExtendedFingers(points) {
   return count;
 }
 
-export function isWebSign(points) {
+export function isWebSign(points, options = {}) {
   if (!points || points.length < 21) return false;
+  const wasActive = typeof options === "boolean" ? options : Boolean(options?.wasActive);
+  const ar = typeof options === "object" && options?.aspectRatio ? Number(options.aspectRatio) : 1.0;
+  const world = typeof options === "object" && options?.world ? options.world : null;
+
   if (handSpan(points) < MIN_SPAN) return false;
-  const wrist = points[0];
-  const axis = handAxis(points);
-  const indexOpen = isFingerExtended(points[8], points[6], wrist, points[5]) && aheadOfPip(points[8], points[6], wrist, axis);
-  const middleClosed = isFingerClosed(points[12], points[10], wrist, points[9]);
-  const ringClosed = isFingerClosed(points[16], points[14], wrist, points[13]);
-  const pinkyOpen = isFingerExtended(points[20], points[18], wrist, points[17]) && aheadOfPip(points[20], points[18], wrist, axis);
+
+  const pts = (world && points !== world) ? (worldShape(world) || points) : points;
+  const effAr = world ? 1.0 : ar;
+  const wrist = pts[0];
+  const axis = handAxis(pts);
+
+  // Rigid anatomical palm scale (wrist 0 -> middle MCP 9)
+  const palmScale = palmReferenceScale(pts, effAr);
+  if (palmScale < 1e-4) return false;
+
+  // Schmitt trigger dual-threshold hysteresis:
+  // Entry (wasActive = false): strict extension & curl
+  // Exit  (wasActive = true):  relaxed hold
+  const extendAngle = wasActive ? 135 : 150;
+  const extendCos = wasActive ? 0.60 : 0.80;
+  const extendReach = wasActive ? 0.95 : 1.15;
+  const extendAheadRatio = wasActive ? 0.95 : 1.15;
+
+  const closedAngle = wasActive ? 140 : 125;
+  const closedCos = wasActive ? 0.50 : 0.25;
+  const closedReach = wasActive ? 1.05 : 0.90;
+
+  const spreadThresh = wasActive ? 0.55 : 0.72;
+
+  const indexOpen =
+    isFingerExtended(pts[8], pts[6], wrist, pts[5], {
+      minAngle: extendAngle,
+      minCos: extendCos,
+      minReach: extendReach,
+      ar: effAr,
+    }) && aheadOfPip(pts[8], pts[6], wrist, axis, effAr, extendAheadRatio);
+
+  const middleClosed = isFingerClosed(pts[12], pts[10], wrist, pts[9], {
+    maxAngle: closedAngle,
+    maxCos: closedCos,
+    maxReach: closedReach,
+    ar: effAr,
+  });
+
+  const ringClosed = isFingerClosed(pts[16], pts[14], wrist, pts[13], {
+    maxAngle: closedAngle,
+    maxCos: closedCos,
+    maxReach: closedReach,
+    ar: effAr,
+  });
+
+  const pinkyOpen =
+    isFingerExtended(pts[20], pts[18], wrist, pts[17], {
+      minAngle: extendAngle,
+      minCos: extendCos,
+      minReach: extendReach,
+      ar: effAr,
+    }) && aheadOfPip(pts[20], pts[18], wrist, axis, effAr, extendAheadRatio);
+
   if (!indexOpen || !pinkyOpen || !middleClosed || !ringClosed) return false;
+
   // Index and pinky have to spread. A half-open point must not read as a web.
-  const palm = span(points[5], points[17]);
-  const tips = span(points[8], points[20]);
-  return tips > palm * 0.72;
+  // Normalized by rigid palm centerline (L_palm)
+  const palmBreadth = spanMetric(pts[5], pts[17], effAr);
+  const tipsSpread = spanMetric(pts[8], pts[20], effAr);
+  const normTips = tipsSpread / palmScale;
+  const normPalm = palmBreadth / palmScale;
+
+  return normTips > normPalm * spreadThresh;
 }
 
 export function isFist(points) {
@@ -312,18 +417,28 @@ export function worldShape(world) {
  * web, flick (OK circle), gojo, point, fist, palm, or null.
  * With world landmarks the finger shape is judged in true 3D; the image hand still gates size.
  */
-export function classifyGesture(points, world = null, customTemplates = []) {
+export function classifyGesture(points, world = null, customTemplates = [], options = {}) {
+  let templates = customTemplates;
+  let opts = options;
+  if (customTemplates && !Array.isArray(customTemplates) && typeof customTemplates === "object") {
+    opts = customTemplates;
+    templates = [];
+  }
   if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return null;
   const shape = worldShape(world);
   const evalPoints = shape || points;
-  if (customTemplates && customTemplates.length > 0) {
-    for (const t of customTemplates) {
+  if (templates && templates.length > 0) {
+    for (const t of templates) {
       if (t.points && matchCustomGesture(evalPoints, t.points)) {
         return t.name || "custom";
       }
     }
   }
-  if (isWebSign(evalPoints)) return "web";
+  const webOptions = {
+    ...opts,
+    world: shape ? null : (opts.world || world),
+  };
+  if (isWebSign(evalPoints, webOptions)) return "web";
   if (isPeaceSign(evalPoints)) return "peace";
   if (isFingerGun(evalPoints)) return "finger_gun";
   if (isFlickPose(evalPoints)) return "flick";

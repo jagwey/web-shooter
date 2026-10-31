@@ -22,19 +22,20 @@ let poseLoading = false;
 let poseAt = 0;
 
 async function createHands(vision, model, delegate) {
-  try {
-    return await HandLandmarker.createFromOptions(vision, {
-      baseOptions: { modelAssetPath: model, delegate },
-      runningMode: "VIDEO",
-      numHands: 2,
-      // Higher than the old 0.3: fewer ghost hands, and tracking (cheap path) still holds a real hand.
-      minHandDetectionConfidence: 0.4,
-      minHandPresenceConfidence: 0.3,
-      minTrackingConfidence: 0.3,
-    });
-  } catch {
-    return null;
+  const options = {
+    baseOptions: { modelAssetPath: model, delegate },
+    runningMode: "VIDEO",
+    numHands: 2,
+    minHandDetectionConfidence: 0.4,
+    minHandPresenceConfidence: 0.35,
+    minTrackingConfidence: 0.35,
+  };
+  if (delegate === "GPU") {
+    // When delegate === "GPU", pass options.canvas = new OffscreenCanvas(1, 1)
+    // Ensures WebGL2 texture binding succeeds in Chromium Worker / WebView2.
+    options.canvas = new OffscreenCanvas(1, 1);
   }
+  return await HandLandmarker.createFromOptions(vision, options);
 }
 
 async function ensurePose() {
@@ -44,11 +45,15 @@ async function ensurePose() {
     const vision = await FilesetResolver.forVisionTasks(POSE_WASM);
     for (const delegate of ["GPU", "CPU"]) {
       try {
-        pose = await PoseLandmarker.createFromOptions(vision, {
+        const options = {
           baseOptions: { modelAssetPath: POSE_MODEL, delegate },
           runningMode: "VIDEO",
           numPoses: 1,
-        });
+        };
+        if (delegate === "GPU") {
+          options.canvas = new OffscreenCanvas(1, 1);
+        }
+        pose = await PoseLandmarker.createFromOptions(vision, options);
         break;
       } catch {
         // next delegate
@@ -69,14 +74,23 @@ self.onmessage = async (event) => {
       try {
         const vision = await FilesetResolver.forVisionTasks(src.wasm);
         for (const delegate of ["GPU", "CPU"]) {
-          landmarker = await createHands(vision, src.model, delegate);
-          if (landmarker) {
-            self.postMessage({ type: "ready", delegate, tag: src.tag });
-            return;
+          try {
+            landmarker = await createHands(vision, src.model, delegate);
+            if (landmarker) {
+              console.log(`[hands-worker] HandLandmarker initialized successfully (${delegate}, ${src.tag})`);
+              self.postMessage({ type: "ready", delegate, tag: src.tag });
+              return;
+            }
+          } catch (err) {
+            if (delegate === "GPU") {
+              console.warn(`[hands-worker] GPU delegate failed for ${src.tag}, falling back to CPU:`, err?.message || err);
+            } else {
+              console.error(`[hands-worker] CPU delegate failed for ${src.tag}:`, err?.message || err);
+            }
           }
         }
-      } catch {
-        // next source
+      } catch (srcErr) {
+        console.warn(`[hands-worker] Vision tasks resolver failed for ${src.tag}:`, srcErr?.message || srcErr);
       }
     }
     self.postMessage({ type: "error", message: "model" });

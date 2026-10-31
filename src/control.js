@@ -910,8 +910,8 @@ async function ensureLandmarker() {
           runningMode: "VIDEO",
           numHands: 2,
           minHandDetectionConfidence: 0.4,
-          minHandPresenceConfidence: 0.3,
-          minTrackingConfidence: 0.3,
+          minHandPresenceConfidence: 0.35,
+          minTrackingConfidence: 0.35,
         });
         state.delegate = "GPU";
       } catch (gpuErr) {
@@ -924,8 +924,8 @@ async function ensureLandmarker() {
           runningMode: "VIDEO",
           numHands: 2,
           minHandDetectionConfidence: 0.4,
-          minHandPresenceConfidence: 0.3,
-          minTrackingConfidence: 0.3,
+          minHandPresenceConfidence: 0.35,
+          minTrackingConfidence: 0.35,
         });
         state.delegate = "CPU";
       }
@@ -949,20 +949,24 @@ async function ensureLandmarker() {
 }
 
 async function openStream(deviceId) {
-  const targetFps = state.settings?.targetFps || 120;
-  // Ask for the display target, then step down. Cap the buffer: MediaPipe does not need 1080p,
-  // and a 1080p camera frame is the bulky part of the tracking footprint.
-  const rates = targetFps >= 120 ? [120, 60, 30] : targetFps >= 60 ? [60, 30] : [30];
+  // Configure video constraints for ideal resolution 640x360 (16:9 widescreen) at 30-60 FPS
+  // with fallback to 640x480 (4:3) if overconstrained.
   const sizes = [
-    { width: { ideal: 640, max: 960 }, height: { ideal: 480, max: 540 } },
+    { width: { ideal: 640, max: 1280 }, height: { ideal: 360, max: 720 } },
+    { width: { ideal: 640 }, height: { ideal: 360 } },
     { width: { ideal: 640 }, height: { ideal: 480 } },
+  ];
+  const rates = [
+    { ideal: 60, min: 30 },
+    { ideal: 30, min: 15 },
+    { ideal: 30 },
   ];
   let lastError;
   for (const size of sizes) {
-    for (const fps of rates) {
+    for (const rate of rates) {
       const videoConstraints = {
         ...size,
-        frameRate: { ideal: fps, max: fps },
+        frameRate: rate,
       };
       if (deviceId) videoConstraints.deviceId = { exact: deviceId };
       else videoConstraints.facingMode = "user";
@@ -1100,15 +1104,16 @@ function scheduleDetect(delay) {
 
 async function detectTick() {
   const useWorker = Boolean(state.worker && state.workerReady);
+  // Backpressure: skip capture if pipeline is already processing a frame
   if (!state.stream || !(useWorker || landmarker) || state.inFlight) {
-    scheduleDetect(35);
+    scheduleDetect(20);
     return;
   }
   if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-    scheduleDetect(35);
+    scheduleDetect(20);
     return;
   }
-  // Same camera frame as last tick: detecting again only burns the main thread.
+  // Frame deduplication: skip redundant frames if camera timestamp has not advanced
   if (video.currentTime === state.lastVideoTime) {
     // Wait for the camera's next frame instead of polling, so detection starts the moment it lands.
     if (video.requestVideoFrameCallback) {
@@ -1127,14 +1132,18 @@ async function detectTick() {
     // One frame in flight; the worker's reply runs onHands, which schedules the next tick.
     state.inFlight = true;
     try {
-      const bitmap = await createImageBitmap(video);
+      // Downscale frame to 480x270 for zero-copy transmission to worker
+      const bitmap = await createImageBitmap(video, { resizeWidth: 480, resizeHeight: 270 });
       if (!state.worker) {
         bitmap.close();
         state.inFlight = false;
         return;
       }
       state.sentAt = performance.now();
-      state.worker.postMessage({ type: "frame", bitmap, time: state.sentAt, body: Boolean(state.settings?.bodyTracking) }, [bitmap]);
+      state.worker.postMessage(
+        { type: "frame", bitmap, time: state.sentAt, body: Boolean(state.settings?.bodyTracking) },
+        [bitmap]
+      );
     } catch {
       state.inFlight = false;
       scheduleDetect(30);
@@ -1200,14 +1209,21 @@ function onHands(hands, detectMs) {
       const now = performance.now();
       // Higher smoothing setting = more responsive, so it scales the filter's resting cutoff.
       handState.filter ||= createHandFilter();
+      const smoothing = state.settings?.smoothing || 0.65;
       const landmarks = filterLandmarks(handState.filter, rawLandmarks, now, {
-        minCutoff: 4 * (state.settings?.smoothing || 0.65),
+        minCutoff: 3.0 * smoothing,
+        beta: 13.0,
+        dCutoff: 1.2,
       });
 
       handState.landmarks = landmarks;
 
+      const ar = (video?.videoWidth && video?.videoHeight) ? (video.videoWidth / video.videoHeight) : (16 / 9);
       // 3D world shape + 3-of-5 frame vote: one noisy frame can neither fire nor drop a pose.
-      const raw = classifyGesture(landmarks, state.world?.[i], state.settings?.customGestures || []);
+      const raw = classifyGesture(landmarks, state.world?.[i], state.settings?.customGestures || [], {
+        wasActive: handState.lastGesture === "web",
+        aspectRatio: ar,
+      });
       handState.votes ||= [];
       const gesture = voteGesture(handState.votes, raw, handState.lastGesture);
       const bound = actionFor(state.settings.bindings, "gesture", gesture);
@@ -1295,14 +1311,23 @@ function checkPurpleStance(handCount) {
   triggerHollowPurple(screenPoint(state.hands[front].landmarks[9]), webbed, { closeWindow: true });
 }
 
+let lastCamW = -1;
+let lastCamH = -1;
+
 function drawCameraLandmarks(hands) {
   const canvas = document.getElementById("cameraCanvas");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
-  const w = video.videoWidth || canvas.clientWidth || 320;
-  const h = video.videoHeight || canvas.clientHeight || 240;
-  if (canvas.width !== w) canvas.width = w;
-  if (canvas.height !== h) canvas.height = h;
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  const w = vw || (lastCamW > 0 ? lastCamW : canvas.clientWidth || 320);
+  const h = vh || (lastCamH > 0 ? lastCamH : canvas.clientHeight || 240);
+  if (w !== lastCamW || h !== lastCamH) {
+    canvas.width = w;
+    canvas.height = h;
+    lastCamW = w;
+    lastCamH = h;
+  }
 
   ctx.clearRect(0, 0, w, h);
   if (!hands || hands.length === 0) return;

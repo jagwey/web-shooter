@@ -22,7 +22,7 @@ function writePool(pool, xs) {
   return pool;
 }
 
-export function filterLandmarks(f, raw, t, { minCutoff = 2.6, beta = 10, dCutoff = 1 } = {}) {
+export function filterLandmarks(f, raw, t, { minCutoff = 1.8, beta = 13.0, dCutoff = 1.2 } = {}) {
   const n = raw.length * 3;
   const dt = (t - f.t) / 1000;
   f.t = t;

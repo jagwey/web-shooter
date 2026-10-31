@@ -11,5 +11,6 @@ src-tauri/target
 src-tauri/gen
 *.bak
 .claude/
+.agents/
 
 graphify-out/

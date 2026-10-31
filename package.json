@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4731 --strictPort",
     "test": "node --test \"test/*.test.js\"",
+    "test:challenger": "node test/challenger_suite.mjs && node scripts/stress-challenger-2.mjs",
     "desktop": "tauri dev",
     "desktop:build": "tauri build"
   },

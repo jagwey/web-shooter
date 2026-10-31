@@ -34,14 +34,22 @@ const NET_GROW_MS = 160;
 let lastNow = 0;
 let slowStreak = 0;
 let dprDowngraded = false;
+let cachedWidth = -1;
+let cachedHeight = -1;
+let cachedDpr = -1;
 
 function fit() {
   const cap = preset === "low" || preset === "light" || dprDowngraded ? dprCap.low : dprCap.full;
   const ratio = Math.min(window.devicePixelRatio || 1, cap);
   const width = Math.max(2, Math.floor(window.innerWidth * ratio));
   const height = Math.max(2, Math.floor(window.innerHeight * ratio));
-  if (canvas.width !== width) canvas.width = width;
-  if (canvas.height !== height) canvas.height = height;
+  if (width !== cachedWidth || height !== cachedHeight || ratio !== cachedDpr) {
+    canvas.width = width;
+    canvas.height = height;
+    cachedWidth = width;
+    cachedHeight = height;
+    cachedDpr = ratio;
+  }
 }
 
 function kick() {
@@ -384,7 +392,6 @@ function drawTether(line) {
 }
 
 function shootNormalized(nx, ny, win) {
-  fit();
   fx.setPreset(preset);
   const box = win ? clientOf(win) : null;
   const rect = box ? windowRect(box) : null;
@@ -408,14 +415,12 @@ listen("overlay-shot", (event) => {
 });
 
 listen("overlay-purple", (event) => {
-  fit();
   const { x, y } = event.payload;
   fx.triggerPurple(x * canvas.width, y * canvas.height);
   kick();
 });
 
 listen("overlay-safety-shield", (event) => {
-  fit();
   const { x, y, title, duration } = event.payload;
   fx.triggerShield(x * canvas.width, y * canvas.height, title || "Hassas Çalışma", duration || 2400);
   kick();
