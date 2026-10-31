@@ -6,12 +6,12 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-0.1.5-emerald?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-0.1.8-emerald?style=for-the-badge)
 ![Tauri 2](https://img.shields.io/badge/Tauri_2-Rust_%2B_Vite-blue?style=for-the-badge)
 ![MediaPipe](https://img.shields.io/badge/MediaPipe_Hands-120_FPS_Float16-orange?style=for-the-badge)
 ![Filter](https://img.shields.io/badge/Filter-1_Euro_%2B_12ms_Prediction-cyan?style=for-the-badge)
 ![Win32](https://img.shields.io/badge/Win32_Native-Z--Order_Fling-purple?style=for-the-badge)
-![Tests](https://img.shields.io/badge/Tests-25%2F25_Passing-brightgreen?style=for-the-badge)
+![Tests](https://img.shields.io/badge/Tests-35%2F35_Passing-brightgreen?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
 **Windows Masaüstü Örümcek Ağı ve Jujutsu Kaisen "Hollow Purple" Katmanı**  
@@ -130,8 +130,11 @@ flowchart TD
     v013["<b>v0.1.3 — AI ve Akıllı Rehber</b><br/>src/guide.js çevrimdışı bilgi bankası<br/>Model danışmanı ve GitHub auto-updater"]
     v014["<b>v0.1.4 — Dinamik Fiske ve Ağ Tutuşu</b><br/>detectFlick dinamik parmak hareketi<br/>Ağ ile sürekli sekme taşıma ve duruş tespiti"]
     v015["<b>v0.1.5 — Ultra Hız ve Gerçekçi Ağ</b><br/>requestVideoFrameCallback + 1 Euro filtresi<br/>12ms hız tahmini, sarkık halkalı ağ ve profiller"]
+    v016["<b>v0.1.6 — Vücut Takibi ve Akıcı Ağ</b><br/>PoseLandmarker bilek derinliği analizi<br/>Offscreen canvas önbelleği + 40ms easing"]
+    v017["<b>v0.1.7 — Çoklu Monitör ve OK Hareketi</b><br/>OK flick ile pencere simge durumuna küçültme<br/>Pencereleri diğer monitöre fırlatma desteği"]
+    v018["<b>v0.1.8 — Web Worker ve 3D Jestler</b><br/>MediaPipe Web Worker (sıfır arayüz kasması)<br/>3D World Landmarks + 3/5 çoğunluk oyu (35/35 test)"]
 
-    v010 --> v011 --> v012 --> v013 --> v014 --> v015
+    v010 --> v011 --> v012 --> v013 --> v014 --> v015 --> v016 --> v017 --> v018
 ```
 
 ### 📋 Sürümler Sırasıyla Ne Getirdi?
@@ -144,6 +147,9 @@ flowchart TD
 | **v0.1.3** | **Yapay Zeka & Otomatik Güncelleme** | `src/guide.js` yerleşik çevrimdışı rehber, `src/modelAdvisor.js` donanım analizli Ollama danışmanı, Gemini / Groq / OpenRouter / LM Studio desteği, kriptografik imzalı auto-updater. | Kullanıcının yerel yapay zeka seçememesi ve manuel güncelleme zahmeti çözüldü. |
 | **v0.1.4** | **Dinamik Fiske & Ağ Tutuşu** | `detectFlick` (280ms başparmak açılma ivmesiyle dinamik Gojo moru), ağ pozisyonu tutulduğu sürece sekmeyi ele bağlayıp monitörler arası taşıma, iki el Spider-Man duruş tespiti (front/back stance). | Ağın tek atımlık olması ve parmakların statik pozda algılanamaması sorunu çözüldü. |
 | **v0.1.5** | **Ultra Düşük Gecikme, Sekme Alanı & İki El Gojo** | `requestVideoFrameCallback` ile sıfır gecikmeli kamera senkronizasyonu, `src/filter.js` 1 Euro filtresi + 12ms pointer hız tahmini, klasik spoke + yerçekimli sarkık halkalı örümcek ağı (260ms), spotlight kontrast odaklama, `src/profiles.js` yerel profiller ve skor tablosu, sekme client alanı takibi (`src/target.js`), vsync masaüstü örtüsü ve iki el Gojo `WM_CLOSE` pencere kapatma (25/25 birim testi). | Kamera takip gecikmesi minimuma indirildi, yapay kutu glow yerine gerçekçi örümcek ağı lifleri getirildi ve yanlış pencere kapatma engellendi. |
+| **v0.1.6** | **Vücut Pose Takibi & Akıcı Ağ** | PoseLandmarker opsiyonel bilek derinliği analizi, `overlay.js` offscreen canvas önbelleği, 40ms easing, PIP eklem açısı guard'ı. | Ağın kamera hızında takılarak gelmesi ve el boyutuyla derinlik tahmininin yanılması giderildi. |
+| **v0.1.7** | **Çoklu Monitör & OK Hareketi** | OK flick ile pencere simge durumuna küçültme (`minimize`), ağ ile yakalanan pencereyi ivmeli fırlatarak diğer monitöre aktarma (`throwToOtherMonitor`). | Tek monitöre sıkışma ve sekmeyi küçültmek için fareye ihtiyaç duyulması sorunu çözüldü. |
+| **v0.1.8** | **Web Worker & 3D Jest Güvenilirliği** | MediaPipe el takibinin Web Worker'a taşınması (`ImageBitmap`), arayüz kasmasının sıfırlanması, 3D World Landmarks ile ölçekten bağımsız el sınıflandırma, 5 karede 3 oy çoğunluk filtresi, 'Dur Eli' yelpaze tespiti (35/35 birim testi). | Kamera/model yükünün UI döngüsünü dondurması ve parmak açılarının yanlış jest tetiklemesi tamamen çözüldü. |
 
 ---
 
@@ -216,7 +222,7 @@ Ağ, tarayıcıda sekmenin sayfa yüzeyine (`Chrome_RenderWidgetHostHWND` / Fire
 | **Kare Hızı (FPS)** | 30 – 60 FPS | **Vsync (panel 120 Hz ise 120). Boşta döngü durur.** |
 | **İşlem Başlatma Çakışması** | Çift tıklamada bellek sızıntısı | **Tek Süreç Kilidi (Single Instance)** |
 | **Pencere Çizim Katmanı** | Opak veya donan donuk pencereler | **100% Saydam Click-Through (`WS_EX_TRANSPARENT`)** |
-| **Birim Testleri** | Sınırlı | **25 / 25 Başarılı Test** |
+| **Birim Testleri** | Sınırlı | **35 / 35 Başarılı Test** |
 
 ---
 
@@ -249,7 +255,7 @@ Ağ, tarayıcıda sekmenin sayfa yüzeyine (`Chrome_RenderWidgetHostHWND` / Fire
 # 1. Bağımlılıkları yükle
 npm install
 
-# 2. Birim testleri (25)
+# 2. Birim testleri (35)
 
 npm test
 
