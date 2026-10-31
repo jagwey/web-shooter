@@ -109,6 +109,7 @@ flowchart TD
 | 29 | **Örümcek ağı + yerel profiller** | Glow çerçeve/ip görünmüyordu; hesap yoktu. | `overlay.js`: glow kalktı, hedef dışı karartılır (spotlight), pencereye klasik örümcek ağı (spoke + sarkık halka, 260ms büyür, siyah+beyaz çift çizgi). Yeni `src/profiles.js` (localStorage `jagwey-profiles`): ad + ayar snapshot + atış/en iyi ms; profil kartı ekle/sil/değiştir. 16/16 test, build + CDP smoke ok (ekle→aktif→sil). Release yok (v0.1.5 onayı bekliyor). |
 | 30 | **Mor spam → iki el Gojo duruşu** | Tek el fiske/jest her şeyde mor atıyordu. | `gestures.js` `purpleFrontHand`: iki el, ön el span ≥1.4× arka, ön el "web" değil. `control.js` `checkPurpleStance`: 250ms tut, duruş başına 1 atış, hedef = tutulan ya da son 3sn ağlanan sekme; hedef yoksa mor yok. Tek el yolları silindi. 18/18 test. |
 | 31 | **Release v0.1.5** | #28–#30 onaylandı. | build.bat → `gh release create v0.1.5` (exe + sig + latest.json). latest.json → 0.1.5, setup linki 200 (2026-10-31). |
+| 32 | **Sekme client alanı, Vsync örtü & İki el Gojo WM_CLOSE (#1)** | Ağ dış pencere çerçevesine yapışıyor, pencere taşınınca ağ eski pikselde kalıyordu; tek elle mor kazara tetiklenebiliyordu. | `src/target.js`: `clientOf` + `shiftPinned` ile sayfa yüzeyi (`Chrome_RenderWidgetHostHWND`) takibi ve pencere taşındığında ağın vsync ile senkron kayması. `src-tauri/src/win32.rs`: `EnumChildWindows` ile sekme yüzeyi tespiti ve güvenli `WM_CLOSE`. İki el Gojo işareti + 0.4s tutuş şartı. 25/25 birim testi tamamlandı. |
 
 ---
 

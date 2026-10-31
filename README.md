@@ -143,7 +143,7 @@ flowchart TD
 | **v0.1.2** | **Süreç & Win32 Güvenliği** | `tauri-plugin-single-instance`, Win32 `checked_target` (Görev Yöneticisi ve masaüstü kabuk filtreleme), `SendInput` mod tuşu (Shift/Alt/Win) temizleme, güvenli kamera hot-swap. | Çift tıklamada ikinci sürecin WebView2 verisini kilitleyip çökmesi (HRESULT 0x800700AA) önlendi. |
 | **v0.1.3** | **Yapay Zeka & Otomatik Güncelleme** | `src/guide.js` yerleşik çevrimdışı rehber, `src/modelAdvisor.js` donanım analizli Ollama danışmanı, Gemini / Groq / OpenRouter / LM Studio desteği, kriptografik imzalı auto-updater. | Kullanıcının yerel yapay zeka seçememesi ve manuel güncelleme zahmeti çözüldü. |
 | **v0.1.4** | **Dinamik Fiske & Ağ Tutuşu** | `detectFlick` (280ms başparmak açılma ivmesiyle dinamik Gojo moru), ağ pozisyonu tutulduğu sürece sekmeyi ele bağlayıp monitörler arası taşıma, iki el Spider-Man duruş tespiti (front/back stance). | Ağın tek atımlık olması ve parmakların statik pozda algılanamaması sorunu çözüldü. |
-| **v0.1.5** | **Ultra Düşük Gecikme & Ağ Simülasyonu** | `requestVideoFrameCallback` ile sıfır gecikmeli kamera senkronizasyonu, `src/filter.js` 1 Euro filtresi + 12ms pointer hız tahmini, klasik spoke + yerçekimli sarkık halkalı örümcek ağı (260ms), spotlight kontrast odaklama, `src/profiles.js` yerel profiller ve skor tablosu (18/18 test). | Kamera takip gecikmesi minimuma indirildi, yapay kutu glow yerine gerçekçi örümcek ağı lifleri getirildi. |
+| **v0.1.5** | **Ultra Düşük Gecikme, Sekme Alanı & İki El Gojo** | `requestVideoFrameCallback` ile sıfır gecikmeli kamera senkronizasyonu, `src/filter.js` 1 Euro filtresi + 12ms pointer hız tahmini, klasik spoke + yerçekimli sarkık halkalı örümcek ağı (260ms), spotlight kontrast odaklama, `src/profiles.js` yerel profiller ve skor tablosu, sekme client alanı takibi (`src/target.js`), vsync masaüstü örtüsü ve iki el Gojo `WM_CLOSE` pencere kapatma (25/25 birim testi). | Kamera takip gecikmesi minimuma indirildi, yapay kutu glow yerine gerçekçi örümcek ağı lifleri getirildi ve yanlış pencere kapatma engellendi. |
 
 ---
 
@@ -211,7 +211,7 @@ Ağ, tarayıcıda sekmenin sayfa yüzeyine (`Chrome_RenderWidgetHostHWND` / Fire
 | **Kare Hızı (FPS)** | 30 – 60 FPS | **Vsync (panel 120 Hz ise 120). Boşta döngü durur.** |
 | **İşlem Başlatma Çakışması** | Çift tıklamada bellek sızıntısı | **Tek Süreç Kilidi (Single Instance)** |
 | **Pencere Çizim Katmanı** | Opak veya donan donuk pencereler | **100% Saydam Click-Through (`WS_EX_TRANSPARENT`)** |
-| **Birim Testleri** | Sınırlı | **18 / 18 Başarılı Test** |
+| **Birim Testleri** | Sınırlı | **25 / 25 Başarılı Test** |
 
 ---
 
