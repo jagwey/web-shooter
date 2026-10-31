@@ -90,6 +90,7 @@ let profiles = null;
 let profileSaveTimer = 0;
 
 initI18n();
+window.finishOnboarding = finishOnboarding;
 wireChrome();
 boot();
 
@@ -707,7 +708,8 @@ async function boot() {
     else paintLiveStatus();
   }, 2000);
   if (!inDesktop()) document.getElementById("shellBanner").hidden = false;
-  if (state.settings.onboarded) {
+  const isAlreadyOnboarded = Boolean(state.settings?.onboarded || localStorage.getItem("jagwey_onboarded") === "true");
+  if (isAlreadyOnboarded) {
     // Start the camera first so a UI paint error can never block hand tracking.
     state.cameraWanted = true;
     startCamera();
@@ -757,16 +759,35 @@ function showStep(step) {
 }
 
 function showHome() {
-  onboard.hidden = true;
-  home.hidden = false;
-  render();
+  if (onboard) onboard.hidden = true;
+  if (home) home.hidden = false;
+  try {
+    render();
+  } catch (err) {
+    console.error("render error in showHome:", err);
+  }
 }
 
 async function finishOnboarding() {
-  state.settings.onboarded = true;
-  await persist();
+  if (state.settings) {
+    state.settings.onboarded = true;
+  }
+  try {
+    localStorage.setItem("jagwey_onboarded", "true");
+  } catch {}
   showHome();
-  if (state.cameraWanted) await toggleOverlay();
+  try {
+    await persist();
+  } catch (err) {
+    console.warn("Failed to persist onboarding state:", err);
+  }
+  if (state.cameraWanted) {
+    try {
+      await toggleOverlay();
+    } catch (err) {
+      console.warn("Failed to toggle overlay on finish onboarding:", err);
+    }
+  }
 }
 
 async function changeLang(lang) {
@@ -823,7 +844,12 @@ async function persist() {
     state.settings.air_zoom_enabled = state.settings.airZoomToggle !== false;
     state.settings.air_scroll_enabled = state.settings.airScrollToggle !== false;
   }
-  const saved = await invoke("save_settings", { settings: state.settings });
+  let saved = null;
+  try {
+    saved = await invoke("save_settings", { settings: state.settings });
+  } catch (err) {
+    console.warn("save_settings invoke failed:", err);
+  }
   if (saved?.unsupported) {
     render();
     return;

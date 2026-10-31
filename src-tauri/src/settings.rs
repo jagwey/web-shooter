@@ -72,6 +72,16 @@ pub struct Settings {
     pub air_zoom_enabled: bool,
     #[serde(default = "default_true", alias = "airScrollToggle")]
     pub air_scroll_enabled: bool,
+    #[serde(default)]
+    pub body_tracking: bool,
+    #[serde(default = "default_sniper_target")]
+    pub sniper_target: String,
+    #[serde(default)]
+    pub custom_gestures: Option<serde_json::Value>,
+}
+
+fn default_sniper_target() -> String {
+    "gemini_web".into()
 }
 
 fn default_target_fps() -> u32 {
@@ -139,6 +149,9 @@ impl Default for Settings {
             ninja_shield_enabled: true,
             air_zoom_enabled: true,
             air_scroll_enabled: true,
+            body_tracking: false,
+            sniper_target: "gemini_web".into(),
+            custom_gestures: None,
         }
     }
 }

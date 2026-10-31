@@ -394,7 +394,7 @@ fn get_settings(app: AppHandle) -> Settings {
 fn save_settings(app: AppHandle, settings: Settings) -> Result<SaveResponse, String> {
     let settings = settings.normalize();
     let warnings = apply_hotkeys(&app, &settings);
-    apply_autostart(&app, settings.start_with_windows)?;
+    let _ = apply_autostart(&app, settings.start_with_windows);
     store_settings(&app, &settings)?;
     Ok(SaveResponse { settings, warnings })
 }
