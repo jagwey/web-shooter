@@ -16,7 +16,9 @@ const fx = createWebFx(ctx, {
 
 let frame = { x: 0, y: 0, width: 1, height: 1 };
 const tethers = new Map();
-let preset = "spiderman";
+const targetWindows = new Map();
+let focusFrameOnly = false;
+let preset = "sakura";
 let running = false;
 let frames = 0;
 let fpsStamp = performance.now();
@@ -38,7 +40,7 @@ function kick() {
 }
 
 function loop(now) {
-  const busy = fx.hasWork() || tethers.size > 0;
+  const busy = fx.hasWork() || tethers.size > 0 || targetWindows.size > 0;
   if (!busy) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     running = false;
@@ -46,9 +48,18 @@ function loop(now) {
     return;
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  fx.draw(now);
-  for (const line of tethers.values()) {
-    drawTether(line);
+
+  // Draw target window focus frames (Clean bounding boxes with contrast corner reticles)
+  for (const win of targetWindows.values()) {
+    drawFocusFrame(win);
+  }
+
+  // Draw web FX unless in clean frame-only mode
+  if (!focusFrameOnly) {
+    fx.draw(now);
+    for (const line of tethers.values()) {
+      drawTether(line);
+    }
   }
   frames += 1;
   if (now - fpsStamp >= 500) {
@@ -58,6 +69,98 @@ function loop(now) {
     emitTo("control", "render-fps", { fps, mode: "active" });
   }
   requestAnimationFrame(loop);
+}
+
+function getThemeColor() {
+  if (preset === "sakura") return "#f472b6";
+  if (preset === "clean") return "#38bdf8";
+  if (preset === "midnight") return "#22d3ee";
+  if (preset === "sage") return "#6ee7b7";
+  if (preset === "spiderman") return "#ff3b3b";
+  if (preset === "miles") return "#ff0055";
+  if (preset === "symbiote") return "#c084fc";
+  if (preset === "neon") return "#ff4dff";
+  if (preset === "gojo") return "#a855f7";
+  return "#9cf0c4";
+}
+
+function drawFocusFrame(win) {
+  if (!frame) return;
+  const scaleX = canvas.width / (frame.width || window.innerWidth);
+  const scaleY = canvas.height / (frame.height || window.innerHeight);
+
+  const x = (win.x - frame.x) * scaleX;
+  const y = (win.y - frame.y) * scaleY;
+  const w = win.width * scaleX;
+  const h = win.height * scaleY;
+
+  if (w <= 0 || h <= 0) return;
+
+  const color = getThemeColor();
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+
+  // High-contrast glowing outline
+  ctx.strokeStyle = color;
+  ctx.lineWidth = win.grabbed ? 3.5 : 2.5;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = win.grabbed ? 20 : 12;
+
+  const radius = 10;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, w, h, radius);
+  else ctx.rect(x, y, w, h);
+  ctx.stroke();
+
+  // Corner Focus Brackets
+  const bracket = Math.min(24, Math.min(w, h) / 4);
+  ctx.lineWidth = 4.5;
+  ctx.beginPath();
+  ctx.moveTo(x, y + bracket);
+  ctx.lineTo(x, y);
+  ctx.lineTo(x + bracket, y);
+
+  ctx.moveTo(x + w - bracket, y);
+  ctx.lineTo(x + w, y);
+  ctx.lineTo(x + w, y + bracket);
+
+  ctx.moveTo(x, y + h - bracket);
+  ctx.lineTo(x, y + h);
+  ctx.lineTo(x + bracket, y + h);
+
+  ctx.moveTo(x + w - bracket, y + h);
+  ctx.lineTo(x + w, y + h);
+  ctx.lineTo(x + w, y + h - bracket);
+  ctx.stroke();
+
+  // Window title badge
+  if (win.title) {
+    ctx.shadowBlur = 0;
+    const badgeText = (win.grabbed ? "✊ " : "🎯 ") + (win.title.length > 32 ? win.title.slice(0, 30) + "…" : win.title);
+    ctx.font = "bold 12px system-ui, sans-serif";
+    const textWidth = ctx.measureText(badgeText).width;
+    const badgeW = textWidth + 24;
+    const badgeH = 22;
+    const badgeX = Math.max(10, Math.min(canvas.width - badgeW - 10, x + 12));
+    const badgeY = Math.max(10, y - badgeH - 6);
+
+    ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
+    else ctx.rect(badgeX, badgeY, badgeW, badgeH);
+    ctx.fill();
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(badgeText, badgeX + 12, badgeY + badgeH / 2);
+  }
+
+  ctx.restore();
 }
 
 function drawTether(line) {
@@ -82,7 +185,19 @@ function drawTether(line) {
   const isLow = preset === "low" || preset === "light";
   let glowColor = "#9cf0c4";
   let coreColor = "rgba(216, 255, 233, 0.95)";
-  if (preset === "spiderman") {
+  if (preset === "sakura") {
+    glowColor = "#f472b6";
+    coreColor = "rgba(255, 241, 242, 0.98)";
+  } else if (preset === "clean") {
+    glowColor = "#38bdf8";
+    coreColor = "rgba(248, 250, 252, 0.98)";
+  } else if (preset === "midnight") {
+    glowColor = "#22d3ee";
+    coreColor = "rgba(236, 254, 255, 0.98)";
+  } else if (preset === "sage") {
+    glowColor = "#6ee7b7";
+    coreColor = "rgba(240, 253, 244, 0.98)";
+  } else if (preset === "spiderman") {
     glowColor = "#ff3b3b";
     coreColor = "rgba(255, 255, 255, 0.98)";
   } else if (preset === "miles") {
@@ -175,6 +290,23 @@ listen("overlay-clear", (event) => {
     tethers.delete(event.payload.id);
   } else {
     tethers.clear();
+  }
+});
+
+listen("overlay-target-window", (event) => {
+  const { id, window: win, clear } = event.payload;
+  if (clear) {
+    if (id !== undefined) targetWindows.delete(id);
+    else targetWindows.clear();
+  } else if (win) {
+    targetWindows.set(id ?? 0, win);
+    kick();
+  }
+});
+
+listen("overlay-settings", (event) => {
+  if (event.payload?.focusFrameOnly !== undefined) {
+    focusFrameOnly = Boolean(event.payload.focusFrameOnly);
   }
 });
 

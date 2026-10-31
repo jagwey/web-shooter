@@ -134,6 +134,23 @@ function wireChrome() {
     });
   }
 
+  const focusFrameToggle = document.getElementById("focusFrameToggle");
+  if (focusFrameToggle) {
+    focusFrameToggle.addEventListener("click", () => {
+      state.settings.focusFrameOnly = !state.settings.focusFrameOnly;
+      emitTo("overlay", "overlay-settings", { focusFrameOnly: state.settings.focusFrameOnly });
+      persist();
+    });
+  }
+
+  const refreshCamerasBtn = document.getElementById("refreshCamerasBtn");
+  if (refreshCamerasBtn) {
+    refreshCamerasBtn.addEventListener("click", async () => {
+      await describeCamera();
+      renderCameraSelect();
+    });
+  }
+
   const testPurple = document.getElementById("testPurple");
   if (testPurple) {
     testPurple.addEventListener("click", async () => {
@@ -222,8 +239,9 @@ async function boot() {
   const loaded = await invoke("get_settings");
   state.settings = loaded?.unsupported ? fallbackSettings() : loaded;
   if (state.settings.lang) initI18n(state.settings.lang);
-  applyTheme(state.settings.theme || "spiderman");
+  applyTheme(state.settings.theme || "sakura");
   setAudioEnabled(state.settings.soundEnabled !== false);
+  emitTo("overlay", "overlay-settings", { focusFrameOnly: Boolean(state.settings.focusFrameOnly) });
 
   await refreshDesktop();
   listen("monitors-changed", (event) => {
@@ -694,6 +712,17 @@ async function beginGrab(handIndex, point) {
   state.hands[handIndex].samples = [{ t: performance.now(), x: point.sx, y: point.sy }];
   state.lastHit = found.title;
   sendTether(handIndex, point, found);
+  emitTo("overlay", "overlay-target-window", {
+    id: handIndex,
+    window: {
+      x: found.x,
+      y: found.y,
+      width: found.width,
+      height: found.height,
+      title: found.title,
+      grabbed: true,
+    },
+  });
   playGrab();
   render();
 }
@@ -710,6 +739,17 @@ async function moveGrab(handIndex, point) {
   handState.samples.push({ t: performance.now(), x: point.sx, y: point.sy });
   if (handState.samples.length > 8) handState.samples.shift();
   sendTether(handIndex, point, moved && moved.hwnd ? moved : { ...handState.grab, x, y });
+  emitTo("overlay", "overlay-target-window", {
+    id: handIndex,
+    window: {
+      x,
+      y,
+      width: handState.grab.width,
+      height: handState.grab.height,
+      title: state.lastHit,
+      grabbed: true,
+    },
+  });
 }
 
 function sendTether(handIndex, point, win) {
@@ -728,6 +768,7 @@ async function releaseGrab(handIndex) {
   const grab = handState.grab;
   handState.grab = null;
   emitTo("overlay", "overlay-clear", { id: handIndex });
+  emitTo("overlay", "overlay-target-window", { id: handIndex, clear: true });
   if (!grab) return;
 
   const now = performance.now();
@@ -765,12 +806,18 @@ async function releaseGrab(handIndex) {
 function cancelGrab(handIndex, clearWeb) {
   if (handIndex !== undefined && state.hands[handIndex]) {
     state.hands[handIndex].grab = null;
-    if (clearWeb) emitTo("overlay", "overlay-clear", { id: handIndex });
+    if (clearWeb) {
+      emitTo("overlay", "overlay-clear", { id: handIndex });
+      emitTo("overlay", "overlay-target-window", { id: handIndex, clear: true });
+    }
   } else {
     for (let i = 0; i < state.hands.length; i += 1) {
       state.hands[i].grab = null;
     }
-    if (clearWeb) emitTo("overlay", "overlay-clear", {});
+    if (clearWeb) {
+      emitTo("overlay", "overlay-clear", {});
+      emitTo("overlay", "overlay-target-window", { clear: true });
+    }
   }
   invoke("cancel_fling");
   render();
@@ -885,6 +932,11 @@ function render() {
     safetyToggle.setAttribute("aria-pressed", String(state.settings.safetyGuard !== false));
   }
 
+  const focusFrameToggle = document.getElementById("focusFrameToggle");
+  if (focusFrameToggle) {
+    focusFrameToggle.setAttribute("aria-pressed", String(Boolean(state.settings.focusFrameOnly)));
+  }
+
   document.getElementById("autostartToggle").setAttribute("aria-pressed", String(state.settings.startWithWindows));
   document.getElementById("idleToggle").setAttribute("aria-pressed", String(state.settings.releaseCameraWhenIdle));
   document.getElementById("cameraState").textContent = state.cameraPaused ? t("cameraPaused") : t("cameraHint");
@@ -904,7 +956,7 @@ function render() {
 }
 
 function applyTheme(themeId) {
-  document.documentElement.dataset.theme = themeId || "spiderman";
+  document.documentElement.dataset.theme = themeId || "sakura";
 }
 
 function renderTheme() {
@@ -912,10 +964,14 @@ function renderTheme() {
   if (!root) return;
   root.replaceChildren();
   const themes = [
+    ["sakura", "themeSakura"],
+    ["clean", "themeClean"],
+    ["midnight", "themeMidnight"],
+    ["sage", "themeSage"],
+    ["mint", "themeMint"],
     ["spiderman", "themeSpiderman"],
     ["miles", "themeMiles"],
     ["symbiote", "themeSymbiote"],
-    ["mint", "themeMint"],
     ["neon", "themeNeon"],
     ["gojo", "themeGojo"],
   ];
@@ -924,7 +980,7 @@ function renderTheme() {
     button.type = "button";
     button.className = "chip";
     button.textContent = t(key);
-    const active = (state.settings.theme || "spiderman") === id;
+    const active = (state.settings.theme || "sakura") === id;
     button.setAttribute("aria-pressed", String(active));
     button.addEventListener("click", async () => {
       state.settings.theme = id;

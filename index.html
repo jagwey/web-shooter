@@ -82,9 +82,48 @@
         <p class="message" id="cameraMessage" aria-live="polite"></p>
         <button type="button" class="btn ghost" id="cameraRetry" hidden data-i18n="cameraRetry">Tekrar dene</button>
 
+        <article class="trust-card">
+          <div class="trust-badge" data-i18n="privacyBadge">🔒 %100 Çevrimdışı & Yerel</div>
+          <strong style="display: block; font-size: 0.95rem; margin-bottom: 4px;" data-i18n="privacyTitle">Gizlilik & Güvenlik Güvencesi</strong>
+          <p style="margin: 0; font-size: 0.78rem; line-height: 1.4; color: var(--muted);" data-i18n="privacyText">
+            Jagwey Web Shooter tamamen açık kaynaklıdır ve 100% yerel çalışır. Kamera görüntünüz veya hiçbir veriniz asla bilgisayarınızdan dışarı çıkmaz, sunucuya gönderilmez. Kaynak kodlarını dilediğiniz yapay zekaya (ChatGPT, Claude, Gemini) okutarak güvenlik denetimini yaptırabilirsiniz.
+          </p>
+          <div class="trust-list">
+            <div class="trust-item"><span class="icon">✓</span> <span data-i18n="permCamera">Kamera: Yalnızca yerel MediaPipe el hareketi tespiti için kullanılır.</span></div>
+            <div class="trust-item"><span class="icon">✓</span> <span data-i18n="permWin32">Win32: Pencereleri taşımak ve ekrana yaslamak için kullanılır.</span></div>
+            <div class="trust-item"><span class="icon">✓</span> <span data-i18n="permOffline">Sıfır Telemetri: İnternet bağlantısı gerektirmez, veri toplamaz.</span></div>
+          </div>
+        </article>
+
+        <section class="card">
+          <h2 data-i18n="guideTitle">Nasıl Kullanılır? (Hızlı Rehber)</h2>
+          <div class="guide-grid">
+            <div class="guide-item">
+              <strong data-i18n="guideShootTitle">🤟 Ağ At / Hedefle</strong>
+              <p data-i18n="guideShootDesc">İşaret ve serçe parmağını aç (Spider-Man işareti).</p>
+            </div>
+            <div class="guide-item">
+              <strong data-i18n="guideGrabTitle">✊ Pencereyi Yakala</strong>
+              <p data-i18n="guideGrabDesc">Pencerenin üzerindeyken elini yumruk yap, seni takip eder.</p>
+            </div>
+            <div class="guide-item">
+              <strong data-i18n="guideFlingTitle">🖐️ Fırlat / Bırak</strong>
+              <p data-i18n="guideFlingDesc">Elini açtığında pencere hızla uçar ve kenara yaslanır.</p>
+            </div>
+            <div class="guide-item">
+              <strong data-i18n="guidePurpleTitle">🟣 Sekme Kapat</strong>
+              <p data-i18n="guidePurpleDesc">İşaret ve orta parmağını uzat (Gojo fiske işareti).</p>
+            </div>
+          </div>
+        </section>
+
         <section class="card">
           <h2 data-i18n="themeTitle">Tema</h2>
           <div class="chips" id="themeChips"></div>
+          <button type="button" class="switch slim" id="focusFrameToggle" aria-pressed="false" style="margin-top: 10px;">
+            <span class="knob" aria-hidden="true"></span>
+            <span><strong data-i18n="focusFrame">Sade Çerçeveleme Modu</strong><small data-i18n="focusFrameHint">Ağ yerine pencerenin etrafına kontrast odak çerçevesi çizer.</small></span>
+          </button>
         </section>
 
         <section class="card">
@@ -107,8 +146,22 @@
         </section>
 
         <section class="card">
-          <h2 data-i18n="displays">Ekran</h2>
-          <div class="monitor-list" id="monitorList"></div>
+          <div class="device-row">
+            <h2 style="margin:0;" data-i18n="displays">Ekran & Monitör</h2>
+            <button type="button" class="btn ghost" id="refreshCamerasBtn" style="font-size: 0.78rem; padding: 4px 8px;" data-i18n="cameraRefresh">Kameraları Yenile</button>
+          </div>
+          <div class="monitor-list" id="monitorList" style="margin-top: 8px;"></div>
+
+          <details class="phone-guide-box">
+            <summary style="cursor: pointer; font-weight: 600;" data-i18n="phoneGuideTitle">📱 Telefon Kamerasını Bağlama (Kablosuz / USB)</summary>
+            <p style="margin: 6px 0 0 0; color: var(--muted); font-size: 0.78rem;" data-i18n="phoneGuideDesc">Telefonunuzu kablosuz (Wi-Fi) veya USB ile bağlayıp yüksek kaliteli el takibi yapabilirsiniz:</p>
+            <ol class="phone-steps">
+              <li><strong data-i18n="phoneApp1">DroidCam (Ücretsiz & Hızlı - Android/iOS)</strong>: Telefonunuza ve PC'nize kurup Wi-Fi veya USB seçin.</li>
+              <li><strong data-i18n="phoneApp2">Iriun Webcam (Otomatik Bağlantı)</strong>: Aynı Wi-Fi'da olunca sıfır ayarla anında tanır.</li>
+              <li><strong data-i18n="phoneApp3">Camo (Stüdyo Kalitesi)</strong>: Üst seviye keskinlik ve renk doğruluğu sunar.</li>
+            </ol>
+            <p style="margin: 6px 0 0 0; color: var(--mint); font-size: 0.76rem;">💡 Telefon bağlandıktan sonra "Kameraları Yenile" butonuna tıklayıp listeden seçebilirsiniz.</p>
+          </details>
         </section>
 
         <details class="card">

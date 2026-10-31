@@ -36,6 +36,8 @@ pub struct Settings {
     pub target_fps: u32,
     #[serde(default = "default_sound_enabled")]
     pub sound_enabled: bool,
+    #[serde(default)]
+    pub focus_frame_only: bool,
     #[serde(default = "default_theme")]
     pub theme: String,
     #[serde(default = "default_true")]
@@ -101,7 +103,8 @@ impl Default for Settings {
             camera_device_id: String::new(),
             target_fps: 120,
             sound_enabled: true,
-            theme: "spiderman".into(),
+            focus_frame_only: false,
+            theme: "sakura".into(),
             hollow_purple_enabled: true,
             close_mode: "tab".into(),
             safety_guard: true,
@@ -146,8 +149,8 @@ impl Settings {
         if !matches!(self.fx_preset.as_str(), "classic" | "mint" | "neon" | "low" | "light" | "spiderman" | "miles" | "symbiote" | "gojo") {
             self.fx_preset = "spiderman".into();
         }
-        if !matches!(self.theme.as_str(), "spiderman" | "miles" | "symbiote" | "mint" | "neon" | "gojo") {
-            self.theme = "spiderman".into();
+        if !matches!(self.theme.as_str(), "sakura" | "clean" | "midnight" | "sage" | "mint" | "spiderman" | "miles" | "symbiote" | "neon" | "gojo") {
+            self.theme = "sakura".into();
         }
         if !matches!(self.close_mode.as_str(), "tab" | "window") {
             self.close_mode = "tab".into();

@@ -122,13 +122,26 @@ stateDiagram-v2
 - MediaPipe 21 eklem noktası üzerinde çalışan **Üstel Hareketli Ortalama (EMA)** filtresi sayesinde kamera gürültüsü ve titremeler tamamen filtrelenir.
 - Jest geçişleri daha kararlı, yumruk ve atış hissi kaya gibi stabildir.
 
-#### 4. 🕷️ Temalar & Görsel Efektler
-- 🕷️ **Classic Spider-Man:** Canlı kırmızı & örümcek mavisi lifler.
-- ⚡ **Miles Morales:** Karbon siyahı, altın sarısı biyo-elektrik ve neon kırmızı ağlar.
-- 🖤 **Symbiote (Venom):** Gece karası ve derin mor dokunaçlar.
-- 🟣 **Gojo Satoru (Limitless):** Boşluk moru, mavi/kırmızı enerji lifleri.
-- 🌿 **Jagwey Mint:** Forest Green ve parlak nane yeşili marka teması.
-- 🌈 **Cyber Neon:** Synthwave pembe ve neon lazer ağı.
+#### 4. 🌸 Soft, Estetik & Kullanıcı Dostu Temalar
+Herkesin (kızlar, erkekler, minimalistler) severek kullanacağı yumuşak ve göz alıcı renk seçenekleri:
+- 🌸 **Sakura Pastel:** Gül pembesi, sıcak altın ve süt beyazı ferahlatıcı tonlar.
+- 🤍 **Clean Snow:** Modern, sade, dikkat dağıtmayan gökyüzü mavisi ve beyaz çizgiler.
+- 🌙 **Midnight Cyber:** Koyu estetik okyanus gecesi ve neon turkuaz parıltı.
+- 🌿 **Soft Sage & Mint:** Rahatlatıcı adaçayı, okaliptüs yeşili ve krem rengi.
+- 🕷️ **Süper Kahraman Serisi:** Classic Spider-Man, Miles Morales, Symbiote Venom ve Gojo Satoru Moru.
+
+#### 5. 🎯 Sade Çerçeveleme Modu (Minimal Focus Frame)
+- Ağ ve fırlatma efektlerini fazla hareketli bulan veya ofis ortamında sade çalışmak isteyenler için:
+- Seçilen veya tutulan pencerenin etrafında **yüksek kontrastlı, neon köşeli zarif bir odak çerçevesi** ve pencere başlık kartı belirir.
+- Sıfır göz yorulması, şık macOS Stage Manager / Figma seçim kutusu hissiyatı.
+
+#### 6. 🔒 %100 Çevrimdışı & Açık Kaynak Güvencesi
+- **Sıfır Sunucu & Sıfır Veri Toplama:** Kamera görüntünüz veya el veriniz kesinlikle internete çıkmaz. Tüm işlem yerel bilgisayarınızda (MediaPipe WebAssembly) çalışır.
+- **Açık ve Şeffaf Kod:** Uygulamanın tüm kaynak kodlarını dilediğiniz yapay zekaya (ChatGPT, Claude, Gemini) okutarak güvenlik ve gizlilik denetimini kendiniz teyit edebilirsiniz.
+
+#### 7. 📱 Telefon Kamerasını Bağlama & Çoklu Monitör Hub
+- DroidCam veya Iriun Webcam ile telefonunuzu kablosuz (Wi-Fi) veya USB ile bağlayıp 1080p 60/120 FPS el takibi yapabilirsiniz.
+- Çoklu monitör desteğiyle örtüyü ana ekrana, yan ekrana verebilir veya tüm ekranlara yayabilirsiniz.
 
 ---
 
