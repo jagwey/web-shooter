@@ -12,26 +12,26 @@
 
 ```mermaid
 flowchart TD
-    subgraph Frontend["🖥️ Ön Yüz & Kullanıcı Paneli (Vite + HTML/CSS/JS)"]
-        Control["🎛️ Ana Kontrol Penceresi (index.html / control.js)"]
-        Overlay["🕸️ Şeffaf Masaüstü Örtüsü (overlay.html / overlay.js)"]
-        LiveStudio["📹 Canlı Kamera & El Test Stüdyosu (21-Nokta Neon İskelet)"]
-        FXEngine["🎨 Dinamik Parçacık & Efekt Motoru (Canvas 2D / 120 FPS)"]
-        AISuite["🤖 Jagwey AI Lab (Ollama, Gemini, Kural Tabanlı Asistan)"]
+    subgraph Frontend["🖥️ Ön Yüz ve Kullanıcı Paneli"]
+        Control["🎛️ Ana Kontrol Penceresi"]
+        Overlay["🕸️ Şeffaf Masaüstü Örtüsü"]
+        LiveStudio["📹 Canlı Kamera ve El Test Stüdyosu"]
+        FXEngine["🎨 Dinamik Parçacık ve Efekt Motoru"]
+        AISuite["🤖 Jagwey AI Lab"]
     end
 
-    subgraph Vision["👁️ Görsel Algılama Katmanı (MediaPipe Vision)"]
-        Webcam["📷 Web Kamerası (120/60 FPS)"]
-        HandLandmarker["🖐️ MediaPipe HandLandmarker (Float16 Wasm)"]
-        Classifier["⚡ Jest Sınıflandırıcı (Ağ, Yumruk, Açık El, Gojo Moru)"]
+    subgraph Vision["👁️ Görsel Algılama Katmanı"]
+        Webcam["📷 Web Kamerası - 120 FPS"]
+        HandLandmarker["🖐️ MediaPipe HandLandmarker"]
+        Classifier["⚡ Jest Sınıflandırıcı"]
         Webcam --> HandLandmarker --> Classifier
     end
 
-    subgraph Backend["⚙️ Tauri 2 & Win32 Arka Plan (src-tauri)"]
-        RustLib["🦀 Rust Çekirdeği (src-tauri/src/lib.rs)"]
-        Win32Bridge["🪟 Win32 API (EnumWindows, SetWindowPos, PostMessage)"]
-        Tray["🔔 Sistem Tepsisi (Tray Icon & Menü)"]
-        Hotkeys["⌨️ Global Kısayol Dinleyicisi (Ctrl+Alt+J)"]
+    subgraph Backend["⚙️ Tauri 2 ve Win32 Arka Plan"]
+        RustLib["🦀 Rust Çekirdeği"]
+        Win32Bridge["🪟 Win32 API"]
+        Tray["🔔 Sistem Tepsisi"]
+        Hotkeys["⌨️ Global Kısayol Dinleyicisi"]
     end
 
     Classifier --> Control
