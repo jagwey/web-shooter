@@ -38,6 +38,14 @@ pub struct Settings {
     pub sound_enabled: bool,
     #[serde(default)]
     pub focus_frame_only: bool,
+    #[serde(default = "default_true")]
+    pub show_webs: bool,
+    #[serde(default = "default_true")]
+    pub show_focus_frame: bool,
+    #[serde(default = "default_true")]
+    pub dual_hands: bool,
+    #[serde(default)]
+    pub custom_fx: Option<serde_json::Value>,
     #[serde(default = "default_theme")]
     pub theme: String,
     #[serde(default = "default_true")]
@@ -104,6 +112,10 @@ impl Default for Settings {
             target_fps: 120,
             sound_enabled: true,
             focus_frame_only: false,
+            show_webs: true,
+            show_focus_frame: true,
+            dual_hands: true,
+            custom_fx: None,
             theme: "sakura".into(),
             hollow_purple_enabled: true,
             close_mode: "tab".into(),
@@ -146,10 +158,10 @@ impl Settings {
         if !matches!(self.monitor_mode.as_str(), "one" | "all") {
             self.monitor_mode = "one".into();
         }
-        if !matches!(self.fx_preset.as_str(), "classic" | "mint" | "neon" | "low" | "light" | "spiderman" | "miles" | "symbiote" | "gojo") {
+        if !matches!(self.fx_preset.as_str(), "classic" | "mint" | "neon" | "low" | "light" | "spiderman" | "miles" | "symbiote" | "gojo" | "custom") {
             self.fx_preset = "spiderman".into();
         }
-        if !matches!(self.theme.as_str(), "sakura" | "clean" | "midnight" | "sage" | "mint" | "spiderman" | "miles" | "symbiote" | "neon" | "gojo") {
+        if !matches!(self.theme.as_str(), "sakura" | "clean" | "midnight" | "sage" | "mint" | "spiderman" | "miles" | "symbiote" | "neon" | "gojo" | "custom") {
             self.theme = "sakura".into();
         }
         if !matches!(self.close_mode.as_str(), "tab" | "window") {

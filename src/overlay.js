@@ -1,6 +1,5 @@
-import { createWebFx } from "./effects.js";
+import { createWebFx, registerCustomLook } from "./effects.js";
 import { emitTo, listen } from "./desktop.js";
-import "./style.css";
 
 const canvas = document.getElementById("overlayCanvas");
 const ctx = canvas.getContext("2d", { alpha: true, desynchronized: true });
@@ -18,6 +17,8 @@ let frame = { x: 0, y: 0, width: 1, height: 1 };
 const tethers = new Map();
 const targetWindows = new Map();
 let focusFrameOnly = false;
+let showWebs = true;
+let showFocusFrame = true;
 let preset = "sakura";
 let running = false;
 let frames = 0;
@@ -50,12 +51,14 @@ function loop(now) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   // Draw target window focus frames (Clean bounding boxes with contrast corner reticles)
-  for (const win of targetWindows.values()) {
-    drawFocusFrame(win);
+  if (showFocusFrame || focusFrameOnly) {
+    for (const win of targetWindows.values()) {
+      drawFocusFrame(win);
+    }
   }
 
-  // Draw web FX unless in clean frame-only mode
-  if (!focusFrameOnly) {
+  // Draw web FX and tethers if enabled
+  if (!focusFrameOnly || showWebs) {
     fx.draw(now);
     for (const line of tethers.values()) {
       drawTether(line);
@@ -307,6 +310,16 @@ listen("overlay-target-window", (event) => {
 listen("overlay-settings", (event) => {
   if (event.payload?.focusFrameOnly !== undefined) {
     focusFrameOnly = Boolean(event.payload.focusFrameOnly);
+  }
+  if (event.payload?.showWebs !== undefined) {
+    showWebs = Boolean(event.payload.showWebs);
+  }
+  if (event.payload?.showFocusFrame !== undefined) {
+    showFocusFrame = Boolean(event.payload.showFocusFrame);
+  }
+  if (event.payload?.customFx) {
+    registerCustomLook(event.payload.customFx);
+    if (preset === "custom") fx.setPreset("custom");
   }
 });
 

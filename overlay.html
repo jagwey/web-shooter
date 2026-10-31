@@ -1,9 +1,33 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="tr" class="overlay-page">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Jagwey Overlay</title>
+    <style>
+      *, *::before, *::after {
+        box-sizing: border-box;
+      }
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        overflow: hidden !important;
+        background: transparent !important;
+        background-color: transparent !important;
+      }
+      #overlayCanvas {
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        display: block !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        pointer-events: none !important;
+      }
+    </style>
   </head>
   <body class="overlay">
     <canvas id="overlayCanvas"></canvas>

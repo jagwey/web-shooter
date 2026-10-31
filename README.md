@@ -104,7 +104,42 @@ stateDiagram-v2
 
 ### 🌟 Yeni Eklenen Efsanevi Özellikler
 
-#### 1. 🟣 Satoru Gojo: Kūshiki "Murasaki" (Hollow Purple) & Sekme Kapatıcı
+#### 1. 🪟 %100 Kusursuz Şeffaf Örtü & Sıfır Siyah Ekran
+- **Tamamen Şeffaf:** Masaüstü örtüsünün arka planı WebView2 motorunda pürüzsüz şeffaf katman (`rgba(0,0,0,0)`) olarak optimize edildi. Ekran asla kararmaz veya siyah ekranda kilitlenmez.
+- **Tıklamaları Geçiren Mimari:** Örtü açıkken pencerelerinizdeki yazılara, linklere ve butonlara normal bir şekilde tıklamaya devam edebilirsiniz (`WS_EX_TRANSPARENT`).
+
+#### 2. 📹 Canlı Kamera & El Test Stüdyosu (Büyük HD Test Alanı)
+- **Genişletilebilir Canlı Önizleme:** Tek tıkla (🔍) kompakt görünüm ile geniş stüdyo ekranı (HD) arasında geçiş yapın.
+- **Canlı 21-Eklem İskelet Çizimi:** MediaPipe eklemleri kameranızın üzerinde anlık olarak parlak neon çizgiler ve eklem noktalarıyla çizilir; elinizin tam olarak nerede ve nasıl algılandığını canlı görün.
+- **Anlık Jest Rozeti (Live HUD):** Algılanan hareket anında animasyonlu rozette (`🕸️ Ağ Atışı`, `✊ Pencere Tutma`, `🖐️ Açık Avuç`, `🤌 Gojo Moru`) gösterilir.
+- **5-Parmak Durum Göstergesi:** Baş, İşaret, Orta, Yüzük ve Serçe parmaklarınızın açık/kapalı durumu 5 ayrı neon kapsülde anlık yanar.
+- **🪞 Ayna Modu (Mirror Mode):** Tek tıkla kamerayı ayna gibi yatay çevirin, fiziksel hareketiniz ekrandaki yönle birebir uyuşsun.
+
+#### 3. ✨ Kendi Efektini Yarat (Custom FX Studio)
+- **Tam Kişiselleştirme:** Kullanıcı kendi hayalindeki efekti yaratabilir:
+  - 🎨 **Ağ Rengi (Primary Core Color)**: İpin merkez rengini renk paletinden seçin.
+  - 🔮 **Aura Parlaması (Glow Color)**: Dış ışıma ve neon parlama rengi.
+  - 🌟 **Parçacık Rengi (Particle Color)**: Kıvılcım ve yıldızların rengi.
+  - 💫 **Parçacık Stilleri:** `⚡ Elektrik / Kıvılcım`, `✨ Yıldız Tozu`, `🕸️ Klasik Ağ`, `🌸 Kiraz Çiçeği`, `🔥 Alev Korları`, `💜 Gojo Boşluk Küreleri`.
+  - 📏 **Ağ Kalınlığı & Yoğunluk:** 1px'ten 8px'e kadar serbest kalınlık ve parçacık sıklığı ayarı.
+  - 🎯 **Anında Prova Atışı & Kaydet:** Efektinizi test edip kaydedin; "Özel Efektim" teması olarak anında devreye girsin.
+
+#### 4. 🔀 Özellikler & Hibrit Mod (Ağ + Odak Çerçeveleme Bir Arada)
+- Özellikleri ayrı ayrı kullanmak zorunda değilsiniz:
+  - `[x] 🕸️ Ağ İpleri & Parçacıklar`: Spider-Man tarzı dinamik ağ lifleri.
+  - `[x] 🎯 Hedef Pencere Çerçevesi`: Pencerenin etrafına yüksek kontrastlı odak kutusu.
+  - `[x] ⚡ Çift El Bağımsız Kontrol`: Bir elinizle pencere taşırken diğer elinizle ağ atabilir veya sekme kapatabilirsiniz!
+
+#### 5. 🤖 Jagwey AI Asistanı & İnteraktif Tanı Merkezi
+- **👋 Merhaba & Çalışıyor musun? (Sağlık Testi):** Tek tıkla yapay zekaya test çağrısı gönderin. AI hemen sistem gecikmesini (ms), 120 FPS el motoru durumunu ve donanım sağlığını raporlayan Türkçe selamlama yanıtı üretir!
+- **⚡ Otomatik Optimize Et:** Ekran çözünürlüğünüzü, monitör sayınızı ve kamera FPS'inizi analiz ederek donanımınıza en uygun ayarları tek tıkla uygular.
+- **🗂️ Akıllı Pencereleri Düzenle (Auto-Tile):** Masaüstündeki pencereleri altın oranla veya ızgara düzeninde ekrana otomatik hizalar.
+- **Kolay Model Seçimi & Ollama Model Tarayıcı:**
+  - 🏠 Yerel Akıllı Motor (Sıfır kurulum, internetsiz ve anında hazır).
+  - 🦙 Ollama / LM Studio: "Tara" butonuyla bilgisayarınızdaki yüklü modelleri (`llama3.2`, `mistral`, `gemma2`) otomatik tespit eder.
+  - ☁️ Google Gemini API (`gemini-2.5-flash`).
+
+#### 6. 🟣 Satoru Gojo: Kūshiki "Murasaki" (Hollow Purple) & Sekme Kapatıcı
 - **İki Parmak / Fiske Hareketi:** İşaret ve orta parmağınızı birlikte uzattığınızda veya fiske yaptığınızda Gojo Satoru'nun ikonik Kūshiki "Murasaki" tekniği tetiklenir!
 - **Sinematik Görsel Şölen:** Mavi (Lapse) ve Kırmızı (Reversal) küreler elinizin etrafında spiral çizerek döner, ardından merkezde çarpışarak karanlık bir çekirdeğe sahip parlayan **Hollow Purple** küresine dönüşür ve devasa bir enerji dalgası fırlatır!
 - **Gerçekçi Ses Efekti:** Düşük frekanslı sub-bass şok dalgası ve yüksek rezonanslı uzay enerjisi sentezi.

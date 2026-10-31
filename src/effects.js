@@ -132,8 +132,60 @@ const LOOKS = {
     fine: [180, 245, 210],
     particle: [220, 255, 236],
   },
+  custom: {
+    quality: "full",
+    trail: [0, 245, 255],
+    glow: "#00f5ff",
+    beam: [0, 245, 255],
+    fiber: [255, 255, 255],
+    head: "#ffffff",
+    fine: [0, 245, 255],
+    particle: [255, 255, 255],
+    thickness: 3,
+    particleStyle: "sparks",
+  },
 };
 LOOKS.light = LOOKS.low;
+
+export function registerCustomLook(custom) {
+  if (!custom) return;
+  const parseHex = (hex, def) => {
+    if (!hex || typeof hex !== "string" || !hex.startsWith("#")) return def;
+    const clean = hex.replace("#", "");
+    if (clean.length === 3) {
+      return [
+        parseInt(clean[0] + clean[0], 16),
+        parseInt(clean[1] + clean[1], 16),
+        parseInt(clean[2] + clean[2], 16),
+      ];
+    }
+    if (clean.length >= 6) {
+      return [
+        parseInt(clean.slice(0, 2), 16),
+        parseInt(clean.slice(2, 4), 16),
+        parseInt(clean.slice(4, 6), 16),
+      ];
+    }
+    return def;
+  };
+
+  const primaryRgb = parseHex(custom.primary, [0, 245, 255]);
+  const glowHex = custom.glow || "#00f5ff";
+  const particleRgb = parseHex(custom.particle, [255, 255, 255]);
+
+  LOOKS.custom = {
+    quality: "full",
+    trail: primaryRgb,
+    glow: glowHex,
+    beam: primaryRgb,
+    fiber: particleRgb,
+    head: glowHex,
+    fine: primaryRgb,
+    particle: particleRgb,
+    thickness: Number(custom.thickness) || 3,
+    particleStyle: custom.style || "sparks",
+  };
+}
 
 function stepOf(dt) {
   return Math.min(dt, 50) / FRAME_MS;

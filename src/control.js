@@ -1,7 +1,8 @@
 import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, removeBinding, upsertBinding } from "./bindings.js";
-import { autoTileWorkspace, testAiConnection } from "./ai.js";
+import { autoTileWorkspace, chatWithAi, fetchOllamaModels, optimizeSettingsWithAi, sendAiGreeting, testAiConnection } from "./ai.js";
 import { emitTo, inDesktop, invoke, listen } from "./desktop.js";
 import { classifyGesture } from "./gestures.js";
+import { registerCustomLook } from "./effects.js";
 import { getLang, initI18n, setLang, t } from "./i18n.js";
 import {
   isAudioEnabled,
@@ -34,6 +35,8 @@ const state = {
   missStreak: 0,
   detectTimer: 0,
   idleTimer: 0,
+  cameraExpanded: false,
+  cameraMirrored: false,
   hands: [
     { lastGesture: null, grab: null, samples: [], smoothed: null },
     { lastGesture: null, grab: null, samples: [], smoothed: null },
@@ -44,6 +47,7 @@ const state = {
   windowCount: 0,
   win32: false,
   renderFps: 0,
+  detectMs: 0,
   deviceLabel: "",
   videoDevices: [],
   hotkeyDraft: "",
@@ -134,14 +138,57 @@ function wireChrome() {
     });
   }
 
+  const cameraExpandBtn = document.getElementById("cameraExpandBtn");
+  if (cameraExpandBtn) {
+    cameraExpandBtn.addEventListener("click", () => {
+      state.cameraExpanded = !state.cameraExpanded;
+      document.getElementById("cameraStage")?.classList.toggle("expanded", state.cameraExpanded);
+    });
+  }
+
+  const cameraMirrorBtn = document.getElementById("cameraMirrorBtn");
+  if (cameraMirrorBtn) {
+    cameraMirrorBtn.addEventListener("click", () => {
+      state.cameraMirrored = !state.cameraMirrored;
+      document.getElementById("cameraStage")?.classList.toggle("mirrored", state.cameraMirrored);
+    });
+  }
+
+  const websToggle = document.getElementById("websToggle");
+  if (websToggle) {
+    websToggle.addEventListener("click", () => {
+      state.settings.showWebs = !state.settings.showWebs;
+      emitTo("overlay", "overlay-settings", { showWebs: state.settings.showWebs });
+      persist();
+      render();
+    });
+  }
+
   const focusFrameToggle = document.getElementById("focusFrameToggle");
   if (focusFrameToggle) {
     focusFrameToggle.addEventListener("click", () => {
-      state.settings.focusFrameOnly = !state.settings.focusFrameOnly;
-      emitTo("overlay", "overlay-settings", { focusFrameOnly: state.settings.focusFrameOnly });
+      state.settings.showFocusFrame = !state.settings.showFocusFrame;
+      state.settings.focusFrameOnly = !state.settings.showWebs && state.settings.showFocusFrame;
+      emitTo("overlay", "overlay-settings", {
+        showFocusFrame: state.settings.showFocusFrame,
+        focusFrameOnly: state.settings.focusFrameOnly,
+      });
       persist();
+      render();
     });
   }
+
+  const dualHandsToggle = document.getElementById("dualHandsToggle");
+  if (dualHandsToggle) {
+    dualHandsToggle.addEventListener("click", () => {
+      state.settings.dualHands = !state.settings.dualHands;
+      persist();
+      render();
+    });
+  }
+
+  wireCustomFx();
+  wireAi();
 
   const refreshCamerasBtn = document.getElementById("refreshCamerasBtn");
   if (refreshCamerasBtn) {
@@ -234,14 +281,187 @@ function wireChrome() {
   window.addEventListener("pagehide", () => stopCamera(true));
 }
 
+function wireCustomFx() {
+  const pInput = document.getElementById("customPrimary");
+  const gInput = document.getElementById("customGlow");
+  const partInput = document.getElementById("customParticle");
+  const styleSelect = document.getElementById("customStyle");
+  const thickSlider = document.getElementById("customThickness");
+  const previewBtn = document.getElementById("customPreviewBtn");
+  const saveBtn = document.getElementById("customSaveBtn");
+
+  const syncToUI = () => {
+    const fx = state.settings?.customFx || {
+      primary: "#00f5ff",
+      glow: "#a855f7",
+      particle: "#ffffff",
+      style: "sparks",
+      thickness: 3,
+    };
+    if (pInput && fx.primary) pInput.value = fx.primary;
+    if (gInput && fx.glow) gInput.value = fx.glow;
+    if (partInput && fx.particle) partInput.value = fx.particle;
+    if (styleSelect && fx.style) styleSelect.value = fx.style;
+    if (thickSlider && fx.thickness) thickSlider.value = fx.thickness;
+  };
+
+  if (previewBtn) {
+    previewBtn.addEventListener("click", async () => {
+      const custom = {
+        primary: pInput?.value || "#00f5ff",
+        glow: gInput?.value || "#a855f7",
+        particle: partInput?.value || "#ffffff",
+        style: styleSelect?.value || "sparks",
+        thickness: Number(thickSlider?.value) || 3,
+      };
+      registerCustomLook(custom);
+      emitTo("overlay", "overlay-settings", { customFx: custom });
+      emitTo("overlay", "overlay-preset", { preset: "custom" });
+      if (!state.overlay?.visible) await toggleOverlay();
+      emitTo("overlay", "overlay-shot", { x: 0.5, y: 0.5 });
+      playThwip();
+    });
+  }
+
+  if (saveBtn) {
+    saveBtn.addEventListener("click", async () => {
+      const custom = {
+        primary: pInput?.value || "#00f5ff",
+        glow: gInput?.value || "#a855f7",
+        particle: partInput?.value || "#ffffff",
+        style: styleSelect?.value || "sparks",
+        thickness: Number(thickSlider?.value) || 3,
+      };
+      state.settings.customFx = custom;
+      state.settings.theme = "custom";
+      state.settings.fxPreset = "custom";
+      registerCustomLook(custom);
+      emitTo("overlay", "overlay-settings", { customFx: custom });
+      emitTo("overlay", "overlay-preset", { preset: "custom" });
+      applyTheme("custom");
+      await persist();
+      render();
+    });
+  }
+
+  state._syncCustomFxUI = syncToUI;
+}
+
+function wireAi() {
+  const greetingBtn = document.getElementById("aiGreetingBtn");
+  if (greetingBtn) {
+    greetingBtn.addEventListener("click", async () => {
+      appendAiChat("user", "👋 Merhaba! Sistem durumunu kontrol et.");
+      const res = await sendAiGreeting(state.settings, {
+        fps: state.renderFps,
+        delegate: state.delegate,
+        monitors: state.monitors,
+      });
+      appendAiChat("bot", res.text);
+    });
+  }
+
+  const optimizeBtn = document.getElementById("aiOptimizeBtn");
+  if (optimizeBtn) {
+    optimizeBtn.addEventListener("click", async () => {
+      appendAiChat("user", "⚡ Sistemi otomatik optimize et");
+      const res = await chatWithAi(state.settings, "optimize et", {
+        fps: state.renderFps,
+        delegate: state.delegate,
+        monitors: state.monitors,
+      });
+      if (res.appliedSettings) {
+        state.settings = { ...state.settings, ...res.appliedSettings };
+        await persist();
+        render();
+      }
+      appendAiChat("bot", res.text);
+    });
+  }
+
+  const tileBtn = document.getElementById("aiTileBtn");
+  if (tileBtn) {
+    tileBtn.addEventListener("click", async () => {
+      appendAiChat("user", "🗂️ Pencereleri ekrana yerleştir");
+      const windows = await invoke("list_windows").catch(() => []);
+      const snap = await invoke("desktop_snapshot").catch(() => ({}));
+      const res = await autoTileWorkspace(state.settings, windows, snap?.monitors || state.monitors);
+      appendAiChat("bot", res.message);
+    });
+  }
+
+  const chatForm = document.getElementById("aiChatForm");
+  const chatInput = document.getElementById("aiChatInput");
+  if (chatForm && chatInput) {
+    chatForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const val = chatInput.value.trim();
+      if (!val) return;
+      chatInput.value = "";
+      appendAiChat("user", val);
+      const res = await chatWithAi(state.settings, val, {
+        fps: state.renderFps,
+        delegate: state.delegate,
+        monitors: state.monitors,
+        windows: await invoke("list_windows").catch(() => []),
+      });
+      if (res.appliedSettings) {
+        state.settings = { ...state.settings, ...res.appliedSettings };
+        await persist();
+        render();
+      }
+      appendAiChat("bot", res.text);
+    });
+  }
+
+  const fetchModelsBtn = document.getElementById("aiFetchModelsBtn");
+  if (fetchModelsBtn) {
+    fetchModelsBtn.addEventListener("click", async () => {
+      appendAiChat("user", "Ollama modelleri taranıyor...");
+      const models = await fetchOllamaModels(state.settings.aiEndpoint);
+      appendAiChat("bot", `Bulunan yerel modeller: ${models.join(", ")}`);
+      if (models.length > 0) {
+        state.settings.aiModel = models[0];
+        const modelInput = document.getElementById("aiModel");
+        if (modelInput) modelInput.value = models[0];
+        persist();
+      }
+    });
+  }
+}
+
+function appendAiChat(role, text) {
+  const log = document.getElementById("aiChatLog");
+  if (!log) return;
+  const msgEl = document.createElement("div");
+  msgEl.className = `ai-msg ${role === "user" ? "ai-user" : "ai-bot"}`;
+  const strong = document.createElement("strong");
+  strong.textContent = role === "user" ? "Sen: " : "Jagwey AI: ";
+  const span = document.createElement("span");
+  span.textContent = text;
+  span.style.whiteSpace = "pre-wrap";
+  msgEl.appendChild(strong);
+  msgEl.appendChild(span);
+  log.appendChild(msgEl);
+  log.scrollTop = log.scrollHeight;
+}
+
 async function boot() {
   paintLang();
   const loaded = await invoke("get_settings");
   state.settings = loaded?.unsupported ? fallbackSettings() : loaded;
   if (state.settings.lang) initI18n(state.settings.lang);
+  if (state.settings.customFx) {
+    registerCustomLook(state.settings.customFx);
+  }
   applyTheme(state.settings.theme || "sakura");
   setAudioEnabled(state.settings.soundEnabled !== false);
-  emitTo("overlay", "overlay-settings", { focusFrameOnly: Boolean(state.settings.focusFrameOnly) });
+  emitTo("overlay", "overlay-settings", {
+    showWebs: state.settings.showWebs !== false,
+    showFocusFrame: state.settings.showFocusFrame !== false,
+    focusFrameOnly: Boolean(state.settings.focusFrameOnly),
+    customFx: state.settings.customFx,
+  });
 
   await refreshDesktop();
   listen("monitors-changed", (event) => {
@@ -258,7 +478,8 @@ async function boot() {
   });
   listen("render-fps", (event) => {
     state.renderFps = event.payload.fps || 0;
-    document.getElementById("fpsValue").textContent = String(state.renderFps);
+    const fpsEl = document.getElementById("fpsValue");
+    if (fpsEl) fpsEl.textContent = String(state.renderFps);
   });
   listen("web-impact", (event) => hitAt(event.payload.x, event.payload.y, true));
   listen("binding-fired", (event) => runActionForHand(0, event.payload, null, true));
@@ -279,8 +500,13 @@ async function boot() {
     else paintLiveStatus();
   }, 2000);
   if (!inDesktop()) document.getElementById("shellBanner").hidden = false;
-  if (state.settings.onboarded) showHome();
-  else showStep("welcome");
+  if (state.settings.onboarded) {
+    showHome();
+    state.cameraWanted = true;
+    startCamera();
+  } else {
+    showStep("welcome");
+  }
   render();
 }
 
@@ -293,12 +519,16 @@ function fallbackSettings() {
     idleReleaseSecs: 20,
     monitorMode: "one",
     monitorId: "",
-    fxPreset: "spiderman",
+    fxPreset: "sakura",
     bindings: defaultBindings(),
     cameraDeviceId: "",
     targetFps: 120,
     soundEnabled: true,
-    theme: "spiderman",
+    showWebs: true,
+    showFocusFrame: true,
+    dualHands: true,
+    customFx: null,
+    theme: "sakura",
   };
 }
 
@@ -523,6 +753,13 @@ async function detectTick() {
 }
 
 function onHands(hands, detectMs) {
+  state.detectMs = detectMs;
+  const msEl = document.getElementById("msValue");
+  if (msEl) msEl.textContent = `${Math.round(detectMs)}ms`;
+
+  drawCameraLandmarks(hands);
+  updateGestureHud(hands);
+
   if (!hands || hands.length === 0) {
     state.missStreak += 1;
     document.getElementById("handValue").textContent = t("handNo");
@@ -536,12 +773,13 @@ function onHands(hands, detectMs) {
     clearTimeout(state.idleTimer);
     document.getElementById("handValue").textContent = hands.length >= 2 ? t("handBoth") : t("handOne");
 
-    for (let i = 0; i < Math.min(hands.length, 2); i += 1) {
+    const maxHands = state.settings?.dualHands === false ? 1 : Math.min(hands.length, 2);
+    for (let i = 0; i < maxHands; i += 1) {
       const rawLandmarks = hands[i];
       const handState = state.hands[i];
 
       // Jitter Reduction Filter (EMA smoothing):
-      const SMOOTH = 0.65;
+      const SMOOTH = state.settings?.smoothing || 0.65;
       const landmarks = rawLandmarks.map((curr, idx) => {
         const prev = handState.smoothed?.[idx];
         if (!prev) return { ...curr };
@@ -568,7 +806,7 @@ function onHands(hands, detectMs) {
       handState.lastGesture = gesture;
     }
 
-    for (let i = hands.length; i < state.hands.length; i += 1) {
+    for (let i = maxHands; i < state.hands.length; i += 1) {
       if (state.hands[i].grab) releaseGrab(i);
       state.hands[i].lastGesture = null;
     }
@@ -576,6 +814,121 @@ function onHands(hands, detectMs) {
 
   const gap = nextGap(hands.length > 0, detectMs);
   scheduleDetect(gap);
+}
+
+function drawCameraLandmarks(hands) {
+  const canvas = document.getElementById("cameraCanvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const w = video.videoWidth || canvas.clientWidth || 320;
+  const h = video.videoHeight || canvas.clientHeight || 240;
+  if (canvas.width !== w) canvas.width = w;
+  if (canvas.height !== h) canvas.height = h;
+
+  ctx.clearRect(0, 0, w, h);
+  if (!hands || hands.length === 0) return;
+
+  const BONES = [
+    [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
+    [0, 5], [5, 6], [6, 7], [7, 8], // Index
+    [0, 9], [9, 10], [10, 11], [11, 12], // Middle
+    [0, 13], [13, 14], [14, 15], [15, 16], // Ring
+    [0, 17], [17, 18], [18, 19], [19, 20], // Pinky
+    [5, 9], [9, 13], [13, 17], // Knuckles
+  ];
+
+  const colors = [
+    { bone: "rgba(0, 245, 255, 0.75)", joint: "#00f5ff", tip: "#39ff14" },
+    { bone: "rgba(244, 114, 182, 0.75)", joint: "#f472b6", tip: "#ffd700" },
+  ];
+
+  hands.forEach((hand, hIdx) => {
+    const c = colors[hIdx % colors.length];
+
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = c.bone;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    for (const [start, end] of BONES) {
+      const p1 = hand[start];
+      const p2 = hand[end];
+      if (!p1 || !p2) continue;
+      ctx.beginPath();
+      ctx.moveTo(p1.x * w, p1.y * h);
+      ctx.lineTo(p2.x * w, p2.y * h);
+      ctx.stroke();
+    }
+
+    for (let i = 0; i < hand.length; i += 1) {
+      const p = hand[i];
+      if (!p) continue;
+      const isTip = i === 4 || i === 8 || i === 12 || i === 16 || i === 20;
+      ctx.beginPath();
+      ctx.arc(p.x * w, p.y * h, isTip ? 5.5 : 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = isTip ? c.tip : c.joint;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+    }
+  });
+}
+
+function updateGestureHud(hands) {
+  const badge = document.getElementById("gestureBadge");
+  const icon = badge?.querySelector(".gesture-icon");
+  const name = badge?.querySelector(".gesture-name");
+  const liveDot = document.getElementById("liveCameraDot");
+
+  if (!hands || hands.length === 0) {
+    if (icon) icon.textContent = "✨";
+    if (name) name.textContent = t("noGesture");
+    if (liveDot) liveDot.style.background = "#eab308";
+    updateFingerPills(null);
+    return;
+  }
+
+  if (liveDot) liveDot.style.background = "#22c55e";
+  const primaryHand = hands[0];
+  const gesture = classifyGesture(primaryHand);
+
+  const ICONS = {
+    web: { icon: "🕸️", title: "AĞ ATIŞI (Spider-Man)" },
+    fist: { icon: "✊", title: "PENCERE TUTMA (Yumruk)" },
+    palm: { icon: "🖐️", title: "SERBEST BIRAK / İPTAL" },
+    flick: { icon: "🤌", title: "SEKME KAPAT (Gojo Moru)" },
+    point: { icon: "👆", title: "HEDEFLEME (İşaret)" },
+  };
+
+  const info = ICONS[gesture] || { icon: "👋", title: "El Algılandı" };
+  if (icon) icon.textContent = info.icon;
+  if (name) name.textContent = info.title;
+
+  updateFingerPills(primaryHand);
+}
+
+function updateFingerPills(landmarks) {
+  const container = document.getElementById("fingerStatusBar");
+  if (!container) return;
+  const pills = container.querySelectorAll(".finger-pill");
+  if (!landmarks) {
+    pills.forEach((p) => p.classList.remove("active"));
+    return;
+  }
+
+  const extended = [
+    Math.hypot(landmarks[4].x - landmarks[2].x, landmarks[4].y - landmarks[2].y) > 0.08,
+    landmarks[8].y < landmarks[6].y,
+    landmarks[12].y < landmarks[10].y,
+    landmarks[16].y < landmarks[14].y,
+    landmarks[20].y < landmarks[18].y,
+  ];
+
+  pills.forEach((pill, idx) => {
+    if (extended[idx]) pill.classList.add("active");
+    else pill.classList.remove("active");
+  });
 }
 
 function nextGap(hand, detectMs) {
@@ -932,10 +1285,22 @@ function render() {
     safetyToggle.setAttribute("aria-pressed", String(state.settings.safetyGuard !== false));
   }
 
+  const websToggle = document.getElementById("websToggle");
+  if (websToggle) {
+    websToggle.setAttribute("aria-pressed", String(state.settings.showWebs !== false));
+  }
+
   const focusFrameToggle = document.getElementById("focusFrameToggle");
   if (focusFrameToggle) {
-    focusFrameToggle.setAttribute("aria-pressed", String(Boolean(state.settings.focusFrameOnly)));
+    focusFrameToggle.setAttribute("aria-pressed", String(state.settings.showFocusFrame !== false));
   }
+
+  const dualHandsToggle = document.getElementById("dualHandsToggle");
+  if (dualHandsToggle) {
+    dualHandsToggle.setAttribute("aria-pressed", String(state.settings.dualHands !== false));
+  }
+
+  if (state._syncCustomFxUI) state._syncCustomFxUI();
 
   document.getElementById("autostartToggle").setAttribute("aria-pressed", String(state.settings.startWithWindows));
   document.getElementById("idleToggle").setAttribute("aria-pressed", String(state.settings.releaseCameraWhenIdle));
@@ -974,6 +1339,7 @@ function renderTheme() {
     ["symbiote", "themeSymbiote"],
     ["neon", "themeNeon"],
     ["gojo", "themeGojo"],
+    ["custom", "themeCustom"],
   ];
   for (const [id, key] of themes) {
     const button = document.createElement("button");
