@@ -56,3 +56,28 @@ export async function emitTo(target, name, payload) {
   if (!mod) return;
   return mod.emitTo(target, name, payload);
 }
+
+export async function adjustVolume(delta) {
+  return invoke("adjust_volume", { delta });
+}
+
+export async function mediaPlayPause() {
+  return invoke("media_play_pause");
+}
+
+export async function mediaNextTrack() {
+  return invoke("media_next_track");
+}
+
+export async function showDesktop() {
+  return invoke("show_desktop");
+}
+
+export async function zoomDesktop(zoomIn) {
+  return invoke("zoom_desktop", { zoomIn });
+}
+
+export async function scrollWheel(delta) {
+  return invoke("scroll_wheel", { delta });
+}
+

@@ -62,6 +62,16 @@ pub struct Settings {
     pub ai_endpoint: String,
     #[serde(default = "default_ai_model")]
     pub ai_model: String,
+    #[serde(default = "default_true", alias = "airVolumeToggle")]
+    pub air_volume_enabled: bool,
+    #[serde(default = "default_true", alias = "airMediaToggle")]
+    pub air_media_enabled: bool,
+    #[serde(default = "default_true", alias = "ninjaShieldToggle")]
+    pub ninja_shield_enabled: bool,
+    #[serde(default = "default_true", alias = "airZoomToggle")]
+    pub air_zoom_enabled: bool,
+    #[serde(default = "default_true", alias = "airScrollToggle")]
+    pub air_scroll_enabled: bool,
 }
 
 fn default_target_fps() -> u32 {
@@ -124,6 +134,11 @@ impl Default for Settings {
             ai_api_key: String::new(),
             ai_endpoint: "http://localhost:11434".into(),
             ai_model: "gemini-2.5-flash".into(),
+            air_volume_enabled: true,
+            air_media_enabled: true,
+            ninja_shield_enabled: true,
+            air_zoom_enabled: true,
+            air_scroll_enabled: true,
         }
     }
 }

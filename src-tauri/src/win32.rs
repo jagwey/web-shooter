@@ -34,9 +34,11 @@ mod platform {
     use windows::Win32::Graphics::Gdi::ClientToScreen;
     use windows::Win32::System::Threading::GetCurrentProcessId;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
-        KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_RMENU,
-        VK_RSHIFT, VK_RWIN, VK_W,
+        GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT,
+        KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, MOUSEINPUT, MOUSEEVENTF_WHEEL, VIRTUAL_KEY,
+        VK_CONTROL, VK_D, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MEDIA_NEXT_TRACK, VK_MEDIA_PLAY_PAUSE,
+        VK_OEM_MINUS, VK_OEM_PLUS, VK_RMENU, VK_RSHIFT, VK_RWIN, VK_VOLUME_DOWN, VK_VOLUME_UP,
+        VK_W,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GA_ROOT, GWL_EXSTYLE, GetAncestor, GetClassNameW, GetForegroundWindow,
@@ -482,6 +484,22 @@ mod platform {
         }
     }
 
+    fn mouse_wheel(delta: i32) -> INPUT {
+        INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx: 0,
+                    dy: 0,
+                    mouseData: delta as u32,
+                    dwFlags: MOUSEEVENTF_WHEEL,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        }
+    }
+
     /// Ctrl+W only to `raw`, and only if it is (or can become) the foreground window.
     /// Held Shift/Alt/Win are released first so the stroke never becomes Ctrl+Shift+W.
     pub fn close_active_tab(raw: i64) -> Result<(), String> {
@@ -532,12 +550,109 @@ mod platform {
             Ok(describe(hwnd))
         }
     }
+
+    pub fn adjust_volume(delta: i32) -> Result<(), String> {
+        if delta == 0 {
+            return Ok(());
+        }
+        let vk = if delta > 0 { VK_VOLUME_UP } else { VK_VOLUME_DOWN };
+        let count = (delta.unsigned_abs() as usize).min(20);
+        let mut inputs = Vec::with_capacity(count * 2);
+        for _ in 0..count {
+            inputs.push(key(vk, false));
+            inputs.push(key(vk, true));
+        }
+        let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+        if sent as usize != inputs.len() {
+            return Err("volume input blocked".into());
+        }
+        Ok(())
+    }
+
+    pub fn media_play_pause() -> Result<(), String> {
+        let inputs = [
+            key(VK_MEDIA_PLAY_PAUSE, false),
+            key(VK_MEDIA_PLAY_PAUSE, true),
+        ];
+        let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+        if sent as usize != inputs.len() {
+            return Err("media key input blocked".into());
+        }
+        Ok(())
+    }
+
+    pub fn media_next_track() -> Result<(), String> {
+        let inputs = [
+            key(VK_MEDIA_NEXT_TRACK, false),
+            key(VK_MEDIA_NEXT_TRACK, true),
+        ];
+        let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+        if sent as usize != inputs.len() {
+            return Err("media key input blocked".into());
+        }
+        Ok(())
+    }
+
+    pub fn show_desktop() -> Result<(), String> {
+        let mut inputs = Vec::with_capacity(10);
+        for vk in [VK_LSHIFT, VK_RSHIFT, VK_LMENU, VK_RMENU, VK_CONTROL] {
+            if unsafe { GetAsyncKeyState(vk.0 as i32) } < 0 {
+                inputs.push(key(vk, true));
+            }
+        }
+        inputs.extend([
+            key(VK_LWIN, false),
+            key(VK_D, false),
+            key(VK_D, true),
+            key(VK_LWIN, true),
+        ]);
+        let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+        if sent as usize != inputs.len() {
+            return Err("show desktop input blocked".into());
+        }
+        Ok(())
+    }
+
+    pub fn zoom_desktop(zoom_in: bool) -> Result<(), String> {
+        let vk = if zoom_in { VK_OEM_PLUS } else { VK_OEM_MINUS };
+        let mut inputs = Vec::with_capacity(10);
+        for mod_vk in [VK_LMENU, VK_RMENU, VK_CONTROL, VK_LSHIFT, VK_RSHIFT] {
+            if unsafe { GetAsyncKeyState(mod_vk.0 as i32) } < 0 {
+                inputs.push(key(mod_vk, true));
+            }
+        }
+        inputs.extend([
+            key(VK_LWIN, false),
+            key(vk, false),
+            key(vk, true),
+            key(VK_LWIN, true),
+        ]);
+        let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+        if sent as usize != inputs.len() {
+            return Err("zoom input blocked".into());
+        }
+        Ok(())
+    }
+
+    pub fn scroll_wheel(delta: i32) -> Result<(), String> {
+        if delta == 0 {
+            return Ok(());
+        }
+        let inputs = [mouse_wheel(delta)];
+        let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+        if sent != 1 {
+            return Err("scroll wheel input blocked".into());
+        }
+        Ok(())
+    }
 }
 
 #[cfg(windows)]
 pub use platform::{
-    camera_holders, close_active_tab, close_window, fling_window, get_foreground_window,
-    list_windows, minimize_window, move_window, nudge_window, place_window, window_at, window_client,
+    adjust_volume, camera_holders, close_active_tab, close_window, fling_window,
+    get_foreground_window, list_windows, media_next_track, media_play_pause, minimize_window,
+    move_window, nudge_window, place_window, scroll_wheel, show_desktop, window_at, window_client,
+    zoom_desktop,
 };
 
 #[cfg(not(windows))]
@@ -604,4 +719,34 @@ pub fn minimize_window(_raw: i64) -> Result<(), String> {
 #[cfg(not(windows))]
 pub fn get_foreground_window() -> Result<Option<DesktopWindow>, String> {
     Ok(None)
+}
+
+#[cfg(not(windows))]
+pub fn adjust_volume(_delta: i32) -> Result<(), String> {
+    Err("win32-only".into())
+}
+
+#[cfg(not(windows))]
+pub fn media_play_pause() -> Result<(), String> {
+    Err("win32-only".into())
+}
+
+#[cfg(not(windows))]
+pub fn media_next_track() -> Result<(), String> {
+    Err("win32-only".into())
+}
+
+#[cfg(not(windows))]
+pub fn show_desktop() -> Result<(), String> {
+    Err("win32-only".into())
+}
+
+#[cfg(not(windows))]
+pub fn zoom_desktop(_zoom_in: bool) -> Result<(), String> {
+    Err("win32-only".into())
+}
+
+#[cfg(not(windows))]
+pub fn scroll_wheel(_delta: i32) -> Result<(), String> {
+    Err("win32-only".into())
 }

@@ -464,3 +464,450 @@ export function voteGesture(votes, raw, last) {
   for (const [gesture, count] of counts) if (count >= VOTE_MIN) return gesture;
   return last;
 }
+
+// ============================================================================
+// 5 NEW GESTURE RECOGNITION ALGORITHMS & ANTI-COLLISION ENGINE
+// ============================================================================
+
+export const AIR_KNOB_MIN_GRIP = 0.08;
+export const AIR_KNOB_MAX_GRIP = 0.65;
+
+export const AIR_MEDIA_HOLD_RADIUS = 0.045;
+export const AIR_MEDIA_HOLD_MAX_VELOCITY = 0.12;
+export const AIR_MEDIA_HOLD_MIN_DURATION = 1000;
+
+export const AIR_MEDIA_FLICK_MIN_DX = 0.12;
+export const AIR_MEDIA_FLICK_MIN_VX = 0.65;
+export const AIR_MEDIA_FLICK_MAX_DRIFT = 0.50;
+
+export const NINJA_SHIELD_MIN_DY = 0.14;
+export const NINJA_SHIELD_MIN_VY = 0.85;
+export const NINJA_SHIELD_MAX_SYNC_MS = 75;
+export const NINJA_SHIELD_MAX_DRIFT = 0.55;
+
+export const PINCH_ZOOM_CLOSED = 0.32;
+export const PINCH_ZOOM_OPEN = 0.62;
+
+export const AIR_SCROLL_MAX_GAP_RATIO = 0.32;
+export const PEACE_SIGN_MIN_GAP_RATIO = 0.42;
+
+/**
+ * DJ Air Knob: Thumb tip (4) and Index tip (8) circular/angular rotation in the air.
+ * - d_knob = spanMetric(p4, p8, ar) / L_palm in [0.08, 0.65]
+ * - Anti-collision invariant: Middle (12), Ring (16), Pinky (20) must be CLOSED
+ *   (100% rejection of OK Flick which requires 12, 16, 20 extended).
+ * - Dial angle: theta = atan2((y8 - y4), (x8 - x4) * ar).
+ * - Returns { active: boolean, angle: number, distance: number }.
+ */
+export function isAirKnobGrip(points, options = {}) {
+  if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) {
+    return { active: false, angle: 0, distance: 0 };
+  }
+
+  const ar = typeof options === "object" && (options.aspectRatio || options.ar)
+    ? Number(options.aspectRatio || options.ar)
+    : 1.0;
+  const minGrip = options.minGrip ?? AIR_KNOB_MIN_GRIP;
+  const maxGrip = options.maxGrip ?? AIR_KNOB_MAX_GRIP;
+
+  const wrist = points[0];
+  const palmScale = palmReferenceScale(points, ar);
+  if (palmScale < 1e-4) {
+    return { active: false, angle: 0, distance: 0 };
+  }
+
+  const tipSpan = spanMetric(points[4], points[8], ar);
+  const dKnob = tipSpan / palmScale;
+
+  // Anti-collision invariant: Middle (12), Ring (16), Pinky (20) MUST BE CLOSED
+  const middleClosed = isFingerClosed(points[12], points[10], wrist, points[9], { ar });
+  const ringClosed = isFingerClosed(points[16], points[14], wrist, points[13], { ar });
+  const pinkyClosed = isFingerClosed(points[20], points[18], wrist, points[17], { ar });
+
+  const active = dKnob >= minGrip && dKnob <= maxGrip && middleClosed && ringClosed && pinkyClosed;
+
+  const dx = (points[8].x - points[4].x) * ar;
+  const dy = points[8].y - points[4].y;
+  const angle = Math.atan2(dy, dx);
+
+  return { active, angle, distance: dKnob };
+}
+
+function extractPointSample(item) {
+  if (!item) return null;
+  const pts = item.points || item.landmarks;
+  if (pts && pts.length >= 10 && pts[9]) {
+    const t = Number(item.t ?? item.time ?? item.timestamp ?? 0);
+    return { t, x: pts[9].x, y: pts[9].y, points: pts };
+  }
+  if (Array.isArray(item) && item.length >= 10 && typeof item[9]?.x === "number") {
+    const t = Number(item.t ?? 0);
+    return { t, x: item[9].x, y: item[9].y, points: item };
+  }
+  if (typeof item.x === "number" && typeof item.y === "number") {
+    const t = Number(item.t ?? item.time ?? item.timestamp ?? 0);
+    return { t, x: item.x, y: item.y };
+  }
+  return null;
+}
+
+function buildTrajectory(points, history = [], options = {}) {
+  const trajectory = [];
+  if (Array.isArray(history)) {
+    for (const h of history) {
+      const s = extractPointSample(h);
+      if (s) trajectory.push(s);
+    }
+  }
+  if (points && points[9]) {
+    const curX = points[9].x;
+    const curY = points[9].y;
+    let now = options.now ?? options.t ?? options.time ?? options.timestamp;
+    if (now === undefined) {
+      if (trajectory.length > 0) {
+        const last = trajectory[trajectory.length - 1];
+        if (Math.hypot(last.x - curX, last.y - curY) < 1e-4) {
+          now = last.t;
+        } else {
+          now = last.t + 16;
+        }
+      } else {
+        now = 0;
+      }
+    }
+    now = Number(now);
+    if (trajectory.length === 0 || trajectory[trajectory.length - 1].t < now) {
+      trajectory.push({ t: now, x: curX, y: curY, points });
+    } else if (trajectory.length > 0 && trajectory[trajectory.length - 1].t === now) {
+      if (!trajectory[trajectory.length - 1].points) {
+        trajectory[trajectory.length - 1].points = points;
+      }
+    }
+  }
+  return trajectory;
+}
+
+/**
+ * Air Media Hold: Open palm held steady in the air for 1 second.
+ * - isOpenPalm(points) must be satisfied.
+ * - Palm center p9 held steady within spatial radius R <= 0.045 with velocity v < 0.12 s^-1 for duration >= 1000 ms.
+ * - Returns boolean.
+ */
+export function isAirMediaHold(points, history = [], options = {}) {
+  if (!points || !isOpenPalm(points)) return false;
+
+  const minDuration = options.minDuration ?? options.duration ?? AIR_MEDIA_HOLD_MIN_DURATION;
+  const maxRadius = options.maxRadius ?? options.radius ?? AIR_MEDIA_HOLD_RADIUS;
+  const maxVelocity = options.maxVelocity ?? options.velocity ?? AIR_MEDIA_HOLD_MAX_VELOCITY;
+
+  const trajectory = buildTrajectory(points, history, options);
+  if (trajectory.length < 2) return false;
+
+  const tEnd = trajectory[trajectory.length - 1].t;
+  const tStart = trajectory[0].t;
+  const totalDuration = tEnd - tStart;
+  if (totalDuration < minDuration) return false;
+
+  const windowSamples = trajectory.filter((s) => s.t >= tEnd - minDuration);
+  if (windowSamples.length < 2) return false;
+
+  const anchor = windowSamples[0];
+
+  // 1. Spatial radius check
+  for (const s of windowSamples) {
+    const dist = Math.hypot(s.x - anchor.x, s.y - anchor.y);
+    if (dist > maxRadius) return false;
+  }
+
+  // 2. Velocity check
+  const dtSec = (tEnd - windowSamples[0].t) / 1000;
+  if (dtSec <= 0) return false;
+
+  const totalDist = Math.hypot(
+    windowSamples[windowSamples.length - 1].x - windowSamples[0].x,
+    windowSamples[windowSamples.length - 1].y - windowSamples[0].y
+  );
+  const avgVelocity = totalDist / dtSec;
+  if (avgVelocity >= maxVelocity) return false;
+
+  for (let i = 0; i < windowSamples.length - 1; i += 1) {
+    const segDt = (windowSamples[i + 1].t - windowSamples[i].t) / 1000;
+    if (segDt > 0.01) {
+      const segDist = Math.hypot(windowSamples[i + 1].x - windowSamples[i].x, windowSamples[i + 1].y - windowSamples[i].y);
+      const segV = segDist / segDt;
+      if (segV >= maxVelocity * 1.5) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Air Media Flick: Open palm flick to the right for Next Track.
+ * - isOpenPalm(points) must be satisfied.
+ * - Rapid horizontal displacement to the right: Delta x >= +0.12, vx >= 0.65 s^-1, |vy| <= 0.50 * vx.
+ * - Returns boolean.
+ */
+export function isAirMediaFlick(points, history = [], options = {}) {
+  if (!points || !isOpenPalm(points)) return false;
+
+  const minDx = options.minDx ?? AIR_MEDIA_FLICK_MIN_DX;
+  const minVx = options.minVx ?? AIR_MEDIA_FLICK_MIN_VX;
+  const maxDriftRatio = options.maxDriftRatio ?? options.maxDrift ?? AIR_MEDIA_FLICK_MAX_DRIFT;
+  const mirrored = Boolean(options.mirrored);
+  const dir = mirrored ? -1 : 1;
+
+  const trajectory = buildTrajectory(points, history, options);
+  if (trajectory.length < 2) return false;
+
+  const tLatest = trajectory[trajectory.length - 1].t;
+  const windowMs = options.windowMs ?? 400;
+  const recent = trajectory.filter((s) => tLatest - s.t <= windowMs);
+  if (recent.length < 2) return false;
+
+  for (let i = 0; i < recent.length; i += 1) {
+    for (let j = i + 1; j < recent.length; j += 1) {
+      const dt = (recent[j].t - recent[i].t) / 1000;
+      if (dt < 0.03) continue;
+
+      const dx = (recent[j].x - recent[i].x) * dir;
+      const dy = recent[j].y - recent[i].y;
+
+      if (dx < minDx) continue;
+
+      const vx = dx / dt;
+      if (vx < minVx) continue;
+
+      const vy = Math.abs(dy) / dt;
+      if (vy <= maxDriftRatio * vx) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function extractDualTrajectories(hand0, hand1, history = [], options = {}) {
+  let hist0 = [];
+  let hist1 = [];
+
+  if (Array.isArray(history)) {
+    if (history.length === 2 && Array.isArray(history[0]) && Array.isArray(history[1])) {
+      hist0 = history[0];
+      hist1 = history[1];
+    } else {
+      for (const item of history) {
+        if (!item) continue;
+        if (item.hand0 || item.hand1) {
+          if (item.hand0) hist0.push({ t: item.t, ...(extractPointSample(item.hand0) || item.hand0) });
+          if (item.hand1) hist1.push({ t: item.t, ...(extractPointSample(item.hand1) || item.hand1) });
+        } else if (Array.isArray(item.hands) && item.hands.length >= 2) {
+          hist0.push({ t: item.t, ...(extractPointSample(item.hands[0]) || item.hands[0]) });
+          hist1.push({ t: item.t, ...(extractPointSample(item.hands[1]) || item.hands[1]) });
+        } else if (item.handIndex === 0) {
+          hist0.push(item);
+        } else if (item.handIndex === 1) {
+          hist1.push(item);
+        } else if (typeof item.y0 === "number" && typeof item.y1 === "number") {
+          hist0.push({ t: item.t, x: item.x0 ?? 0.5, y: item.y0 });
+          hist1.push({ t: item.t, x: item.x1 ?? 0.5, y: item.y1 });
+        }
+      }
+    }
+  } else if (typeof history === "object" && history !== null) {
+    hist0 = history.hand0 || history.h0 || [];
+    hist1 = history.hand1 || history.h1 || [];
+  }
+
+  const traj0 = buildTrajectory(hand0, hist0, options);
+  const traj1 = buildTrajectory(hand1, hist1, options);
+  return [traj0, traj1];
+}
+
+function findDownwardStroke(traj, minDy, minVy, maxDriftRatio, windowMs) {
+  if (!traj || traj.length < 2) return null;
+  const tLatest = traj[traj.length - 1].t;
+  const recent = traj.filter((s) => tLatest - s.t <= windowMs);
+  if (recent.length < 2) return null;
+
+  let best = null;
+  for (let i = 0; i < recent.length; i += 1) {
+    for (let j = i + 1; j < recent.length; j += 1) {
+      const dt = (recent[j].t - recent[i].t) / 1000;
+      if (dt < 0.03) continue;
+
+      const dy = recent[j].y - recent[i].y;
+      if (dy < minDy) continue;
+
+      const vy = dy / dt;
+      if (vy < minVy) continue;
+
+      const dx = Math.abs(recent[j].x - recent[i].x);
+      const vx = dx / dt;
+      if (vx > maxDriftRatio * vy) continue;
+
+      if (!best || vy > best.vy) {
+        best = { dy, vy, vx, tStart: recent[i].t, tEnd: recent[j].t, tPeak: (recent[i].t + recent[j].t) / 2 };
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Ninja / Boss Shield: Two open palms flicked downward simultaneously.
+ * - Both hands must satisfy isOpenPalm.
+ * - Downward displacement Delta y >= 0.14, downward velocity vy >= 0.85 s^-1 on both hands.
+ * - Synchronicity |t0 - t1| <= 75 ms.
+ * - Rejects any motion with excessive horizontal drift.
+ * - Returns boolean.
+ */
+export function isNinjaShield(hand0, hand1, history = [], options = {}) {
+  if (!hand0 || !hand1 || hand0.length < 21 || hand1.length < 21) return false;
+  if (!isOpenPalm(hand0) || !isOpenPalm(hand1)) return false;
+
+  const minDy = options.minDy ?? NINJA_SHIELD_MIN_DY;
+  const minVy = options.minVy ?? NINJA_SHIELD_MIN_VY;
+  const maxSyncMs = options.maxSyncMs ?? NINJA_SHIELD_MAX_SYNC_MS;
+  const maxDriftRatio = options.maxDriftRatio ?? NINJA_SHIELD_MAX_DRIFT;
+  const windowMs = options.windowMs ?? 400;
+
+  const [traj0, traj1] = extractDualTrajectories(hand0, hand1, history, options);
+  const stroke0 = findDownwardStroke(traj0, minDy, minVy, maxDriftRatio, windowMs);
+  const stroke1 = findDownwardStroke(traj1, minDy, minVy, maxDriftRatio, windowMs);
+
+  if (!stroke0 || !stroke1) return false;
+
+  const syncDiff = Math.abs(stroke0.tPeak - stroke1.tPeak);
+  if (syncDiff > maxSyncMs) return false;
+
+  return true;
+}
+
+/**
+ * Pinch-to-Zoom Desktop: Two fingers opening and closing in the air.
+ * - Active fingers: Thumb (4) and Index (8). Middle (12), Ring (16), Pinky (20) must be CLOSED.
+ * - Distance metric d_pinch = spanMetric(p4, p8, ar) / L_palm.
+ * - Schmitt trigger dual-threshold: Closed boundary D_closed = 0.32, Open boundary D_open = 0.62, deadband [0.32, 0.62].
+ * - Returns { active: boolean, distance: number, isClosed: boolean, isOpen: boolean, action: string | null }.
+ */
+export function isPinchZoom(points, optionsOrHistory = {}, maybeOptions = {}) {
+  let options = optionsOrHistory;
+  let history = [];
+  if (Array.isArray(optionsOrHistory)) {
+    history = optionsOrHistory;
+    options = maybeOptions || {};
+  } else if (optionsOrHistory && Array.isArray(optionsOrHistory.history)) {
+    history = optionsOrHistory.history;
+  }
+
+  if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) {
+    return { active: false, distance: 0, isClosed: false, isOpen: false, action: null };
+  }
+
+  const ar = typeof options === "object" && (options.aspectRatio || options.ar)
+    ? Number(options.aspectRatio || options.ar)
+    : 1.0;
+  const dClosed = options.closedThreshold ?? options.dClosed ?? PINCH_ZOOM_CLOSED;
+  const dOpen = options.openThreshold ?? options.dOpen ?? PINCH_ZOOM_OPEN;
+
+  const wrist = points[0];
+  const palmScale = palmReferenceScale(points, ar);
+  if (palmScale < 1e-4) {
+    return { active: false, distance: 0, isClosed: false, isOpen: false, action: null };
+  }
+
+  // Active fingers: Thumb (4) and Index (8).
+  // Inactive fingers: Middle (12), Ring (16), Pinky (20) MUST BE CLOSED
+  const middleClosed = isFingerClosed(points[12], points[10], wrist, points[9], { ar });
+  const ringClosed = isFingerClosed(points[16], points[14], wrist, points[13], { ar });
+  const pinkyClosed = isFingerClosed(points[20], points[18], wrist, points[17], { ar });
+
+  const tipSpan = spanMetric(points[4], points[8], ar);
+  const distance = tipSpan / palmScale;
+
+  const active = Boolean(middleClosed && ringClosed && pinkyClosed);
+  const isClosed = active && distance <= dClosed;
+  const isOpen = active && distance >= dOpen;
+
+  let action = null;
+  const wasClosed = Boolean(options.wasClosed ?? (options.prevState === "closed"));
+  const wasOpen = Boolean(options.wasOpen ?? (options.prevState === "open"));
+
+  if (active) {
+    if (wasClosed && isOpen) {
+      action = "zoom_in";
+    } else if (wasOpen && isClosed) {
+      action = "zoom_out";
+    } else if (history.length > 0) {
+      for (let i = history.length - 1; i >= 0; i -= 1) {
+        const prev = history[i];
+        const prevDist = typeof prev.distance === "number"
+          ? prev.distance
+          : (prev.points ? (spanMetric(prev.points[4], prev.points[8], ar) / (palmReferenceScale(prev.points, ar) || 1)) : null);
+        if (prevDist !== null) {
+          if (prevDist <= dClosed && distance >= dOpen) {
+            action = "zoom_in";
+            break;
+          } else if (prevDist >= dOpen && distance <= dClosed) {
+            action = "zoom_out";
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  return { active, distance, isClosed, isOpen, action };
+}
+
+/**
+ * Air Scroll: Index + middle finger moving together up/down simulating mouse wheel.
+ * - Index and Middle extended (isFingerExtended), Ring and Pinky closed (isFingerClosed).
+ * - Parallel alignment tip gap: spanMetric(p8, p12, ar) / W_palm <= 0.32.
+ * - Guaranteed isolation deadband [0.32, 0.42]: ratio <= 0.32 is Air Scroll; ratio > 0.42 is Peace Sign (isPeaceSign).
+ * - Returns { active: boolean, center: { x: number, y: number }, ratio: number }.
+ */
+export function isAirScroll(points, options = {}) {
+  if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) {
+    return { active: false, center: { x: 0, y: 0 }, ratio: 0 };
+  }
+
+  const ar = typeof options === "object" && (options.aspectRatio || options.ar)
+    ? Number(options.aspectRatio || options.ar)
+    : 1.0;
+  const maxRatio = options.maxRatio ?? AIR_SCROLL_MAX_GAP_RATIO;
+
+  const wrist = points[0];
+
+  const indexOpen = isFingerExtended(points[8], points[6], wrist, points[5], { ar });
+  const middleOpen = isFingerExtended(points[12], points[10], wrist, points[9], { ar });
+
+  const ringClosed = isFingerClosed(points[16], points[14], wrist, points[13], { ar });
+  const pinkyClosed = isFingerClosed(points[20], points[18], wrist, points[17], { ar });
+
+  if (!indexOpen || !middleOpen || !ringClosed || !pinkyClosed) {
+    return { active: false, center: { x: 0, y: 0 }, ratio: 0 };
+  }
+
+  const palmBreadth = spanMetric(points[5], points[17], ar);
+  if (palmBreadth < 1e-4) {
+    return { active: false, center: { x: 0, y: 0 }, ratio: 0 };
+  }
+
+  const tipGap = spanMetric(points[8], points[12], ar);
+  const ratio = tipGap / palmBreadth;
+
+  const active = ratio <= maxRatio;
+
+  const center = {
+    x: (points[8].x + points[12].x) / 2,
+    y: (points[8].y + points[12].y) / 2,
+  };
+
+  return { active, center, ratio };
+}
+

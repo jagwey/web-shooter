@@ -1,8 +1,8 @@
 import { FilesetResolver, HandLandmarker, PoseLandmarker } from "@mediapipe/tasks-vision";
 import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, migrateBindings, removeBinding, upsertBinding } from "./bindings.js";
 import { DEFAULT_MODELS, OPENAI_PRESETS, autoTileWorkspace, chatWithAi, fetchOllamaModels, optimizeSettingsWithAi, sendAiGreeting, testAiConnection } from "./ai.js";
-import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen } from "./desktop.js";
-import { classifyGesture, hollowPurpleReady, isFingerExtended, isPeaceSign, isFingerGun, isPowerFist, isInFaceDeadzone, voteGesture, wristDepths } from "./gestures.js";
+import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen, adjustVolume, mediaPlayPause, mediaNextTrack, showDesktop, zoomDesktop, scrollWheel } from "./desktop.js";
+import { classifyGesture, hollowPurpleReady, isFingerExtended, isPeaceSign, isFingerGun, isPowerFist, isInFaceDeadzone, voteGesture, wristDepths, isAirKnobGrip, isAirMediaHold, isAirMediaFlick, isNinjaShield, isPinchZoom, isAirScroll } from "./gestures.js";
 import { createHandFilter, filterLandmarks, predict } from "./filter.js";
 import { registerCustomLook } from "./effects.js";
 import { clientOf } from "./target.js";
@@ -256,6 +256,56 @@ function wireChrome() {
   if (bodyTrackingToggle) {
     bodyTrackingToggle.addEventListener("click", () => {
       state.settings.bodyTracking = !state.settings.bodyTracking;
+      persist();
+      render();
+    });
+  }
+
+  const airVolumeToggle = document.getElementById("airVolumeToggle");
+  if (airVolumeToggle) {
+    airVolumeToggle.addEventListener("click", () => {
+      state.settings.airVolumeToggle = !state.settings.airVolumeToggle;
+      state.settings.air_volume_enabled = state.settings.airVolumeToggle;
+      persist();
+      render();
+    });
+  }
+
+  const airMediaToggle = document.getElementById("airMediaToggle");
+  if (airMediaToggle) {
+    airMediaToggle.addEventListener("click", () => {
+      state.settings.airMediaToggle = !state.settings.airMediaToggle;
+      state.settings.air_media_enabled = state.settings.airMediaToggle;
+      persist();
+      render();
+    });
+  }
+
+  const ninjaShieldToggle = document.getElementById("ninjaShieldToggle");
+  if (ninjaShieldToggle) {
+    ninjaShieldToggle.addEventListener("click", () => {
+      state.settings.ninjaShieldToggle = !state.settings.ninjaShieldToggle;
+      state.settings.ninja_shield_enabled = state.settings.ninjaShieldToggle;
+      persist();
+      render();
+    });
+  }
+
+  const airZoomToggle = document.getElementById("airZoomToggle");
+  if (airZoomToggle) {
+    airZoomToggle.addEventListener("click", () => {
+      state.settings.airZoomToggle = !state.settings.airZoomToggle;
+      state.settings.air_zoom_enabled = state.settings.airZoomToggle;
+      persist();
+      render();
+    });
+  }
+
+  const airScrollToggle = document.getElementById("airScrollToggle");
+  if (airScrollToggle) {
+    airScrollToggle.addEventListener("click", () => {
+      state.settings.airScrollToggle = !state.settings.airScrollToggle;
+      state.settings.air_scroll_enabled = state.settings.airScrollToggle;
       persist();
       render();
     });
@@ -597,6 +647,13 @@ async function boot() {
   paintLang();
   const loaded = await invoke("get_settings");
   state.settings = loaded?.unsupported ? fallbackSettings() : loaded;
+  const defaults = fallbackSettings();
+  state.settings = { ...defaults, ...state.settings };
+  if (state.settings.airVolumeToggle === undefined) state.settings.airVolumeToggle = state.settings.air_volume_enabled ?? true;
+  if (state.settings.airMediaToggle === undefined) state.settings.airMediaToggle = state.settings.air_media_enabled ?? true;
+  if (state.settings.ninjaShieldToggle === undefined) state.settings.ninjaShieldToggle = state.settings.ninja_shield_enabled ?? true;
+  if (state.settings.airZoomToggle === undefined) state.settings.airZoomToggle = state.settings.air_zoom_enabled ?? true;
+  if (state.settings.airScrollToggle === undefined) state.settings.airScrollToggle = state.settings.air_scroll_enabled ?? true;
   profiles = loadProfiles(localStorage);
   const startProfile = activeProfile(profiles);
   if (startProfile.settings) {
@@ -682,6 +739,11 @@ function fallbackSettings() {
     customFx: null,
     theme: "sakura",
     sniperTarget: "gemini_web",
+    airVolumeToggle: true,
+    airMediaToggle: true,
+    ninjaShieldToggle: true,
+    airZoomToggle: true,
+    airScrollToggle: true,
   };
 }
 
@@ -754,12 +816,26 @@ async function toggleOverlay() {
 }
 
 async function persist() {
+  if (state.settings) {
+    state.settings.air_volume_enabled = state.settings.airVolumeToggle !== false;
+    state.settings.air_media_enabled = state.settings.airMediaToggle !== false;
+    state.settings.ninja_shield_enabled = state.settings.ninjaShieldToggle !== false;
+    state.settings.air_zoom_enabled = state.settings.airZoomToggle !== false;
+    state.settings.air_scroll_enabled = state.settings.airScrollToggle !== false;
+  }
   const saved = await invoke("save_settings", { settings: state.settings });
   if (saved?.unsupported) {
     render();
     return;
   }
-  if (saved?.settings) state.settings = saved.settings;
+  if (saved?.settings) {
+    state.settings = saved.settings;
+    if (state.settings.airVolumeToggle === undefined) state.settings.airVolumeToggle = state.settings.air_volume_enabled ?? true;
+    if (state.settings.airMediaToggle === undefined) state.settings.airMediaToggle = state.settings.air_media_enabled ?? true;
+    if (state.settings.ninjaShieldToggle === undefined) state.settings.ninjaShieldToggle = state.settings.ninja_shield_enabled ?? true;
+    if (state.settings.airZoomToggle === undefined) state.settings.airZoomToggle = state.settings.air_zoom_enabled ?? true;
+    if (state.settings.airScrollToggle === undefined) state.settings.airScrollToggle = state.settings.air_scroll_enabled ?? true;
+  }
   snapshotProfile();
   if (saved?.warnings?.length) setMessage("cameraMessage", t("hotkeyFail"));
   if (state.overlay?.visible) {
@@ -1192,6 +1268,12 @@ function onHands(hands, detectMs) {
         state.hands[i].lastGesture = null;
         state.hands[i].filter = null;
         state.hands[i].votes = [];
+        state.hands[i].history = [];
+        state.hands[i].lastKnobAngle = null;
+        state.hands[i].dialAccumulator = 0;
+        state.hands[i].pinchState = null;
+        state.hands[i].lastScrollY = null;
+        state.hands[i].scrollAccumulator = 0;
       }
     }
     armIdleRelease();
@@ -1218,6 +1300,13 @@ function onHands(hands, detectMs) {
       });
 
       handState.landmarks = landmarks;
+
+      // Maintain rolling history for trajectory-based gestures (1.6s window)
+      handState.history ||= [];
+      handState.history.push({ t: now, points: landmarks });
+      while (handState.history.length > 0 && now - handState.history[0].t > 1600) {
+        handState.history.shift();
+      }
 
       const ar = (video?.videoWidth && video?.videoHeight) ? (video.videoWidth / video.videoHeight) : (16 / 9);
       // 3D world shape + 3-of-5 frame vote: one noisy frame can neither fire nor drop a pose.
@@ -1250,6 +1339,117 @@ function onHands(hands, detectMs) {
         action = null;
       }
 
+      // --- 5 NEW GESTURE CONTROLS & ANTI-COLLISION ENGINE ---
+
+      // 1. Air Scroll: Parallel index + middle finger vertical motion
+      let airScrollActive = false;
+      if (state.settings?.airScrollToggle !== false) {
+        const scroll = isAirScroll(landmarks, { aspectRatio: ar });
+        if (scroll.active) {
+          airScrollActive = true;
+          action = null; // Collision prevention: suppress peace sign (close_tab)
+          if (handState.lastScrollY != null) {
+            const dy = scroll.center.y - handState.lastScrollY;
+            const WHEEL_DELTA = 120;
+            handState.scrollAccumulator = (handState.scrollAccumulator || 0) + (-dy * 2400);
+            if (Math.abs(handState.scrollAccumulator) >= WHEEL_DELTA) {
+              const notches = Math.trunc(handState.scrollAccumulator / WHEEL_DELTA);
+              if (notches !== 0) {
+                scrollWheel(notches * WHEEL_DELTA).catch(() => {});
+                handState.scrollAccumulator -= notches * WHEEL_DELTA;
+              }
+            }
+          }
+          handState.lastScrollY = scroll.center.y;
+        } else {
+          handState.lastScrollY = null;
+          handState.scrollAccumulator = 0;
+        }
+      } else {
+        handState.lastScrollY = null;
+        handState.scrollAccumulator = 0;
+      }
+
+      // 2. DJ Air Knob: Virtual dial rotation with thumb & index
+      if (state.settings?.airVolumeToggle !== false && !handState.grab && !airScrollActive) {
+        const knob = isAirKnobGrip(landmarks, { aspectRatio: ar });
+        if (knob.active) {
+          if (handState.lastKnobAngle != null) {
+            let dtheta = knob.angle - handState.lastKnobAngle;
+            while (dtheta > Math.PI) dtheta -= 2 * Math.PI;
+            while (dtheta < -Math.PI) dtheta += 2 * Math.PI;
+            handState.dialAccumulator = (handState.dialAccumulator || 0) + dtheta;
+            const STEP_RAD = (15 * Math.PI) / 180;
+            if (Math.abs(handState.dialAccumulator) >= STEP_RAD) {
+              const steps = Math.trunc(handState.dialAccumulator / STEP_RAD);
+              if (steps !== 0) {
+                adjustVolume(steps).catch(() => {});
+                handState.dialAccumulator -= steps * STEP_RAD;
+                handState.pinchState = null; // Collision prevention with pinch zoom
+              }
+            }
+          }
+          handState.lastKnobAngle = knob.angle;
+        } else {
+          handState.lastKnobAngle = null;
+          handState.dialAccumulator = 0;
+        }
+      } else {
+        handState.lastKnobAngle = null;
+        handState.dialAccumulator = 0;
+      }
+
+      // 3. Pinch-to-Zoom Desktop: Magnifier zoom across deadband [0.32, 0.62]
+      if (state.settings?.airZoomToggle !== false && !handState.grab && !airScrollActive) {
+        const pinch = isPinchZoom(landmarks, {
+          prevState: handState.pinchState,
+          aspectRatio: ar,
+        });
+        if (pinch.active) {
+          if (pinch.isClosed) {
+            if (handState.pinchState === "open" && now - (handState.lastZoomAt || 0) >= 260) {
+              zoomDesktop(false).catch(() => {});
+              handState.lastZoomAt = now;
+              handState.dialAccumulator = 0; // Collision prevention with knob dial
+            }
+            handState.pinchState = "closed";
+          } else if (pinch.isOpen) {
+            if (handState.pinchState === "closed" && now - (handState.lastZoomAt || 0) >= 260) {
+              zoomDesktop(true).catch(() => {});
+              handState.lastZoomAt = now;
+              handState.dialAccumulator = 0; // Collision prevention with knob dial
+            }
+            handState.pinchState = "open";
+          }
+        } else {
+          handState.pinchState = null;
+        }
+      } else {
+        handState.pinchState = null;
+      }
+
+      // 4. Air Media Control: Open palm steady hold 1.0s (Play/Pause) & flick right (Next Track)
+      if (state.settings?.airMediaToggle !== false && !handState.grab && gesture === "palm") {
+        if (isAirMediaHold(landmarks, handState.history, { now })) {
+          if (!handState.mediaHoldFired && now - (handState.lastMediaHoldAt || 0) > 1500) {
+            handState.mediaHoldFired = true;
+            handState.lastMediaHoldAt = now;
+            mediaPlayPause().catch(() => {});
+          }
+        } else if (handState.mediaHoldFired && now - (handState.lastMediaHoldAt || 0) > 1500) {
+          handState.mediaHoldFired = false;
+        }
+
+        if (isAirMediaFlick(landmarks, handState.history, { now, mirrored: state.cameraMirrored })) {
+          if (now - (handState.lastMediaFlickAt || 0) > 800) {
+            handState.lastMediaFlickAt = now;
+            mediaNextTrack().catch(() => {});
+          }
+        }
+      } else if (gesture !== "palm") {
+        handState.mediaHoldFired = false;
+      }
+
       const edge = gesture !== handState.lastGesture;
       const point = screenPoint(predict(handState.filter, 8, landmarks[8], PREDICT_MS));
 
@@ -1276,9 +1476,16 @@ function onHands(hands, detectMs) {
       if (state.hands[i].grab) releaseGrab(i);
       state.hands[i].lastGesture = null;
       state.hands[i].votes = [];
+      state.hands[i].history = [];
+      state.hands[i].lastKnobAngle = null;
+      state.hands[i].dialAccumulator = 0;
+      state.hands[i].pinchState = null;
+      state.hands[i].lastScrollY = null;
+      state.hands[i].scrollAccumulator = 0;
     }
     checkPurpleStance(maxHands);
     checkSniperStance(maxHands);
+    checkNinjaShieldStance(maxHands);
   }
 
   const gap = nextGap(hands.length > 0, detectMs);
@@ -1348,6 +1555,21 @@ function checkPurpleStance(handCount) {
   for (const h of state.hands) h.lastWebbed = null;
   cancelGrab(undefined, true);
   triggerHollowPurple(screenPoint(state.hands[front].landmarks[9]), webbed, { closeWindow: true });
+}
+
+// Ninja / Boss Shield stance: dual open palms downward flick with 1200ms anti-rebound cooldown.
+function checkNinjaShieldStance(handCount) {
+  if (handCount < 2 || state.settings?.ninjaShieldToggle === false) return;
+  const now = performance.now();
+  if (now - (state.lastNinjaShieldAt || 0) < 1200) return;
+  const h0 = state.hands[0];
+  const h1 = state.hands[1];
+  if (!h0?.landmarks || !h1?.landmarks) return;
+  const dualHistory = [h0.history || [], h1.history || []];
+  if (isNinjaShield(h0.landmarks, h1.landmarks, dualHistory, { now })) {
+    state.lastNinjaShieldAt = now;
+    showDesktop().catch(() => {});
+  }
 }
 
 let lastCamW = -1;
@@ -2165,6 +2387,26 @@ function render() {
   const bodyTrackingToggle = document.getElementById("bodyTrackingToggle");
   if (bodyTrackingToggle) {
     bodyTrackingToggle.setAttribute("aria-pressed", String(!!state.settings.bodyTracking));
+  }
+  const airVolumeToggle = document.getElementById("airVolumeToggle");
+  if (airVolumeToggle) {
+    airVolumeToggle.setAttribute("aria-pressed", String(state.settings.airVolumeToggle !== false));
+  }
+  const airMediaToggle = document.getElementById("airMediaToggle");
+  if (airMediaToggle) {
+    airMediaToggle.setAttribute("aria-pressed", String(state.settings.airMediaToggle !== false));
+  }
+  const ninjaShieldToggle = document.getElementById("ninjaShieldToggle");
+  if (ninjaShieldToggle) {
+    ninjaShieldToggle.setAttribute("aria-pressed", String(state.settings.ninjaShieldToggle !== false));
+  }
+  const airZoomToggle = document.getElementById("airZoomToggle");
+  if (airZoomToggle) {
+    airZoomToggle.setAttribute("aria-pressed", String(state.settings.airZoomToggle !== false));
+  }
+  const airScrollToggle = document.getElementById("airScrollToggle");
+  if (airScrollToggle) {
+    airScrollToggle.setAttribute("aria-pressed", String(state.settings.airScrollToggle !== false));
   }
 
   if (state._syncCustomFxUI) state._syncCustomFxUI();

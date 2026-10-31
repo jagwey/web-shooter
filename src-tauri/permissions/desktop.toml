@@ -23,4 +23,10 @@ commands.allow = [
   "close_active_tab",
   "minimize_window",
   "get_foreground_window",
+  "adjust_volume",
+  "media_play_pause",
+  "media_next_track",
+  "show_desktop",
+  "zoom_desktop",
+  "scroll_wheel",
 ]

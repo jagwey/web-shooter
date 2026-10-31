@@ -522,6 +522,36 @@ fn get_foreground_window() -> Result<Option<win32::DesktopWindow>, String> {
     win32::get_foreground_window()
 }
 
+#[tauri::command]
+fn adjust_volume(delta: i32) -> Result<(), String> {
+    win32::adjust_volume(delta)
+}
+
+#[tauri::command]
+fn media_play_pause() -> Result<(), String> {
+    win32::media_play_pause()
+}
+
+#[tauri::command]
+fn media_next_track() -> Result<(), String> {
+    win32::media_next_track()
+}
+
+#[tauri::command]
+fn show_desktop() -> Result<(), String> {
+    win32::show_desktop()
+}
+
+#[tauri::command]
+fn zoom_desktop(zoom_in: bool) -> Result<(), String> {
+    win32::zoom_desktop(zoom_in)
+}
+
+#[tauri::command]
+fn scroll_wheel(delta: i32) -> Result<(), String> {
+    win32::scroll_wheel(delta)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -570,7 +600,13 @@ pub fn run() {
             close_window,
             close_active_tab,
             minimize_window,
-            get_foreground_window
+            get_foreground_window,
+            adjust_volume,
+            media_play_pause,
+            media_next_track,
+            show_desktop,
+            zoom_desktop,
+            scroll_wheel
         ])
         .setup(|app| {
             build_tray(app)?;
