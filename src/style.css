@@ -167,11 +167,39 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 
 .shell {
-  width: min(440px, 100%);
+  width: 100%;
+  max-width: 1360px;
   margin: 0 auto;
-  padding: 22px 18px 32px;
+  padding: 16px 20px 28px;
   display: grid;
   gap: 14px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (min-width: 880px) {
+  .dashboard-grid {
+    grid-template-columns: minmax(380px, 460px) 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  .dashboard-left {
+    position: sticky;
+    top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .dashboard-right {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
 }
 
 .top, .brand, .row, .meters, .chips, .bind-form {

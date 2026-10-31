@@ -16,11 +16,12 @@
         "label": "control",
         "title": "Jagwey Web Shooter",
         "url": "index.html",
-        "width": 440,
-        "height": 860,
-        "minWidth": 360,
-        "minHeight": 640,
+        "width": 1180,
+        "height": 820,
+        "minWidth": 640,
+        "minHeight": 520,
         "resizable": true,
+        "maximized": true,
         "visible": true
       },
       {
@@ -40,7 +41,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob:; worker-src 'self' blob:"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' blob: data: https://cdn.jsdelivr.net https://storage.googleapis.com http://localhost:*; worker-src 'self' blob:"
     }
   },
   "bundle": {

@@ -17,9 +17,12 @@
             <p data-i18n="tagline">Masaüstü örtüsü</p>
           </div>
         </div>
-        <div class="lang" role="group" aria-label="Language">
-          <button type="button" id="langTr" data-lang="tr">TR</button>
-          <button type="button" id="langEn" data-lang="en">EN</button>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button type="button" class="btn ghost" id="fullscreenToggleBtn" title="Tam Ekran Aç / Kapat" style="padding: 5px 12px; font-size: 0.85rem; border-radius: 999px;">⛶ <span data-i18n="fullscreen">Tam Ekran</span></button>
+          <div class="lang" role="group" aria-label="Language">
+            <button type="button" id="langTr" data-lang="tr">TR</button>
+            <button type="button" id="langEn" data-lang="en">EN</button>
+          </div>
         </div>
       </header>
 
@@ -55,8 +58,11 @@
         <p class="banner" id="shellBanner" hidden data-i18n="shellOnly">Bu sayfa kontrol yüzü. Örtü ve pencere tutma Windows uygulamasında.</p>
         <p class="banner warn" id="monitorBanner" hidden></p>
 
-        <!-- Live Camera & Hand Testing Studio -->
-        <section class="card camera-studio-card">
+        <div class="dashboard-grid">
+          <!-- Sol Kolon: Canlı Kamera, El İskeleti, Sayaçlar, Gizlilik -->
+          <div class="dashboard-left">
+            <!-- Live Camera & Hand Testing Studio -->
+            <section class="card camera-studio-card">
           <div class="device-row" style="justify-content: space-between; margin-bottom: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <strong style="font-size: 0.98rem;" data-i18n="cameraStudio">Canlı Kamera & El Test Stüdyosu</strong>
@@ -154,7 +160,10 @@
             </div>
           </div>
         </section>
+      </div>
 
+      <!-- Sağ Kolon: Özellikler, Temalar, Custom FX, AI Lab, Monitörler -->
+      <div class="dashboard-right">
         <!-- Features & Hybrid Mode -->
         <section class="card">
           <h2 data-i18n="combinedFeatures">Özellikler & Hibrit Mod</h2>
@@ -357,6 +366,8 @@
           <span data-i18n="credit">Uyarlama: SpiderSense © 2026 Rittika Das, MIT.</span>
           <span data-i18n="inspire">IG reel yalnızca ilhamdır.</span>
         </footer>
+        </div>
+      </div>
       </section>
     </main>
     <script type="module" src="/src/control.js"></script>

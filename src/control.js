@@ -1,3 +1,4 @@
+import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
 import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, removeBinding, upsertBinding } from "./bindings.js";
 import { autoTileWorkspace, chatWithAi, fetchOllamaModels, optimizeSettingsWithAi, sendAiGreeting, testAiConnection } from "./ai.js";
 import { emitTo, inDesktop, invoke, listen } from "./desktop.js";
@@ -151,6 +152,32 @@ function wireChrome() {
     cameraMirrorBtn.addEventListener("click", () => {
       state.cameraMirrored = !state.cameraMirrored;
       document.getElementById("cameraStage")?.classList.toggle("mirrored", state.cameraMirrored);
+    });
+  }
+
+  const fullscreenToggleBtn = document.getElementById("fullscreenToggleBtn");
+  if (fullscreenToggleBtn) {
+    fullscreenToggleBtn.addEventListener("click", async () => {
+      try {
+        if (inDesktop()) {
+          const { getCurrentWindow } = await import("@tauri-apps/api/window");
+          const win = getCurrentWindow();
+          const isMax = await win.isMaximized();
+          if (isMax) {
+            await win.unmaximize();
+          } else {
+            await win.maximize();
+          }
+          return;
+        }
+      } catch (err) {
+        console.warn("Tauri window maximize error:", err);
+      }
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen?.().catch(() => {});
+      } else {
+        document.exitFullscreen?.().catch(() => {});
+      }
     });
   }
 
@@ -619,6 +646,84 @@ async function persist() {
   render();
 }
 
+let landmarker = null;
+let landmarkerLoading = false;
+
+async function ensureLandmarker() {
+  if (landmarker) return landmarker;
+  if (landmarkerLoading) return null;
+  landmarkerLoading = true;
+
+  const modelLabel = document.getElementById("modelLabel");
+  if (modelLabel) modelLabel.textContent = "El modeli yükleniyor…";
+
+  // Sources to try: 1) Local wasm & model, 2) Official CDN
+  const sources = [
+    {
+      wasm: "/mediapipe",
+      model: "/models/hand_landmarker.task",
+      tag: "Yerel",
+    },
+    {
+      wasm: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm",
+      model: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+      tag: "CDN",
+    },
+  ];
+
+  for (const src of sources) {
+    try {
+      console.log(`[MediaPipe] Initializing with ${src.tag}...`);
+      const vision = await FilesetResolver.forVisionTasks(src.wasm);
+
+      // Attempt GPU first, then CPU
+      try {
+        landmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: src.model,
+            delegate: "GPU",
+          },
+          runningMode: "VIDEO",
+          numHands: 2,
+          minHandDetectionConfidence: 0.5,
+          minHandPresenceConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+        });
+        state.delegate = "GPU";
+      } catch (gpuErr) {
+        console.warn("[MediaPipe] GPU failed, falling back to CPU", gpuErr);
+        landmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: src.model,
+            delegate: "CPU",
+          },
+          runningMode: "VIDEO",
+          numHands: 2,
+          minHandDetectionConfidence: 0.5,
+          minHandPresenceConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+        });
+        state.delegate = "CPU";
+      }
+
+      if (landmarker) {
+        state.workerReady = true;
+        landmarkerLoading = false;
+        if (modelLabel) {
+          modelLabel.textContent = `${t("modelReady")} · ${state.delegate} (${src.tag})`;
+        }
+        return landmarker;
+      }
+    } catch (err) {
+      console.warn(`[MediaPipe] Failed with ${src.tag}:`, err);
+    }
+  }
+
+  landmarkerLoading = false;
+  if (modelLabel) modelLabel.textContent = t("modelMissing");
+  return null;
+}
+
 async function startCamera() {
   state.cameraWanted = true;
   state.cameraPaused = false;
@@ -644,10 +749,17 @@ async function startCamera() {
     state.stream = stream;
     video.srcObject = stream;
     await video.play();
-    await ensureWorker();
     await describeCamera();
-    scheduleDetect(0);
     render();
+
+    ensureLandmarker().then((lm) => {
+      if (lm) {
+        scheduleDetect(0);
+      }
+    }).catch((e) => {
+      console.error("[MediaPipe] ensureLandmarker error:", e);
+    });
+
     return true;
   } catch (error) {
     state.cameraWanted = false;
@@ -696,38 +808,6 @@ function stopTracks() {
   video.srcObject = null;
 }
 
-async function ensureWorker() {
-  if (state.workerReady) return;
-  if (state.worker) state.worker.terminate();
-  const worker = new Worker(new URL("./hands-worker.js", import.meta.url), { type: "module" });
-  state.worker = worker;
-  worker.onmessage = onWorker;
-  worker.postMessage({
-    type: "init",
-    wasm: new URL("/mediapipe/", window.location.href).toString(),
-    model: new URL("/models/hand_landmarker.task", window.location.href).toString(),
-  });
-}
-
-function onWorker(event) {
-  const message = event.data;
-  if (message.type === "ready") {
-    state.workerReady = true;
-    state.delegate = message.delegate;
-    document.getElementById("modelLabel").textContent = `${t("modelReady")} · ${message.delegate}`;
-    return;
-  }
-  if (message.type === "error") {
-    document.getElementById("modelLabel").textContent = t("modelMissing");
-    return;
-  }
-  if (message.type === "landmarks") {
-    state.inFlight = false;
-    const hands = message.hands && message.hands.length ? message.hands : message.landmarks ? [message.landmarks] : [];
-    onHands(hands, message.ms || 16);
-  }
-}
-
 function scheduleDetect(delay) {
   clearTimeout(state.detectTimer);
   if (!state.stream) return;
@@ -735,7 +815,7 @@ function scheduleDetect(delay) {
 }
 
 async function detectTick() {
-  if (!state.stream || !state.workerReady || state.inFlight) {
+  if (!state.stream || !landmarker || state.inFlight) {
     scheduleDetect(35);
     return;
   }
@@ -744,11 +824,21 @@ async function detectTick() {
     return;
   }
   try {
-    const bitmap = await createImageBitmap(video);
     state.inFlight = true;
-    state.worker.postMessage({ type: "frame", bitmap, time: performance.now() }, [bitmap]);
-  } catch {
-    scheduleDetect(70);
+    const now = performance.now();
+    const result = landmarker.detectForVideo(video, now);
+    const detectMs = performance.now() - now;
+
+    const hands = result.landmarks || [];
+    onHands(hands, detectMs);
+    state.inFlight = false;
+
+    const targetFps = state.settings?.targetFps || 120;
+    const interval = targetFps >= 120 ? 8 : 16;
+    scheduleDetect(interval);
+  } catch (err) {
+    state.inFlight = false;
+    scheduleDetect(50);
   }
 }
 
