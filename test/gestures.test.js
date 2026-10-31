@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyGesture, countExtendedFingers, isFlickPose, isWebSign, jointAngle, voteGesture } from "../src/gestures.js";
+import { classifyGesture, countExtendedFingers, isFlickPose, isWebSign, isPeaceSign, isFingerGun, isPowerFist, isInFaceDeadzone, matchCustomGesture, jointAngle, voteGesture } from "../src/gestures.js";
 
 function makeHand({ index, middle, ring, pinky }) {
   const points = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.82, z: 0 }));
@@ -153,4 +153,50 @@ test("vote needs 3 of the last 5 frames to switch", () => {
   // One stray frame does not drop the held pose.
   assert.equal(voteGesture(votes, null, "web"), "web");
   assert.equal(votes.length, 5);
+});
+
+test("peace sign is index and middle in V-spread", () => {
+  const hand = makeHand({ index: true, middle: true, ring: false, pinky: false });
+  // Spread index and middle tips apart (V shape)
+  hand[8] = { x: 0.28, y: 0.28, z: 0 };
+  hand[12] = { x: 0.56, y: 0.28, z: 0 };
+  assert.equal(isPeaceSign(hand), true);
+  assert.equal(classifyGesture(hand), "peace");
+});
+
+test("finger gun is index forward and thumb up", () => {
+  const hand = makeHand({ index: true, middle: false, ring: false, pinky: false });
+  // Extend thumb away from palm (upward/outward)
+  hand[4] = { x: 0.15, y: 0.65, z: 0 };
+  assert.equal(isFingerGun(hand), true);
+  assert.equal(classifyGesture(hand), "finger_gun");
+});
+
+test("power fist distinguishes grip from resting hand", () => {
+  const fist = makeHand({ index: false, middle: false, ring: false, pinky: false });
+  // Loose resting hand: thumb loose at 0.5, 0.82
+  assert.equal(isPowerFist(fist), false);
+  // Clamped power grip: thumb locked over index knuckle
+  fist[4] = { x: 0.38, y: 0.62, z: 0 };
+  assert.equal(isPowerFist(fist), true);
+});
+
+test("face deadzone detects hands near chin/head", () => {
+  const chinHand = makeHand({ index: false, middle: false, ring: false, pinky: false });
+  chinHand[0] = { x: 0.5, y: 0.32, z: 0 };
+  chinHand[9] = { x: 0.5, y: 0.25, z: 0 };
+  assert.equal(isInFaceDeadzone(chinHand), true);
+
+  const deskHand = makeHand({ index: false, middle: false, ring: false, pinky: false });
+  deskHand[0] = { x: 0.5, y: 0.75, z: 0 };
+  deskHand[9] = { x: 0.5, y: 0.65, z: 0 };
+  assert.equal(isInFaceDeadzone(deskHand), false);
+});
+
+test("custom gesture template matching recognizes learned poses", () => {
+  const template = makeHand({ index: true, middle: false, ring: false, pinky: true });
+  const samePose = makeHand({ index: true, middle: false, ring: false, pinky: true });
+  const diffPose = makeHand({ index: false, middle: false, ring: false, pinky: false });
+  assert.equal(matchCustomGesture(samePose, template), true);
+  assert.equal(matchCustomGesture(diffPose, template), false);
 });

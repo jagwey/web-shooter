@@ -491,7 +491,9 @@ mod platform {
             let _ = unsafe { SetForegroundWindow(hwnd) };
             std::thread::sleep(Duration::from_millis(60));
             if !is_front() {
-                return Err("target not foreground".into());
+                // If focus cannot be captured in time, fallback to posting WM_CLOSE directly
+                let _ = unsafe { PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)) };
+                return Ok(());
             }
         }
         let mut inputs = Vec::with_capacity(10);

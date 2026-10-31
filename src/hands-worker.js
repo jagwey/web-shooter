@@ -28,9 +28,9 @@ async function createHands(vision, model, delegate) {
       runningMode: "VIDEO",
       numHands: 2,
       // Higher than the old 0.3: fewer ghost hands, and tracking (cheap path) still holds a real hand.
-      minHandDetectionConfidence: 0.6,
-      minHandPresenceConfidence: 0.5,
-      minTrackingConfidence: 0.5,
+      minHandDetectionConfidence: 0.4,
+      minHandPresenceConfidence: 0.3,
+      minTrackingConfidence: 0.3,
     });
   } catch {
     return null;

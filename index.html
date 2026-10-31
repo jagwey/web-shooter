@@ -276,6 +276,24 @@
           </div>
         </section>
 
+        <!-- Custom Gesture Studio -->
+        <section class="card" id="customGestureCard">
+          <h2 data-i18n="customGestureTitle">Özel Hareket Stüdyosu (Hareket Öğret)</h2>
+          <p class="hint" style="color:var(--muted); font-size:0.78rem; margin:4px 0 10px;">Kameraya istediğin pozu göster ve kaydet; yapay zeka senin hareketini tanısın.</p>
+          <div class="row" style="gap:6px; flex-wrap:wrap;">
+            <input type="text" id="customGestureName" placeholder="Hareket adı (örn: Rock, Shaka)..." style="flex:1; min-width:140px; padding:6px 10px; border-radius:6px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:#fff; font-size:0.8rem;" />
+            <select id="customGestureAction" class="device-select" style="min-width:130px; font-size:0.8rem;">
+              <option value="close_tab">✂️ Sekme Kapat (Ctrl+W)</option>
+              <option value="minimize">🔻 Simge Durumuna Küçült</option>
+              <option value="ask_ai">🎯 Nişan Al & AI'ya Sor</option>
+              <option value="scan_document">📄 Belge Oku (OCR)</option>
+              <option value="overlay_toggle">🕸️ Örtüyü Aç/Kapat</option>
+            </select>
+            <button type="button" class="btn" id="recordCustomGestureBtn" style="padding:6px 12px; font-size:0.8rem;" data-i18n="btnCustomGesture">📸 Pozu Kaydet</button>
+          </div>
+          <div id="customGestureList" style="margin-top:10px; display:flex; flex-direction:column; gap:4px;"></div>
+        </section>
+
         <!-- Display & Phone Webcam Hub -->
         <section class="card">
           <div class="device-row">
@@ -303,9 +321,11 @@
             <span class="ai-status-pill" id="aiStatusPill">🟢 Aktif</span>
           </div>
 
-          <div class="ai-quick-actions" style="margin-top: 10px;">
-            <button type="button" class="ai-chip-btn" id="aiGreetingBtn" data-i18n="aiGreetingBtn">👋 Merhaba & Çalışıyor musun?</button>
-            <button type="button" class="ai-chip-btn" id="aiOptimizeBtn" data-i18n="aiOptimizeBtn">⚡ Otomatik Optimize Et</button>
+          <div class="ai-quick-actions" style="margin-top: 10px; display:flex; flex-wrap:wrap; gap:6px;">
+            <button type="button" class="ai-chip-btn" id="aiGreetingBtn" data-i18n="aiGreetingBtn">👋 Merhaba</button>
+            <button type="button" class="ai-chip-btn" id="aiSniperBtn" style="border-color:var(--mint); color:var(--mint);" data-i18n="btnSniperAi">🎯 Nişan Al & AI'ya Sor</button>
+            <button type="button" class="ai-chip-btn" id="aiOcrBtn" style="border-color:#a855f7; color:#c084fc;" data-i18n="btnScanDoc">📄 Belge Oku (OCR)</button>
+            <button type="button" class="ai-chip-btn" id="aiOptimizeBtn" data-i18n="aiOptimizeBtn">⚡ Optimize Et</button>
             <button type="button" class="ai-chip-btn" id="aiTileBtn" data-i18n="aiTile">🗂️ Pencereleri Düzenle</button>
           </div>
 

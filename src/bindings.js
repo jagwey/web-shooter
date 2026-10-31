@@ -1,6 +1,6 @@
-export const BUILTIN_ACTIONS = ["shoot", "grab", "cancel", "minimize", "hollow_purple", "overlay_toggle", "show_control"];
+export const BUILTIN_ACTIONS = ["shoot", "grab", "cancel", "minimize", "close_tab", "ask_ai", "scan_document", "maximize_restore", "hollow_purple", "overlay_toggle", "show_control"];
 
-export const GESTURES = ["web", "fist", "palm", "flick", "gojo", "point"];
+export const GESTURES = ["web", "fist", "palm", "flick", "peace", "finger_gun", "gojo", "point", "custom"];
 
 export function defaultBindings() {
   return [
@@ -9,6 +9,8 @@ export function defaultBindings() {
     { id: "b-palm", action: "cancel", input: { kind: "gesture", value: "palm" } },
     { id: "b-flick", action: "minimize", input: { kind: "gesture", value: "flick" } },
     { id: "b-purple", action: "hollow_purple", input: { kind: "gesture", value: "gojo" } },
+    { id: "b-peace", action: "close_tab", input: { kind: "gesture", value: "peace" } },
+    { id: "b-gun", action: "ask_ai", input: { kind: "gesture", value: "finger_gun" } },
     {
       id: "b-overlay",
       action: "overlay_toggle",

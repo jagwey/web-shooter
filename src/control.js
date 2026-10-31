@@ -2,7 +2,7 @@ import { FilesetResolver, HandLandmarker, PoseLandmarker } from "@mediapipe/task
 import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, migrateBindings, removeBinding, upsertBinding } from "./bindings.js";
 import { DEFAULT_MODELS, OPENAI_PRESETS, autoTileWorkspace, chatWithAi, fetchOllamaModels, optimizeSettingsWithAi, sendAiGreeting, testAiConnection } from "./ai.js";
 import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen } from "./desktop.js";
-import { classifyGesture, hollowPurpleReady, isFingerExtended, voteGesture, wristDepths } from "./gestures.js";
+import { classifyGesture, hollowPurpleReady, isFingerExtended, isPeaceSign, isFingerGun, isPowerFist, isInFaceDeadzone, voteGesture, wristDepths } from "./gestures.js";
 import { createHandFilter, filterLandmarks, predict } from "./filter.js";
 import { registerCustomLook } from "./effects.js";
 import { clientOf } from "./target.js";
@@ -149,6 +149,25 @@ function wireChrome() {
       persist();
     });
   }
+
+  const aiSniperBtn = document.getElementById("aiSniperBtn");
+  if (aiSniperBtn) {
+    aiSniperBtn.addEventListener("click", () => askAiAt(null));
+  }
+  const aiOcrBtn = document.getElementById("aiOcrBtn");
+  if (aiOcrBtn) {
+    aiOcrBtn.addEventListener("click", () => scanCameraDocument());
+  }
+  const recordGestureBtn = document.getElementById("recordCustomGestureBtn");
+  if (recordGestureBtn) {
+    recordGestureBtn.addEventListener("click", () => {
+      const nameInput = document.getElementById("customGestureName");
+      const actionSelect = document.getElementById("customGestureAction");
+      saveCurrentCustomGesture(nameInput?.value, actionSelect?.value);
+      if (nameInput) nameInput.value = "";
+    });
+  }
+  renderCustomGesturesList();
 
   const safetyToggle = document.getElementById("safetyToggle");
   if (safetyToggle) {
@@ -890,9 +909,9 @@ async function ensureLandmarker() {
           },
           runningMode: "VIDEO",
           numHands: 2,
-          minHandDetectionConfidence: 0.6,
-          minHandPresenceConfidence: 0.5,
-          minTrackingConfidence: 0.5,
+          minHandDetectionConfidence: 0.4,
+          minHandPresenceConfidence: 0.3,
+          minTrackingConfidence: 0.3,
         });
         state.delegate = "GPU";
       } catch (gpuErr) {
@@ -904,9 +923,9 @@ async function ensureLandmarker() {
           },
           runningMode: "VIDEO",
           numHands: 2,
-          minHandDetectionConfidence: 0.6,
-          minHandPresenceConfidence: 0.5,
-          minTrackingConfidence: 0.5,
+          minHandDetectionConfidence: 0.4,
+          minHandPresenceConfidence: 0.3,
+          minTrackingConfidence: 0.3,
         });
         state.delegate = "CPU";
       }
@@ -1188,13 +1207,32 @@ function onHands(hands, detectMs) {
       handState.landmarks = landmarks;
 
       // 3D world shape + 3-of-5 frame vote: one noisy frame can neither fire nor drop a pose.
-      const raw = classifyGesture(landmarks, state.world?.[i]);
+      const raw = classifyGesture(landmarks, state.world?.[i], state.settings?.customGestures || []);
       handState.votes ||= [];
       const gesture = voteGesture(handState.votes, raw, handState.lastGesture);
       const bound = actionFor(state.settings.bindings, "gesture", gesture);
-      // Purple is two-handed only. Flick minimize waits for a real stroke, not a still OK hand.
       const flickOwned = gesture === "flick" && (bound == null || bound === "minimize");
-      const action = bound === "hollow_purple" || flickOwned ? null : bound;
+      let action = bound === "hollow_purple" || flickOwned ? null : bound;
+
+      // Chin / Face resting deadzone guard:
+      const restingInFace = isInFaceDeadzone(landmarks);
+      // Transition guard: A grab is ONLY allowed if the hand was previously open (palm/web) or already holding.
+      if (gesture === "palm" || gesture === "web") {
+        handState.wasOpen = true;
+      } else if (gesture !== "fist") {
+        handState.wasOpen = false;
+      }
+      const validPowerGrip = gesture === "fist" ? isPowerFist(landmarks) : true;
+
+      if (action === "grab") {
+        if (restingInFace || !handState.wasOpen || !validPowerGrip) {
+          action = null;
+        }
+      }
+      if (restingInFace && action === "close_tab") {
+        action = null;
+      }
+
       const edge = gesture !== handState.lastGesture;
       const point = screenPoint(predict(handState.filter, 8, landmarks[8], PREDICT_MS));
 
@@ -1443,6 +1481,18 @@ function runActionForHand(handIndex, action, point, edge) {
     minimizeAt(point.sx, point.sy);
     return;
   }
+  if (action === "close_tab" && point) {
+    closeActiveTabAt(point.sx, point.sy);
+    return;
+  }
+  if (action === "ask_ai" && point) {
+    askAiAt(point);
+    return;
+  }
+  if (action === "scan_document") {
+    scanCameraDocument();
+    return;
+  }
   if (action === "cancel") {
     cancelGrab(handIndex, true);
     if (state.pendingCloses.size > 0) {
@@ -1520,12 +1570,9 @@ function trackFlick(handIndex, landmarks, now, armed) {
   if (handState.flickSamples.length > 10) handState.flickSamples.shift();
   if (!armed || handState.flickFired) return;
   if (now - (handState.lastFireAt || 0) < ACTION_COOLDOWN_MS) return;
-  const impulse = flickImpulse(handState.flickSamples, now);
-  if (!impulse) return;
   handState.flickFired = true;
   handState.lastFireAt = now;
-  const aim = flickAim(impulse);
-  minimizeAt(aim.x, aim.y);
+  minimizeAt(wrist.sx, wrist.sy);
 }
 
 async function minimizeAt(x, y) {
@@ -1536,15 +1583,201 @@ async function minimizeAt(x, y) {
     found = null;
   }
   if (!found || found.unsupported || !found.hwnd) {
-    setMessage("shellBanner", "Fiske bir pencereye değmedi.");
+    try {
+      found = await invoke("get_foreground_window");
+    } catch {
+      found = null;
+    }
+  }
+  if (!found || found.unsupported || !found.hwnd) {
+    setMessage("shellBanner", "Simge durumuna indirilecek aktif pencere bulunamadı.");
     return;
   }
   try {
     await invoke("minimize_window", { hwnd: found.hwnd });
-    setMessage("shellBanner", `Görev çubuğuna indirildi: ${found.title}`);
+    setMessage("shellBanner", `🔻 Görev çubuğuna indirildi: ${found.title}`);
   } catch (err) {
     setMessage("shellBanner", `İndirilmedi: ${err}`);
   }
+}
+
+async function closeActiveTabAt(x, y) {
+  let found = null;
+  try {
+    found = await invoke("window_at", { x: Math.round(x), y: Math.round(y) });
+  } catch {
+    found = null;
+  }
+  if (!found || found.unsupported || !found.hwnd) {
+    try {
+      found = await invoke("get_foreground_window");
+    } catch {
+      found = null;
+    }
+  }
+  if (!found || found.unsupported || !found.hwnd) {
+    setMessage("shellBanner", "Kapatılacak aktif pencere / sekme bulunamadı.");
+    return;
+  }
+  const sensitiveRegex =
+    /github|gitlab|google docs|google sheets|sheets\.google|docs\.google|notion|figma|visual studio|code|vscode|jira|trello|bank|pay|checkout|save|unsaved|draft|taslak|kaydedilmedi/i;
+  if (state.settings?.safetyGuard !== false && sensitiveRegex.test(found.title)) {
+    setMessage("shellBanner", `🛡️ Hassas Koruma: "${found.title}" açık, kapatma engellendi.`);
+    return;
+  }
+  try {
+    await invoke("close_active_tab", { hwnd: found.hwnd });
+    setMessage("shellBanner", `✂️ Sekme kapatıldı: ${found.title}`);
+  } catch (err) {
+    try {
+      await invoke("close_window", { hwnd: found.hwnd });
+      setMessage("shellBanner", `✂️ Pencere kapatıldı: ${found.title}`);
+    } catch (e2) {
+      setMessage("shellBanner", `Kapatılamadı: ${err}`);
+    }
+  }
+}
+
+async function askAiAt(point) {
+  let found = null;
+  if (point) {
+    try {
+      found = await invoke("window_at", { x: Math.round(point.sx), y: Math.round(point.sy) });
+    } catch {}
+  }
+  if (!found || found.unsupported || !found.hwnd) {
+    try {
+      found = await invoke("get_foreground_window");
+    } catch {}
+  }
+  const title = found?.title || "Aktif Pencere";
+  emitTo("overlay", "overlay-purple", { x: point?.nx ?? 0.5, y: point?.ny ?? 0.5 });
+  setMessage("shellBanner", `🎯 Hedefe Nişan Alındı: ${title}`);
+
+  const prompt = `🎯 Hedef Pencere: "${title}". Bu pencere hakkında hızlı özet çıkar, neler yapılabileceğini anlat.`;
+
+  if (state.settings?.sniperTarget === "gemini_web") {
+    try {
+      navigator.clipboard?.writeText?.(prompt);
+      window.open("https://gemini.google.com/app", "_blank");
+      setMessage("shellBanner", "🚀 Gemini açıldı ve hedef bilgi panoya kopyalandı!");
+    } catch {
+      window.open("https://gemini.google.com/app", "_blank");
+    }
+    return;
+  }
+
+  const chatInput = document.getElementById("aiChatInput");
+  if (chatInput) chatInput.value = prompt;
+  appendAiMessage("user", prompt);
+  const loadingId = appendAiMessage("bot", "⏳ Hedef pencere analiz ediliyor…");
+  try {
+    const res = await chatWithAi(state.settings, prompt, { windows: [found].filter(Boolean) });
+    updateAiMessage(loadingId, res.text || "Hedef incelendi.");
+  } catch (err) {
+    updateAiMessage(loadingId, `Hata: ${err.message}`);
+  }
+}
+
+async function scanCameraDocument() {
+  const video = document.getElementById("cameraVideo");
+  if (!video || !video.videoWidth) {
+    setMessage("shellBanner", "Kamera görüntüsü henüz hazır değil.");
+    return;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(video, 0, 0);
+  const base64 = canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
+
+  appendAiMessage("user", "📄 [Kameradan Belge / Metin Oku]");
+  const loadingId = appendAiMessage("bot", "🔍 Belgedeki metinler taranıyor…");
+
+  const apiKey = state.settings?.aiApiKey?.trim();
+  if (apiKey) {
+    const model = state.settings?.aiModel?.trim() || "gemini-2.5-flash";
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: "Lütfen bu resimde kameraya tutulan belgedeki veya ekrandaki tüm metinleri harfiyen oku. Başlıkları, maddeleri ve satırları koruyarak Türkçe/İngilizce tam metni çıkar." },
+                { inlineData: { mimeType: "image/jpeg", data: base64 } }
+              ]
+            }
+          ]
+        })
+      });
+      const data = await res.json();
+      const extractedText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "Metin bulunamadı.";
+      updateAiMessage(loadingId, extractedText);
+      try {
+        await navigator.clipboard.writeText(extractedText);
+        setMessage("shellBanner", "📄 Belge okundu ve metin panoya kopyalandı!");
+      } catch {}
+      return;
+    } catch (err) {
+      updateAiMessage(loadingId, `Görsel okuma hatası: ${err.message}`);
+      return;
+    }
+  }
+
+  updateAiMessage(loadingId, "💡 Kameradan optik metin okuma (OCR) için Ayarlar'dan ücretsiz Gemini API Key ekleyin.");
+  setMessage("shellBanner", "Kameradan metin okumak için Gemini API Key gereklidir.");
+}
+
+function saveCurrentCustomGesture(name, action) {
+  if (!name?.trim()) {
+    setMessage("shellBanner", "Lütfen hareket için bir isim giriniz.");
+    return;
+  }
+  const hand = state.hands.find((h) => h.landmarks && h.landmarks.length >= 21);
+  if (!hand) {
+    setMessage("shellBanner", "Kamerada el algılanamadı. Elinizi kadrajda tutun.");
+    return;
+  }
+  state.settings.customGestures ||= [];
+  const points = hand.landmarks.map((p) => ({ x: p.x, y: p.y, z: p.z || 0 }));
+  state.settings.customGestures.push({
+    name: name.trim(),
+    action: action || "close_tab",
+    points,
+  });
+  persist();
+  renderCustomGesturesList();
+  setMessage("shellBanner", "Yeni el hareketi başarıyla kaydedildi!");
+}
+
+function renderCustomGesturesList() {
+  const container = document.getElementById("customGestureList");
+  if (!container) return;
+  const list = state.settings.customGestures || [];
+  if (list.length === 0) {
+    container.innerHTML = '<span style="font-size:0.75rem; color:var(--muted);">Henüz özel hareket kaydedilmedi.</span>';
+    return;
+  }
+  container.innerHTML = "";
+  list.forEach((item, idx) => {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.style.justifyContent = "space-between";
+    row.style.fontSize = "0.78rem";
+    row.style.padding = "4px 0";
+    row.style.borderBottom = "1px solid rgba(255,255,255,0.06)";
+    row.innerHTML = `<span>✨ ${item.name} (${item.action})</span><button type="button" class="btn ghost danger" style="padding:2px 6px; font-size:0.7rem;">Sil</button>`;
+    row.querySelector("button").addEventListener("click", () => {
+      state.settings.customGestures.splice(idx, 1);
+      persist();
+      renderCustomGesturesList();
+    });
+    container.appendChild(row);
+  });
 }
 
 async function executeClose(win, { forceWindow = false } = {}) {

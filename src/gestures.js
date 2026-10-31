@@ -144,6 +144,60 @@ export function isGojoSign(points) {
   return indexOpen && middleOpen && ringClosed && pinkyClosed;
 }
 
+/** ✌️ Peace / Scissors sign: index + middle extended in a clear V shape, ring + pinky folded. */
+export function isPeaceSign(points) {
+  if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
+  const wrist = points[0];
+  const indexOpen = isFingerExtended(points[8], points[6], wrist, points[5]);
+  const middleOpen = isFingerExtended(points[12], points[10], wrist, points[9]);
+  const ringClosed = isFingerClosed(points[16], points[14], wrist, points[13]);
+  const pinkyClosed = isFingerClosed(points[20], points[18], wrist, points[17]);
+  if (!indexOpen || !middleOpen || !ringClosed || !pinkyClosed) return false;
+  const palm = span(points[5], points[17]);
+  return span(points[8], points[12]) > palm * 0.42;
+}
+
+/** 👉 Finger gun: index extended, thumb extended upward, middle/ring/pinky folded. */
+export function isFingerGun(points) {
+  if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
+  const wrist = points[0];
+  const indexOpen = isFingerExtended(points[8], points[6], wrist, points[5]);
+  const middleClosed = isFingerClosed(points[12], points[10], wrist, points[9]);
+  const ringClosed = isFingerClosed(points[16], points[14], wrist, points[13]);
+  const pinkyClosed = isFingerClosed(points[20], points[18], wrist, points[17]);
+  if (!indexOpen || !middleClosed || !ringClosed || !pinkyClosed) return false;
+  const palm = span(points[5], points[17]);
+  return span(points[4], points[5]) > palm * 0.75;
+}
+
+/** True deliberate power fist: thumb locks over knuckles, not a loose hand resting under the chin. */
+export function isPowerFist(points) {
+  if (!isFist(points)) return false;
+  const palm = span(points[5], points[17]);
+  return span(points[4], points[6]) < palm * 0.75 || span(points[4], points[10]) < palm * 0.75;
+}
+
+/** Hand resting in the chin/face/head region (upper 36% of webcam frame). */
+export function isInFaceDeadzone(points) {
+  if (!points || points.length < 21) return false;
+  const wrist = points[0];
+  const knuckle = points[9];
+  return wrist.y < 0.36 && knuckle.y < 0.40;
+}
+
+/** Metric Euclidean distance against user-trained custom gesture template. */
+export function matchCustomGesture(points, template, maxError = 0.075) {
+  if (!points || !template || points.length !== 21 || template.length !== 21) return false;
+  let totalDist = 0;
+  for (let i = 0; i < 21; i += 1) {
+    const dx = points[i].x - template[i].x;
+    const dy = points[i].y - template[i].y;
+    const dz = (points[i].z || 0) - (template[i].z || 0);
+    totalDist += Math.hypot(dx, dy, dz);
+  }
+  return totalDist / 21 < maxError;
+}
+
 /** Bounding-box diagonal of a hand in image space; grows as the hand nears the camera. */
 export function handSpan(points) {
   const xs = points.map((p) => p.x);
@@ -258,16 +312,25 @@ export function worldShape(world) {
  * web, flick (OK circle), gojo, point, fist, palm, or null.
  * With world landmarks the finger shape is judged in true 3D; the image hand still gates size.
  */
-export function classifyGesture(points, world = null) {
+export function classifyGesture(points, world = null, customTemplates = []) {
   if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return null;
   const shape = worldShape(world);
-  if (shape) points = shape;
-  if (isWebSign(points)) return "web";
-  if (isFlickPose(points)) return "flick";
-  if (isGojoSign(points)) return "gojo";
-  if (isPoint(points)) return "point";
-  if (isFist(points)) return "fist";
-  if (isOpenPalm(points)) return "palm";
+  const evalPoints = shape || points;
+  if (customTemplates && customTemplates.length > 0) {
+    for (const t of customTemplates) {
+      if (t.points && matchCustomGesture(evalPoints, t.points)) {
+        return t.name || "custom";
+      }
+    }
+  }
+  if (isWebSign(evalPoints)) return "web";
+  if (isPeaceSign(evalPoints)) return "peace";
+  if (isFingerGun(evalPoints)) return "finger_gun";
+  if (isFlickPose(evalPoints)) return "flick";
+  if (isGojoSign(evalPoints)) return "gojo";
+  if (isPoint(evalPoints)) return "point";
+  if (isFist(evalPoints)) return "fist";
+  if (isOpenPalm(evalPoints)) return "palm";
   return null;
 }
 
