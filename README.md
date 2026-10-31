@@ -2,6 +2,10 @@
 
 <div align="center">
 
+<img src="assets/app-icon.png" width="160" height="160" alt="Jagwey Web Shooter Icon" style="border-radius: 28px; box-shadow: 0 8px 32px rgba(168, 85, 247, 0.4);" />
+
+<br/>
+
 ![Version](https://img.shields.io/badge/version-0.1.0-emerald?style=for-the-badge)
 ![Tauri 2](https://img.shields.io/badge/Tauri_2-Rust_%2B_Vite-blue?style=for-the-badge)
 ![MediaPipe](https://img.shields.io/badge/MediaPipe_Hands-120_FPS_Float16-orange?style=for-the-badge)
