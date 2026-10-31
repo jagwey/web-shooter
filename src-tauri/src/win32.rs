@@ -1,4 +1,4 @@
-use serde::Serialize;
+﻿use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,7 +23,8 @@ mod platform {
     use super::{CameraHolder, DesktopWindow};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::Duration;
-    use windows::Win32::Foundation::{BOOL, HWND, LPARAM, POINT, RECT, TRUE};
+    use windows::core::BOOL;
+    use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT, TRUE};
     use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
     use windows::Win32::System::Threading::GetCurrentProcessId;
     use windows::Win32::UI::WindowsAndMessaging::{
