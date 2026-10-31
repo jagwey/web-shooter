@@ -30,8 +30,5 @@ windows = { version = "0.61", features = [
 windows-registry = "0.5"
 
 [profile.release]
-panic = "abort"
 codegen-units = 1
-lto = true
 opt-level = "s"
-strip = true
