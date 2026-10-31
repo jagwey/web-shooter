@@ -40,12 +40,13 @@ function gojoHand(x, y, size) {
 test("hollow purple needs both Gojo signs and a clearly closer hand", () => {
   const front = gojoHand(0.1, 0.15, 0.55);
   const back = gojoHand(0.55, 0.45, 0.28);
-  assert.equal(hollowPurpleReady([front, back], ["flick", "flick"]), 0);
-  assert.equal(hollowPurpleReady([back, front], ["flick", "flick"]), 1);
-  assert.equal(hollowPurpleReady([front, back], ["flick", "web"]), -1);
-  assert.equal(hollowPurpleReady([front, back], ["palm", "flick"]), -1);
-  assert.equal(hollowPurpleReady([front], ["flick"]), -1);
-  assert.equal(hollowPurpleReady([gojoHand(0.1, 0.2, 0.4), gojoHand(0.5, 0.2, 0.36)], ["flick", "flick"]), -1);
+  assert.equal(hollowPurpleReady([front, back], ["gojo", "gojo"]), 0);
+  assert.equal(hollowPurpleReady([back, front], ["gojo", "gojo"]), 1);
+  assert.equal(hollowPurpleReady([front, back], ["gojo", "web"]), -1);
+  assert.equal(hollowPurpleReady([front, back], ["flick", "flick"]), -1);
+  assert.equal(hollowPurpleReady([front, back], ["palm", "gojo"]), -1);
+  assert.equal(hollowPurpleReady([front], ["gojo"]), -1);
+  assert.equal(hollowPurpleReady([gojoHand(0.1, 0.2, 0.4), gojoHand(0.5, 0.2, 0.36)], ["gojo", "gojo"]), -1);
 });
 
 test("same-size hands, one hand, or a web-aiming front hand are not", () => {

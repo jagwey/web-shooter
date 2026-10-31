@@ -1,13 +1,14 @@
-export const BUILTIN_ACTIONS = ["shoot", "grab", "cancel", "hollow_purple", "overlay_toggle", "show_control"];
+export const BUILTIN_ACTIONS = ["shoot", "grab", "cancel", "minimize", "hollow_purple", "overlay_toggle", "show_control"];
 
-export const GESTURES = ["web", "fist", "palm", "flick", "point"];
+export const GESTURES = ["web", "fist", "palm", "flick", "gojo", "point"];
 
 export function defaultBindings() {
   return [
     { id: "b-web", action: "shoot", input: { kind: "gesture", value: "web" } },
     { id: "b-fist", action: "grab", input: { kind: "gesture", value: "fist" } },
     { id: "b-palm", action: "cancel", input: { kind: "gesture", value: "palm" } },
-    { id: "b-purple", action: "hollow_purple", input: { kind: "gesture", value: "flick" } },
+    { id: "b-flick", action: "minimize", input: { kind: "gesture", value: "flick" } },
+    { id: "b-purple", action: "hollow_purple", input: { kind: "gesture", value: "gojo" } },
     {
       id: "b-overlay",
       action: "overlay_toggle",
@@ -40,4 +41,23 @@ export function upsertBinding(bindings, binding) {
 
 export function removeBinding(bindings, id) {
   return (bindings || []).filter((item) => item.id !== id);
+}
+
+/** Old builds named the Gojo sign "flick". That name is now the OK-hand minimize. */
+export function migrateBindings(bindings) {
+  if (!bindings || bindings.length === 0) return defaultBindings();
+  let renamed = false;
+  const next = bindings.map((binding) => {
+    const input = binding.input;
+    if (binding.action === "hollow_purple" && input?.kind === "gesture" && input.value === "flick") {
+      renamed = true;
+      return { ...binding, input: { ...input, value: "gojo" } };
+    }
+    return binding;
+  });
+  const hasFlick = next.some((binding) => binding.input?.kind === "gesture" && binding.input?.value === "flick");
+  if (renamed && !hasFlick) {
+    next.push({ id: "b-flick", action: "minimize", input: { kind: "gesture", value: "flick" } });
+  }
+  return next;
 }

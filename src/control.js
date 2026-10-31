@@ -1,11 +1,12 @@
 import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
-import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, removeBinding, upsertBinding } from "./bindings.js";
+import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, migrateBindings, removeBinding, upsertBinding } from "./bindings.js";
 import { DEFAULT_MODELS, OPENAI_PRESETS, autoTileWorkspace, chatWithAi, fetchOllamaModels, optimizeSettingsWithAi, sendAiGreeting, testAiConnection } from "./ai.js";
 import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen } from "./desktop.js";
 import { classifyGesture, hollowPurpleReady, isFingerExtended } from "./gestures.js";
 import { createHandFilter, filterLandmarks, predict } from "./filter.js";
 import { registerCustomLook } from "./effects.js";
 import { clientOf } from "./target.js";
+import { flickAim, flickImpulse, throwToMonitor } from "./throw.js";
 import { getLang, initI18n, setLang, t } from "./i18n.js";
 import { activeProfile, createProfile, loadProfiles, recordMs, recordShot, removeProfile, saveProfiles } from "./profiles.js";
 import {
@@ -63,6 +64,7 @@ const ACTION_KEYS = {
   grab: "actionGrab",
   cancel: "actionCancel",
   hollow_purple: "hollowPurple",
+  minimize: "actionMinimize",
   overlay_toggle: "actionOverlay",
   show_control: "actionShow",
 };
@@ -72,6 +74,7 @@ const GESTURE_KEYS = {
   fist: "gestureFist",
   palm: "gesturePalm",
   flick: "gestureFlick",
+  gojo: "gestureGojo",
   point: "gesturePoint",
 };
 const STABLE_MS = 120;
@@ -573,6 +576,7 @@ async function boot() {
     state.settings = { ...state.settings, ...startProfile.settings };
     invoke("save_settings", { settings: state.settings });
   }
+  if (state.settings) state.settings.bindings = migrateBindings(state.settings.bindings);
   wireProfiles();
   applySettingsEffects();
 
@@ -1052,8 +1056,9 @@ function onHands(hands, detectMs) {
       }
       const gesture = now - handState.pendingSince >= STABLE_MS ? raw : handState.lastGesture;
       const bound = actionFor(state.settings.bindings, "gesture", gesture);
-      // Purple is two-handed only (checkPurpleStance); a single-hand pose never fires it.
-      const action = bound === "hollow_purple" ? null : bound;
+      // Purple is two-handed only. Flick minimize waits for a real stroke, not a still OK hand.
+      const flickOwned = gesture === "flick" && (bound == null || bound === "minimize");
+      const action = bound === "hollow_purple" || flickOwned ? null : bound;
       const edge = gesture !== handState.lastGesture;
       const point = screenPoint(predict(handState.filter, 8, landmarks[8], PREDICT_MS));
 
@@ -1069,6 +1074,11 @@ function onHands(hands, detectMs) {
         if (action === "shoot") beginGrab(i, point);
       }
       handState.lastGesture = gesture;
+      if (raw === "flick") trackFlick(i, landmarks, now, flickOwned && gesture === "flick");
+      else if (gesture !== "flick") {
+        handState.flickSamples = [];
+        handState.flickFired = false;
+      }
     }
 
     for (let i = maxHands; i < state.hands.length; i += 1) {
@@ -1189,7 +1199,8 @@ function updateGestureHud(hands) {
     web: { icon: "🕸️", title: "AĞ ATIŞI (Spider-Man)" },
     fist: { icon: "✊", title: "PENCERE TUTMA (Yumruk)" },
     palm: { icon: "🖐️", title: "SERBEST BIRAK / İPTAL" },
-    flick: { icon: "🤌", title: "İKİ PARMAK" },
+    flick: { icon: "👌", title: "FİSKE — GÖREV ÇUBUĞU" },
+    gojo: { icon: "🤌", title: "GOJO İŞARETİ" },
     point: { icon: "👆", title: "HEDEFLEME (İşaret)" },
   };
 
@@ -1289,6 +1300,10 @@ function runActionForHand(handIndex, action, point, edge) {
     beginGrab(handIndex, point);
     return;
   }
+  if (action === "minimize" && point) {
+    minimizeAt(point.sx, point.sy);
+    return;
+  }
   if (action === "cancel") {
     cancelGrab(handIndex, true);
     if (state.pendingCloses.size > 0) {
@@ -1356,6 +1371,41 @@ async function triggerHollowPurple(point, knownWin, opts = {}) {
   }
 
   executeClose(targetWin, { forceWindow: Boolean(opts.closeWindow) });
+}
+
+function trackFlick(handIndex, landmarks, now, armed) {
+  const handState = state.hands[handIndex];
+  const wrist = screenPoint(landmarks[0]);
+  handState.flickSamples ||= [];
+  handState.flickSamples.push({ t: now, x: wrist.sx, y: wrist.sy });
+  if (handState.flickSamples.length > 10) handState.flickSamples.shift();
+  if (!armed || handState.flickFired) return;
+  if (now - (handState.lastFireAt || 0) < ACTION_COOLDOWN_MS) return;
+  const impulse = flickImpulse(handState.flickSamples, now);
+  if (!impulse) return;
+  handState.flickFired = true;
+  handState.lastFireAt = now;
+  const aim = flickAim(impulse);
+  minimizeAt(aim.x, aim.y);
+}
+
+async function minimizeAt(x, y) {
+  let found = null;
+  try {
+    found = await invoke("window_at", { x: Math.round(x), y: Math.round(y) });
+  } catch {
+    found = null;
+  }
+  if (!found || found.unsupported || !found.hwnd) {
+    setMessage("shellBanner", "Fiske bir pencereye değmedi.");
+    return;
+  }
+  try {
+    await invoke("minimize_window", { hwnd: found.hwnd });
+    setMessage("shellBanner", `Görev çubuğuna indirildi: ${found.title}`);
+  } catch (err) {
+    setMessage("shellBanner", `İndirilmedi: ${err}`);
+  }
 }
 
 async function executeClose(win, { forceWindow = false } = {}) {
@@ -1504,8 +1554,19 @@ async function releaseGrab(handIndex) {
       vx = (vx / speed) * maxSpeed;
       vy = (vy / speed) * maxSpeed;
     }
+    const dest = throwToMonitor(
+      state.monitors,
+      { x: grab.winX, y: grab.winY, width: grab.width, height: grab.height },
+      vx,
+      vy,
+    );
     playFling(speed);
-    await invoke("fling_window", { hwnd: grab.hwnd, vx, vy });
+    if (dest) {
+      await invoke("place_window", { hwnd: grab.hwnd, ...dest });
+      setMessage("shellBanner", "Pencere diğer ekrana atıldı.");
+    } else {
+      await invoke("fling_window", { hwnd: grab.hwnd, vx, vy });
+    }
   }
   render();
 }

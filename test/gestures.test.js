@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyGesture, countExtendedFingers, isWebSign } from "../src/gestures.js";
+import { classifyGesture, countExtendedFingers, isFlickPose, isWebSign } from "../src/gestures.js";
 
 function makeHand({ index, middle, ring, pinky }) {
   const points = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.82, z: 0 }));
@@ -58,13 +58,47 @@ test("open palm, fist, and point stay distinct", () => {
   assert.equal(classifyGesture(makeHand({ index: true, middle: true, ring: true, pinky: true })), "palm");
   assert.equal(classifyGesture(makeHand({ index: false, middle: false, ring: false, pinky: false })), "fist");
   assert.equal(classifyGesture(makeHand({ index: true, middle: false, ring: false, pinky: false })), "point");
-  assert.equal(classifyGesture(makeHand({ index: true, middle: true, ring: false, pinky: false })), "flick");
+  assert.equal(classifyGesture(makeHand({ index: true, middle: true, ring: false, pinky: false })), "gojo");
   assert.equal(isWebSign(makeHand({ index: true, middle: true, ring: true, pinky: true })), false);
 });
 
 test("short landmark lists are ignored", () => {
   assert.equal(isWebSign([{ x: 0, y: 0, z: 0 }]), false);
   assert.equal(classifyGesture(null), null);
+});
+
+function okFlick() {
+  const points = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.7, z: 0 }));
+  points[0] = { x: 0.48, y: 0.88, z: 0 };
+  const open = [
+    [9, 10, 11, 12, 0.52],
+    [13, 14, 15, 16, 0.6],
+    [17, 18, 19, 20, 0.68],
+  ];
+  for (const [mcp, pip, dip, tip, x] of open) {
+    points[mcp] = { x, y: 0.7, z: 0 };
+    points[pip] = { x, y: 0.55, z: 0 };
+    points[dip] = { x, y: 0.42, z: 0 };
+    points[tip] = { x, y: 0.28, z: 0 };
+  }
+  points[5] = { x: 0.4, y: 0.72, z: 0 };
+  points[6] = { x: 0.34, y: 0.64, z: 0 };
+  points[7] = { x: 0.3, y: 0.68, z: 0 };
+  points[8] = { x: 0.33, y: 0.74, z: 0 };
+  points[1] = { x: 0.4, y: 0.8, z: 0 };
+  points[2] = { x: 0.33, y: 0.76, z: 0 };
+  points[3] = { x: 0.31, y: 0.74, z: 0 };
+  points[4] = { x: 0.335, y: 0.735, z: 0 };
+  return points;
+}
+
+test("OK flick is a circle plus three fingers, not a web or a close", () => {
+  const hand = okFlick();
+  assert.equal(isFlickPose(hand), true);
+  assert.equal(classifyGesture(hand), "flick");
+  assert.equal(isWebSign(hand), false);
+  const palm = makeHand({ index: true, middle: true, ring: true, pinky: true });
+  assert.equal(isFlickPose(palm), false);
 });
 
 test("a collapsed or half-open hand does not fire a web", () => {

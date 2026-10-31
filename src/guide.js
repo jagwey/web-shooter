@@ -7,6 +7,7 @@ const KB = [
 2. Elini kameraya göster, avuç içi kameraya baksın.
 3. İşaret + serçe parmağını aç, orta ve yüzük parmağını kapat (🤟 rock işareti).
 4. İşaret parmağının gösterdiği yere ağ fırlar, hedef pencerenin içine yapışır.
+5. Ağı tutup eli diğer monitöre doğru savurursan pencere (site) o ekrana gider. Tek ekranda hızlı savurma kenara yaslar.
 İpucu: Jesti ~0.1 sn sabit tut. Aynı hareket arka arkaya 0.6 sn içinde tekrar tetiklenmez (yanlış atış koruması).
 Görünmüyorsa: "Özellikler" kartında "Ağ efektleri" açık mı, overlay açık mı bak.`,
   },
@@ -25,7 +26,7 @@ Görünmüyorsa: "Özellikler" kartında "Ağ efektleri" açık mı, overlay aç
     text: `🖐️ Bırakma / fırlatma: Pencere tutuluyken avucunu aç. Yavaş açarsan olduğu yere bırakır; hızlı savurarak açarsan fırlatır ve ekran kenarına yapıştırır (yarım ekran snap).`,
   },
   {
-    keys: ["sekme kapat", "kapat", "gojo", "purple", "mor", "flick", "close tab", "hollow"],
+    keys: ["sekme kapat", "kapat", "gojo", "purple", "mor", "close tab", "hollow"],
     text: `🟣 Gojo "Hollow Purple" ile pencere kapatma (bilgisayarı KAPATMAZ):
 1. "Gojo" kartında "Mor kapatma" açık olsun.
 2. İki eli de Gojo işaretine al: işaret + orta parmak açık, yüzük + serçe kapalı.
@@ -34,6 +35,14 @@ Görünmüyorsa: "Özellikler" kartında "Ağ efektleri" açık mı, overlay aç
 5. Kapanan hedef: son 3 saniyede ağladığın pencere; o yoksa öndeki elin gösterdiği pencere. Windows'a WM_CLOSE gider (sekme Ctrl+W değil).
 6. Hedef yoksa hiçbir şey kapanmaz. "Test et" yalnız efekti dener.
 Yanlışlıkla kapatmayı "Infinity Shield" engeller (bkz. "kalkan nedir"). İptal: açık avuç.`,
+  },
+  {
+    keys: ["fiske", "flick", "ok isareti", "kucult", "minimize", "gorev cubugu", "taskbar"],
+    text: `👌 Fiske = görev çubuğuna indir (pencereyi KAPATMAZ):
+1. Başparmak ile işaret parmağı bir halka yapsın (OK), orta, yüzük ve serçe açık kalsın.
+2. Eli hedef pencereye / sekmeye doğru hızla savur. Duran bir OK eli bir şey indirmez.
+3. Windows pencereyi görev çubuğuna alır (SW_MINIMIZE). WM_CLOSE gitmez.
+Hollow Purple ayrıdır: iki el Gojo işareti pencereyi kapatır.`,
   },
   {
     keys: ["kalkan", "shield", "infinity", "guvenlik", "yanlislikla", "safety"],
@@ -46,6 +55,7 @@ Yanlışlıkla kapatmayı "Infinity Shield" engeller (bkz. "kalkan nedir"). İpt
 • ☝️ Yalnız işaret → nişan al (hedef pencere seçilir)
 • ✊ Yumruk → pencereyi tut
 • 🖐️ Açık avuç → bırak / fırlat (kenara yapışır)
+• 👌 Başparmak + işaret halka, diğer parmaklar açık, hedefe doğru savur → görev çubuğuna indir (fiske, kapatmaz)
 • 🟣 İki el Gojo işareti (işaret+orta), biri önde ~0.4 sn → vurulan pencereyi kapat (Hollow Purple)
 Her jest ~0.1 sn sabit tutulunca algılanır, aynı aksiyon 0.6 sn bekleme ile tekrar eder.
 "Ayarlar & Güç > Komutlar" kısmından aksiyonlara kendi jest veya klavye kısayolunu bağlayabilirsin.`,
@@ -90,8 +100,9 @@ Her jest ~0.1 sn sabit tutulunca algılanır, aynı aksiyon 0.6 sn bekleme ile t
 4. Burada "Kameraları Yenile"ye bas, listeden telefon kamerasını seç.`,
   },
   {
-    keys: ["monitor", "ekran sec", "ikinci ekran", "multi monitor", "display"],
-    text: `🖥️ Monitör: "Monitör" kartında bağlı ekranlar listelenir. Overlay ve pencere yakalama hangi ekranda olsun istiyorsan onu seç. Pencereler ekranlar arası fırlatılabilir.`,
+    keys: ["monitor", "ekran sec", "ikinci ekran", "multi monitor", "display", "diger ekran", "throw"],
+    text: `🖥️ İkinci ekran: Ağ işaretiyle pencereyi tut, eli diğer monitöre doğru hızlı savur. Pencere o ekrana oturur (site oraya gider). Yavaş bırakırsan yerinde kalır. Tek monitörde savurma eski kenar yaslamasını kullanır.
+👌 Fiske (OK işareti) küçültür, kapatmaz. 🟣 Hollow Purple pencereyi kapatır.`,
   },
   {
     keys: ["tema", "theme", "renk", "gorunum", "sakura", "miles", "symbiote", "neon"],

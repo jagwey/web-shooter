@@ -303,6 +303,22 @@ mod platform {
         describe(hwnd).ok_or_else(|| "window disappeared".into())
     }
 
+    /// Move and size a window in one step. Used to land a thrown window on another monitor.
+    pub fn place_window(raw: i64, x: i32, y: i32, width: i32, height: i32) -> Result<DesktopWindow, String> {
+        let (hwnd, _) = checked_target(raw)?;
+        if width < 80 || height < 60 {
+            return Err("window too small".into());
+        }
+        unsafe {
+            if IsZoomed(hwnd).as_bool() {
+                let _ = ShowWindow(hwnd, SW_RESTORE);
+            }
+            SetWindowPos(hwnd, None, x, y, width, height, SWP_NOACTIVATE | SWP_NOZORDER)
+                .map_err(|err| err.to_string())?;
+        }
+        describe(hwnd).ok_or_else(|| "window disappeared".into())
+    }
+
     pub fn nudge_window(raw: i64) -> Result<(), String> {
         let Some(window) = describe(hwnd_of(raw)) else {
             return Ok(());
@@ -519,7 +535,7 @@ mod platform {
 #[cfg(windows)]
 pub use platform::{
     camera_holders, close_active_tab, close_window, fling_window, get_foreground_window,
-    list_windows, minimize_window, move_window, nudge_window, window_at, window_client,
+    list_windows, minimize_window, move_window, nudge_window, place_window, window_at, window_client,
 };
 
 #[cfg(not(windows))]
@@ -539,6 +555,11 @@ pub fn window_client(_raw: i64) -> Result<DesktopWindow, String> {
 
 #[cfg(not(windows))]
 pub fn move_window(_raw: i64, _x: i32, _y: i32) -> Result<DesktopWindow, String> {
+    Err("win32-only".into())
+}
+
+#[cfg(not(windows))]
+pub fn place_window(_raw: i64, _x: i32, _y: i32, _width: i32, _height: i32) -> Result<DesktopWindow, String> {
     Err("win32-only".into())
 }
 
