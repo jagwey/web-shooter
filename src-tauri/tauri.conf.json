@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Jagwey Web Shooter",
+  "version": "0.1.0",
+  "identifier": "com.jagwey.webshooter",
+  "build": {
+    "beforeDevCommand": "npm run prepare:assets && npm run dev",
+    "devUrl": "http://127.0.0.1:4731",
+    "beforeBuildCommand": "npm run prepare:assets && npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "control",
+        "title": "Jagwey Web Shooter",
+        "url": "index.html",
+        "width": 440,
+        "height": 860,
+        "minWidth": 360,
+        "minHeight": 640,
+        "resizable": true,
+        "visible": true
+      },
+      {
+        "label": "overlay",
+        "title": "Jagwey Overlay",
+        "url": "overlay.html",
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "shadow": false,
+        "resizable": false,
+        "focus": false,
+        "width": 1280,
+        "height": 720
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob:; worker-src 'self' blob:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    }
+  }
+}

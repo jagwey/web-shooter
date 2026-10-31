@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0d3b2e" />
+    <title>Jagwey Web Shooter · Stage</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body class="stage">
+    <canvas id="stageCanvas" class="stage-canvas"></canvas>
+    <div class="fs-prompt" id="fsPrompt" hidden>
+      <div class="fs-card">
+        <h1 class="stage-title">JAG<span>WEY</span></h1>
+        <p data-i18n="stagePrompt">Bu ekranı kayda almak için tam ekran yap.</p>
+        <button type="button" class="btn" id="promptFullscreen" data-i18n="stageFullscreen">
+          Tam ekran
+        </button>
+        <button type="button" class="btn ghost" id="dismissPrompt" data-i18n="stageLater">
+          Şimdi değil
+        </button>
+      </div>
+    </div>
+    <div class="stage-hud" id="stageHud">
+      <div class="stage-copy">
+        <strong class="stage-title">JAG<span>WEY</span></strong>
+        <p id="stageStatus" data-i18n="stageWaiting">
+          Atış bekleniyor. Kamerayı kontrol penceresinden aç.
+        </p>
+        <div class="status-line">
+          <span class="dot" id="stageDot"></span>
+          <span id="stageLink" data-i18n="stageAlone">Kontrol penceresi yok</span>
+        </div>
+      </div>
+      <div class="row-actions">
+        <button type="button" class="btn small" id="fullscreenBtn" data-i18n="stageFullscreen">
+          Tam ekran
+        </button>
+        <button type="button" class="btn ghost small" id="cleanBtn" data-i18n="stageClean">
+          Kadrajı gizle
+        </button>
+      </div>
+    </div>
+    <script type="module" src="/src/stage.js"></script>
+  </body>
+</html>

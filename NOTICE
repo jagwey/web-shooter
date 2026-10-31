@@ -1,0 +1,21 @@
+Jagwey Web Shooter
+Copyright (c) 2026 Jagwey
+
+This project adapts the web-sign check and the cinematic web drawing from SpiderSense:
+
+  SpiderSense
+  Copyright (c) 2026 Rittika Das
+  Licensed under the MIT License.
+  Upstream: https://github.com/rittika-das/SpiderSense
+
+Those portions live in src/gestures.js and src/effects.js. SpiderSense's MIT
+license is preserved in LICENSE.
+
+Hand landmarks come from MediaPipe Tasks (HandLandmarker, float16 model),
+Apache License 2.0:
+https://github.com/google-ai-edge/mediapipe
+The model file is public/models/hand_landmarker.task.
+
+An Instagram reel prompted the Jagwey demo. That reel was inspiration only.
+It is not the source of this code. This repository does not claim ownership
+of the reel, and it is not a tuni.coding project.

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0d3b2e" />
+    <title>Jagwey Web Shooter</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="top">
+        <div class="brand">
+          <img src="/favicon.svg" alt="" width="36" height="36" />
+          <div>
+            <h1>JAG<span>WEY</span></h1>
+            <p data-i18n="tagline">Masaüstü örtüsü</p>
+          </div>
+        </div>
+        <div class="lang" role="group" aria-label="Language">
+          <button type="button" id="langTr" data-lang="tr">TR</button>
+          <button type="button" id="langEn" data-lang="en">EN</button>
+        </div>
+      </header>
+
+      <section id="onboarding">
+        <article class="card step" data-step="welcome">
+          <h2 data-i18n="welcomeTitle">Ağını masaüstüne at.</h2>
+          <p data-i18n="welcomeBody">El hareketin pencereleri tutar. Uygulama tepside açık kalır.</p>
+          <button type="button" class="btn" id="welcomeNext" data-i18n="next">Devam</button>
+        </article>
+        <article class="card step" data-step="camera" hidden>
+          <h2 data-i18n="cameraTitle">Kamera izni</h2>
+          <p data-i18n="cameraBody">Windows bir izin penceresi açacak. Ağ işareti için kameraya Evet de.</p>
+          <p class="message" id="onboardCameraMessage" aria-live="polite"></p>
+          <div class="row">
+            <button type="button" class="btn" id="onboardAllow" data-i18n="cameraAllow">Kameraya izin ver</button>
+            <button type="button" class="btn ghost" id="onboardSkip" data-i18n="skip">Kamerasız devam</button>
+          </div>
+        </article>
+        <article class="card step" data-step="display" hidden>
+          <h2 data-i18n="displayTitle">Hangi ekran?</h2>
+          <p data-i18n="displayBody">Örtü seçtiğin ekranı kaplar. İkinci monitörü takınca liste yenilenir.</p>
+          <div class="monitor-list" id="onboardMonitors"></div>
+          <button type="button" class="btn" id="displayNext" data-i18n="next">Devam</button>
+        </article>
+        <article class="card step" data-step="play" hidden>
+          <h2 data-i18n="playTitle">Üç hareket yeter.</h2>
+          <p data-i18n="playBody">İşaret + serçe atar. Yumruk pencereyi tutar. Açık avuç bırakır.</p>
+          <button type="button" class="btn" id="playGo" data-i18n="playGo">Başla</button>
+        </article>
+      </section>
+
+      <section id="home" hidden>
+        <p class="banner" id="shellBanner" hidden data-i18n="shellOnly">Bu sayfa kontrol yüzü. Örtü ve pencere tutma Windows uygulamasında.</p>
+        <p class="banner warn" id="monitorBanner" hidden></p>
+        <section class="status-card">
+          <video id="video" autoplay playsinline muted></video>
+          <div class="status-copy">
+            <strong id="deviceLabel" data-i18n="deviceUnknown">Kamera</strong>
+            <p id="holderLabel"></p>
+            <p id="modelLabel" data-i18n="modelLoading">El takibi hazırlanıyor…</p>
+          </div>
+          <div class="meters">
+            <span><b id="fpsValue">0</b> <small data-i18n="fps">Kare</small></span>
+            <span><b id="handValue">Yok</b> <small data-i18n="hand">El</small></span>
+            <span><b id="winValue">0</b> <small data-i18n="windowsSeen">Pencere</small></span>
+          </div>
+        </section>
+
+        <button type="button" class="switch" id="overlayToggle" aria-pressed="false">
+          <span class="knob" aria-hidden="true"></span>
+          <span><strong data-i18n="overlay">Örtü</strong><small data-i18n="overlayHint">Masaüstünün üstünde</small></span>
+        </button>
+        <button type="button" class="switch" id="cameraToggle" aria-pressed="false">
+          <span class="knob" aria-hidden="true"></span>
+          <span><strong data-i18n="camera">Kamera</strong><small id="cameraState" data-i18n="cameraHint">El takibi</small></span>
+        </button>
+        <p class="message" id="cameraMessage" aria-live="polite"></p>
+        <button type="button" class="btn ghost" id="cameraRetry" hidden data-i18n="cameraRetry">Tekrar dene</button>
+
+        <section class="card">
+          <h2 data-i18n="displays">Ekran</h2>
+          <div class="monitor-list" id="monitorList"></div>
+        </section>
+
+        <section class="card">
+          <h2 data-i18n="fxTitle">Efekt</h2>
+          <div class="chips" id="fxChips"></div>
+        </section>
+
+        <details class="card">
+          <summary data-i18n="power">Güç</summary>
+          <button type="button" class="switch slim" id="autostartToggle" aria-pressed="false">
+            <span class="knob" aria-hidden="true"></span>
+            <span><strong data-i18n="autostart">Windows ile aç</strong><small data-i18n="autostartHint">Tepside başlar, kamerayı açmaz.</small></span>
+          </button>
+          <button type="button" class="switch slim" id="idleToggle" aria-pressed="false">
+            <span class="knob" aria-hidden="true"></span>
+            <span><strong data-i18n="idleCamera">Boşta kamerayı kapat</strong><small data-i18n="idleCameraHint">El yokken bir süre sonra kamera durur.</small></span>
+          </button>
+        </details>
+
+        <details class="card">
+          <summary data-i18n="bindings">Tuşlar</summary>
+          <div id="bindingList" class="binding-list"></div>
+          <div class="bind-form">
+            <select id="bindAction"></select>
+            <input id="bindCustom" type="text" data-i18n-placeholder="customAction" placeholder="Yeni eylem adı" />
+            <select id="bindKind">
+              <option value="gesture" data-i18n="kindGesture">Jest</option>
+              <option value="hotkey" data-i18n="kindHotkey">Kısayol</option>
+            </select>
+            <select id="bindGesture"></select>
+            <button type="button" class="btn ghost" id="bindCapture" data-i18n="bindingsCapture">Tuşu yakala</button>
+            <button type="button" class="btn" id="bindSave" data-i18n="bindingsSave">Kaydet</button>
+          </div>
+        </details>
+
+        <p class="quiet" id="hitLabel"></p>
+        <p class="quiet" id="win32Label"></p>
+        <div class="row">
+          <button type="button" class="btn ghost" id="testShot" data-i18n="testShot">Prova atışı</button>
+        </div>
+        <p class="quiet" data-i18n="trayHint">Pencereyi kapatınca uygulama tepside kalır.</p>
+        <footer>
+          <span data-i18n="credit">Uyarlama: SpiderSense © 2026 Rittika Das, MIT.</span>
+          <span data-i18n="inspire">IG reel yalnızca ilhamdır.</span>
+        </footer>
+      </section>
+    </main>
+    <script type="module" src="/src/control.js"></script>
+  </body>
+</html>
