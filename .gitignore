@@ -9,3 +9,5 @@ agent-tools
 public/mediapipe
 src-tauri/target
 src-tauri/gen
+*.bak
+.claude/

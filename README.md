@@ -6,10 +6,12 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-0.1.0-emerald?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-0.1.5-emerald?style=for-the-badge)
 ![Tauri 2](https://img.shields.io/badge/Tauri_2-Rust_%2B_Vite-blue?style=for-the-badge)
 ![MediaPipe](https://img.shields.io/badge/MediaPipe_Hands-120_FPS_Float16-orange?style=for-the-badge)
+![Filter](https://img.shields.io/badge/Filter-1_Euro_%2B_12ms_Prediction-cyan?style=for-the-badge)
 ![Win32](https://img.shields.io/badge/Win32_Native-Z--Order_Fling-purple?style=for-the-badge)
+![Tests](https://img.shields.io/badge/Tests-18%2F18_Passing-brightgreen?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
 **Windows Masaüstü Örümcek Ağı ve Jujutsu Kaisen "Hollow Purple" Katmanı**  
@@ -28,33 +30,43 @@ flowchart TD
     subgraph UI["🖥️ UI ve Görsel Katman"]
         Overlay["🕸️ Şeffaf Masaüstü Örtüsü"]
         Canvas["🎨 Canvas 2D Efekt Motoru - 60/120 FPS"]
-        Control["⚙️ Jagwey Kontrol Paneli"]
-        Audio["🔊 Web Audio Sentezleyici"]
+        Control["⚙️ Jagwey Kontrol Paneli - 2 Kolonlu Dashboard"]
+        Audio["🔊 Web Audio Sentezleyici - Prosedürel Sesler"]
+        Profiles["👤 Profil Yöneticisi - Yerel Ayar ve Skorlar"]
         Overlay --> Canvas
     end
 
-    subgraph AI["🤖 Yapay Zeka ve Asistan Motoru"]
+    subgraph AI["🤖 Yapay Zeka ve Danışmanlık Motoru"]
+        Advisor["🧠 Model Danışmanı - Donanıma Göre Model Önerisi"]
+        Guide["📚 Çevrimdışı Bilgi Bankası ve Sohbet"]
         Gemini["☁️ Google Gemini API"]
-        Ollama["💻 Yerel LLM - Ollama"]
-        Tiler["📐 Akıllı Pencere Düzenleyici"]
+        Ollama["💻 Yerel LLM - Ollama ve LM Studio"]
+        Tiler["📐 Akıllı Pencere Düzenleyici - Auto-Tile"]
+        Advisor --> Ollama
         Gemini --> Tiler
         Ollama --> Tiler
     end
 
-    subgraph Vision["👁️ Görsel Takip Motoru"]
-        Webcam["📷 Web Kamerası - 120 FPS"]
-        Landmarker["⚡ MediaPipe HandLandmarker - Float16"]
-        Filter["🪄 EMA Jitter Filtresi"]
-        Classifier["🎯 Jest Sınıflandırıcı"]
-        Webcam --> Landmarker --> Filter --> Classifier
+    subgraph Vision["👁️ Görsel Takip ve Filtre Motoru"]
+        Webcam["📷 Web Kamerası - 60/120 FPS"]
+        RVFC["⚡ requestVideoFrameCallback - Sıfır Kare Gecikmesi"]
+        Landmarker["🖐️ MediaPipe HandLandmarker - Float16 Wasm"]
+        EuroFilter["🎯 1 Euro Filtresi - Titreşim Önleyici"]
+        Predictor["🔮 12ms Pointer Hız Tahmini"]
+        Classifier["⚡ Jest ve Duruş Sınıflandırıcı"]
+        Webcam --> RVFC --> Landmarker --> EuroFilter --> Predictor --> Classifier
     end
 
     subgraph Native["⚙️ Rust ve Win32 Arka Plan"]
         Core["🦀 Tauri 2 Çekirdeği"]
-        Win32["🪟 Win32 API - Pencereler"]
+        SingleInstance["🔒 Tek Süreç Kilidi - Single Instance"]
+        Win32["🪟 Win32 API - Pencereleri Taşı / Kapat / Odakla"]
         Tray["🔔 Sistem Tepsisi ve Menü"]
+        Updater["🚀 Kriptografik Otomatik Güncelleyici"]
+        Core --> SingleInstance
         Core --> Win32
         Core --> Tray
+        Core --> Updater
     end
 
     Classifier --> Control
@@ -62,7 +74,7 @@ flowchart TD
     Control --> Audio
     Control <--> Core
     Tiler --> Win32
-    Win32 --> OS["🪟 Windows Masaüstü"]
+    Win32 --> OS["🪟 Windows Masaüstü Pencereleri"]
 ```
 
 ---
@@ -75,27 +87,27 @@ flowchart TD
 
     subgraph SpideyFlow["🕷️ Spider-Man Ağ ve Fırlatma Modu"]
         Web["🤟 Web Sign - İşaret + Serçe"]
-        Shoot["THWIP! Ağ Atışı ve İtme"]
-        Fist["✊ Yumruk - Pencereyi Yakala"]
-        Drag["El Hareketi - Pencere Taşınıyor"]
-        Release["🖐️ Açık Avuç - Fırlat ve Yasla"]
+        Shoot["THWIP! Ağ Atışı ve Pencere Geri Tepmesi"]
+        Hold["🕸️ Ağı Tutma - Sekme Ele Yapışır"]
+        Drag["El Hareketi - Sekmeyi / Pencereyi Ekranda Taşı"]
+        Release["🖐️ Açık Avuç - Fırlat ve Kenara Yasla"]
 
         Web --> Shoot
-        Fist --> Drag --> Release
+        Shoot --> Hold --> Drag --> Release
     end
 
     subgraph GojoFlow["🟣 Satoru Gojo - Kūshiki Murasaki Modu"]
-        Flick["🤌 Fiske - İki Parmak"]
-        Singularity["Mavi + Kırmızı Enerji Çarpışması"]
+        Flick["🤌 Dinamik Fiske - Başparmak Açma"]
+        Singularity["Mavi + Kırmızı Enerji Spiral Çarpışması"]
         Check{"Pencere Güvenli mi?"}
-        Close["🟣 Sekme veya Pencere Kapandı"]
-        Shield["🛡️ Infinity Shield - 2.4s Onay"]
-        Cancel["🖐️ Açık Avuç - İptal Edildi"]
+        Close["🟣 Sekme Ctrl+W veya Pencere Kapandı"]
+        Shield["🛡️ Infinity Shield - 2.4s Koruma Bariyeri"]
+        Cancel["🖐️ Açık Avuç - Kapatmayı İptal Et"]
 
         Flick --> Singularity --> Check
-        Check -- "Standart Sekme" --> Close
+        Check -- "Standart Web Sekmesi" --> Close
         Check -- "Kod veya Döküman" --> Shield
-        Shield -- "Onay" --> Close
+        Shield -- "Onay Beklendi" --> Close
         Shield -- "Açık Avuç" --> Cancel
     end
 
@@ -108,92 +120,111 @@ flowchart TD
 
 ---
 
-## 🇹🇷 Türkçe Açıklama ve Özellikler
+## ⏳ Sürüm Gelişim Zaman Çizelgesi / Evolution Timeline
 
-**Jagwey Web Shooter**, ekranınızın üzerinde tamamen şeffaf ve tıklamaları geçiren (`WS_EX_TRANSPARENT`) bir katman oluşturarak web kamerası aracılığıyla ellerinizi takip eden fütüristik bir masaüstü aracıdır.
+```mermaid
+flowchart TD
+    v010["<b>v0.1.0 — Temel Mimari</b><br/>Tauri 2 + Rust + Win32 saydam örtü<br/>Web Audio sentezleyici ve Float16 MediaPipe"]
+    v011["<b>v0.1.1 — Stüdyo ve Gojo Moru</b><br/>21-nokta neon iskelet kamerası<br/>Hollow Purple sekme kapatıcı ve 2 kolonlu UI"]
+    v012["<b>v0.1.2 — Güvenlik ve Kararlılık</b><br/>Tek süreç kilidi (single-instance)<br/>Win32 checked_target ve güvenli kamera geçişi"]
+    v013["<b>v0.1.3 — AI ve Akıllı Rehber</b><br/>src/guide.js çevrimdışı bilgi bankası<br/>Model danışmanı ve GitHub auto-updater"]
+    v014["<b>v0.1.4 — Dinamik Fiske ve Ağ Tutuşu</b><br/>detectFlick dinamik parmak hareketi<br/>Ağ ile sürekli sekme taşıma ve duruş tespiti"]
+    v015["<b>v0.1.5 — Ultra Hız ve Gerçekçi Ağ</b><br/>requestVideoFrameCallback + 1 Euro filtresi<br/>12ms hız tahmini, sarkık halkalı ağ ve profiller"]
 
-### 🌟 Yeni Eklenen Efsanevi Özellikler
+    v010 --> v011 --> v012 --> v013 --> v014 --> v015
+```
 
-#### 1. 🖥️ Geniş 2 Sütunlu Dashboard ve Tam Ekran Desteği
-- **Sıfır Kaydırma Konforu:** Dar mobil düzen yerine sol tarafta sabit canlı kamera, sağ tarafta tüm ayar kartları yerleştirildi. Dikey kaydırma ihtiyacı minimuma indirildi.
-- **⛶ Tam Ekran Butonu:** Tek tıkla tam ekran moduna geçip çıkabilirsiniz.
-- **Pencereli / Geniş Varsayılan Mod:** Masaüstünde rahat ve ferah bir kontrol deneyimi sunar.
+### 📋 Sürümler Sırasıyla Ne Getirdi?
 
-#### 2. 🪟 %100 Kusursuz Şeffaf Örtü (Sıfır Siyah Ekran)
-- **Tamamen Şeffaf:** Masaüstü örtüsünün arka planı WebView2 motorunda pürüzsüz şeffaf katman (`rgba(0,0,0,0)`) olarak optimize edildi. Ekran asla kararmaz.
-- **Tıklamaları Geçiren Mimari:** Örtü açıkken pencerelerinizdeki yazılara, linklere ve butonlara normal bir şekilde tıklamaya devam edebilirsiniz (`WS_EX_TRANSPARENT`).
-
-#### 3. 📹 Canlı Kamera ve El Test Stüdyosu (Geniş HD Test Alanı)
-- **Canlı 21-Eklem Neon İskelet Çizimi:** MediaPipe eklemleri kameranızın üzerinde anlık olarak parlak neon çizgiler ve eklem noktalarıyla çizilir; elinizin tam olarak nerede ve nasıl algılandığını canlı görün.
-- **Anlık Jest Rozeti (Live HUD):** Algılanan hareket anında animasyonlu rozette (`🕸️ Ağ Atışı`, `✊ Pencere Tutma`, `🖐️ Açık Avuç`, `🤌 Gojo Moru`) gösterilir.
-- **5-Parmak Durum Göstergesi:** Baş, İşaret, Orta, Yüzük ve Serçe parmaklarınızın açık/kapalı durumu 5 ayrı neon kapsülde anlık yanar.
-- **🪞 Ayna Modu (Mirror Mode) ve 🔍 Büyüt/Küçült:** Tek tıkla kamerayı ayna gibi yatay çevirin veya tam ekran test yapın.
-
-#### 4. 🖐️ Kararlı ve Güvenli El Algılama Motoru
-- **Doğrudan Ana Katman (In-Thread):** Web Worker kısıtlamaları aşılarak model doğrudan optimize edilmiş yürütme katmanında çalışır.
-- **Yerel + CDN Yedekli Başlatma:** Model önce yerel dosyalardan yüklenmeyi dener; gerekirse resmi CDN üzerinden otomatik fallback sağlar.
-- **GPU + Otomatik CPU Geçişi:** WebGL başlatılamazsa donma yapmadan CPU moduna geçerek el takibini kesintisiz sürdürür.
-
-#### 5. ✨ Kendi Efektini Yarat (Custom FX Studio)
-- **Tam Kişiselleştirme:**
-  - 🎨 **Ağ Rengi**: İpin merkez rengini renk paletinden seçin.
-  - 🔮 **Aura Parlaması**: Dış ışıma ve neon parlama rengi.
-  - 🌟 **Parçacık Rengi**: Kıvılcım ve yıldızların rengi.
-  - 💫 **Parçacık Stilleri:** `⚡ Elektrik / Kıvılcım`, `✨ Yıldız Tozu`, `🕸️ Klasik Ağ`, `🌸 Kiraz Çiçeği`, `🔥 Alev Korları`, `💜 Gojo Boşluk Küreleri`.
-  - 📏 **Ağ Kalınlığı**: 1px'ten 8px'e kadar serbest kalınlık ve sıklık ayarı.
-  - 🎯 **Prova Atışı ve Kaydet:** Efektinizi anında test edip kaydedin.
-
-#### 6. 🔀 Özellikler ve Hibrit Mod
-- Bütün özellikleri aynı anda kullanabilirsiniz:
-  - `[x] 🕸️ Ağ İpleri ve Parçacıklar`: Dinamik lifler ve parçacık efektleri.
-  - `[x] 🎯 Hedef Pencere Çerçevesi`: Seçilen pencerenin etrafına yüksek kontrastlı neon odak kutusu.
-  - `[x] ⚡ Çift El Bağımsız Kontrol`: Bir elinizle pencere taşırken diğer elinizle ağ atabilir veya sekme kapatabilirsiniz.
-
-#### 7. 🟣 Satoru Gojo: Kūshiki "Murasaki" (Hollow Purple) ve Sekme Kapatıcı
-- **İki Parmak / Fiske Hareketi:** İşaret ve orta parmağınızı birlikte uzattığınızda veya fiske yaptığınızda Gojo Satoru'nun ikonik tekniği tetiklenir.
-- **Sinematik Görsel:** Mavi (Lapse) ve Kırmızı (Reversal) küreler spiral çizerek çarpışır ve parlayan **Hollow Purple** küresine dönüşerek enerji dalgası fırlatır.
-- **Gerçekçi Ses:** Prosedürel sub-bass şok dalgası ve uzay enerjisi sentezi.
-- **Hedef Kapatma:** İmlecin altındaki açık internet sekmesini (`Ctrl+W`) veya tüm pencereyi (`WM_CLOSE`) kapatır.
-- **🛡️ Infinity Shield:** Kodlama ortamları (VS Code) veya form sayfalarında kazara kapatmayı önlemek için altın-mavi altıgen bariyer devreye girer (2.4s içinde açık avuç ile iptal edilebilir).
-
-#### 8. 🤖 Jagwey AI Asistanı ve İnteraktif Tanı Merkezi
-- **👋 Merhaba ve Çalışıyor musun? (Sağlık Testi):** Tek tıkla AI tanı sistemine çağrı gönderir; sistem gecikmesini (ms), 120 FPS durumunu ve donanım sağlığını raporlar.
-- **⚡ Akıllı 1-Tıkla Optimize Et:** Ekran çözünürlüğü ve GPU durumunuza göre en ideal ayarları uygular.
-- **🗂️ Akıllı Pencereleri Düzenle (Auto-Tile):** Masaüstündeki pencereleri altın oranla ekrana hizalar.
-- **Sağlayıcı Seçenekleri:** Yerel Kural Tabanlı Motor (Sıfır kurulum), Ollama (`llama3.2`, `mistral`) ve Google Gemini API (`gemini-2.5-flash`).
-
-#### 9. 🔒 %100 Çevrimdışı ve Sıfır Telemetri
-- Kamera görüntünüz ve hiçbir veriniz bilgisayarınızdan dışarı çıkmaz, sunucuya gönderilmez.
-- Kaynak kodlar tamamen açıktır ve denetime uygundur.
+| Sürüm | Ana Odak | Eklenen Yenilikler | Çözülen Sorun |
+|---|---|---|---|
+| **v0.1.0** | **Temel Mimari** | Tauri 2, Win32 `SetWindowPos`, Web Audio (THWIP / Murasaki / Shield), MediaPipe Hands float16. | Şeffaf örtünün WebView2 CSS arka planı yüzünden siyah ekranda kilitlenmesi giderildi. |
+| **v0.1.1** | **Görsel Stüdyo & Gojo Moru** | 21-Eklem Neon İskelet kamerası, 5 parmak LED barı, Satoru Gojo Hollow Purple sekme kapatıcı, Infinity Shield koruması, Özel Efekt Stüdyosu, Geniş 2-sütunlu masaüstü paneli. | Ekran büyütüldüğünde tek dar sütunda sonsuz aşağı kaydırma zorluğu çözüldü. |
+| **v0.1.2** | **Süreç & Win32 Güvenliği** | `tauri-plugin-single-instance`, Win32 `checked_target` (Görev Yöneticisi ve masaüstü kabuk filtreleme), `SendInput` mod tuşu (Shift/Alt/Win) temizleme, güvenli kamera hot-swap. | Çift tıklamada ikinci sürecin WebView2 verisini kilitleyip çökmesi (HRESULT 0x800700AA) önlendi. |
+| **v0.1.3** | **Yapay Zeka & Otomatik Güncelleme** | `src/guide.js` yerleşik çevrimdışı rehber, `src/modelAdvisor.js` donanım analizli Ollama danışmanı, Gemini / Groq / OpenRouter / LM Studio desteği, kriptografik imzalı auto-updater. | Kullanıcının yerel yapay zeka seçememesi ve manuel güncelleme zahmeti çözüldü. |
+| **v0.1.4** | **Dinamik Fiske & Ağ Tutuşu** | `detectFlick` (280ms başparmak açılma ivmesiyle dinamik Gojo moru), ağ pozisyonu tutulduğu sürece sekmeyi ele bağlayıp monitörler arası taşıma, iki el Spider-Man duruş tespiti (front/back stance). | Ağın tek atımlık olması ve parmakların statik pozda algılanamaması sorunu çözüldü. |
+| **v0.1.5** | **Ultra Düşük Gecikme & Ağ Simülasyonu** | `requestVideoFrameCallback` ile sıfır gecikmeli kamera senkronizasyonu, `src/filter.js` 1 Euro filtresi + 12ms pointer hız tahmini, klasik spoke + yerçekimli sarkık halkalı örümcek ağı (260ms), spotlight kontrast odaklama, `src/profiles.js` yerel profiller ve skor tablosu (18/18 test). | Kamera takip gecikmesi minimuma indirildi, yapay kutu glow yerine gerçekçi örümcek ağı lifleri getirildi. |
 
 ---
 
-## 🎮 Jest Tablosu / Gesture Control Guide
+## 🌟 Öne Çıkan Ayrıntılı Özellikler
 
-| Hareket / Gesture | Parmak Durumu | İşlev / Action | Efekt |
+### 1. ⚡ Ultra Düşük Gecikme & 1 Euro Filtresi (`src/filter.js`)
+- **requestVideoFrameCallback:** Tarayıcı yeni bir kamera karesi sunduğu anda tespit tetiklenir; yapay zamanlayıcı gecikmeleri (`setTimeout` / `setInterval`) tamamen devre dışı bırakılmıştır.
+- **1 Euro Filtresi:** El sabit dururken kamera sensör gürültüsü ve el titremeleri yumuşatılır; el hızlandığında filtre kendini otomatik gevşeterek sıfır gecikmeyle eli takip eder.
+- **12ms Pointer Tahmini:** Hızlı fırlatma ve ağ atışlarında elin bir sonraki konumu 12ms önceden tahmin edilerek ekrandaki imleç veya hedef anında yakalanır.
+
+### 2. 🕸️ Gerçekçi Örümcek Ağı & Spotlight Odaklama
+- **Klasik Örümcek Ağı Simülasyonu:** Merkezden yayılan ana taşıyıcı lifler (`spokes`) ve yerçekimiyle hafifçe aşağı sarkan konsantrik örümcek halkaları (`droop rings`).
+- **260ms Dinamik Örülme:** Ağ atıldığında lifler ve halkalar merkezden dışa doğru gerçek bir örümcek ağı gibi katman katman örülür.
+- **Siyah-Beyaz Çift Katman:** Her ipin arkasında siyah kontrast gölgesi, önünde parlak beyaz/neon çekirdek çizilir; her türlü arka planda kusursuz görünür.
+- **Spotlight Karartma:** Ağ atılan pencere aydınlık kalırken masaüstünün geri kalanı sinematik bir şekilde hafifçe karararak odağı pencereye kilitler.
+
+### 3. 📹 Canlı 21-Eklem Kamera Stüdyosu & HUD
+- **Canlı İskelet:** MediaPipe eklemleri kameranızın üzerinde anlık neon çizgiler ve eklem noktalarıyla çizilir.
+- **5-Parmak LED Göstergesi:** Baş, İşaret, Orta, Yüzük ve Serçe parmaklarının açık/kapalı durumu ayrı göstergelerde anlık yanar.
+- **Canlı Hareket Rozeti:** `🕸️ AĞ ATIŞI`, `✊ PENCERE TUTMA`, `🤌 GOJO MORU`, `🖐️ SERBEST` durumları doğrudan kamera üstünde yazılır.
+- **Ayna Modu (🪞):** Fiziksel el hareketiniz ekrandaki yönle birebir doğal eşleşir.
+
+### 4. 🟣 Satoru Gojo: Kūshiki "Murasaki" & Infinity Shield
+- **Dinamik Fiske Hareketi:** Başparmağınız ile işaret parmağınızı kıstırıp hızla açtığınızda Gojo Satoru'nun ikonik Kūshiki "Murasaki" tekniği patlar!
+- **Mavi + Kırmızı Füzyonu:** Mavi (Lapse) ve Kırmızı (Reversal) spiral küreler elinizin etrafında dönerek çarpışır ve mor enerji dalgası fırlatır.
+- **Akıllı Sekme / Pencere Kapatma:** Hedeflenen pencereye Win32 üzerinden odaklanılır ve güvenli `SendInput` ile aktif sekme (`Ctrl+W`) veya pencere (`WM_CLOSE`) kapatılır.
+- **🛡️ Infinity Shield Koruma Bariyeri:** VS Code, Word, Google Docs gibi kritik pencerelerde kazara kapanmayı önlemek için altın-mavi altıgen bariyer açılır; 2.4 saniye içinde açık avuç yapılarak iptal edilebilir.
+
+### 5. 👤 Yerel Kullanıcı Profilleri & Skor Tablosu (`src/profiles.js`)
+- Kişisel profil kartları: Kendi adınızla profil oluşturup ayarlarınızı snapshot olarak kaydedebilirsiniz.
+- Atış istatistikleri ve en iyi tepki süresi (ms) ölçülerek yerel skor tablosunda saklanır (`localStorage`).
+
+### 6. 🤖 Yapay Zeka Danışmanlığı & Çevrimdışı Rehber
+- **Model Danışmanı (`src/modelAdvisor.js`):** Bilgisayarınızın GPU, VRAM ve RAM kapasitesini sorgulayarak en verimli yerel Ollama modelini (`llama3.2:1b`, `llama3.2:3b`, `mistral`, `qwen2.5`) önerir.
+- **Çevrimdışı Bilgi Bankası (`src/guide.js`):** Uygulama hakkındaki tüm soruları yapay zekaya veya internete ihtiyaç duymadan anında yanıtlar.
+- **Geniş Sağlayıcı Desteği:** Google Gemini API (`gemini-2.5-flash`, `gemini-3.5-flash-lite`), Yerel Ollama, Groq, OpenRouter, Pollinations ve LM Studio.
+
+---
+
+## 🎮 Jest ve Parmak Kontrol Kılavuzu
+
+| Hareket / Jest | Parmak Durumu | Gerçekleşen Eylem | Görsel & Ses Efekti |
 |---|---|---|---|
-| 🤟 **Ağ Atışı (Web)** | İşaret + Serçe Açık, Diğerleri Kapalı | Gerçek pencereyi geri teptirir | Sinematik Ağ + **THWIP!** |
-| ✊ **Yumruk (Fist)** | Tüm Parmaklar Kapalı | Pencereyi kavrar ve elinize bağlar | Gergin Halat + Çınlama |
-| 🖐️ **Açık Avuç (Palm)** | Tüm Parmaklar Açık | Tutulan pencereyi fırlatır / İptal eder | Momentum Fırlatma / İptal |
-| 🟣 **Gojo Fiske (Flick)** | İşaret + Orta Parmak Birlikte / Fiske | Aktif sekmeyi veya pencereyi kapatır | **Hollow Purple** + Sub-Bass Patlaması |
-| ☝️ **İşaret (Point)** | Yalnızca İşaret Parmağı Açık | Serbest Atanabilir Özel Kısayol | Özel Atama |
+| 🤟 **Ağ Atışı (Web)** | İşaret + Serçe Açık | Pencereyi iter veya ağ atar | Dinamik Spoke Ağ + **THWIP!** |
+| 🕸️ **Ağı Tutma (Hold)** | Ağ Pozunu Koru | Sekmeyi ele bağlar, monitörler arası taşır | Gergin İpler + Dinamik Takip |
+| ✊ **Yumruk (Fist)** | Tüm Parmaklar Kapalı | Pencereyi kavrar ve serbestçe hareket ettirir | Çelik Halat + Gerilim Sesi |
+| 🖐️ **Açık Avuç (Palm)** | Tüm Parmaklar Açık | Tutulan pencereyi fırlatır / Kapatmayı iptal eder | Momentum Fırlatma / İptal Sesi |
+| 🤌 **Gojo Fiske (Flick)** | Başparmak Kıstır → Hızla Aç | Aktif sekmeyi (`Ctrl+W`) veya pencereyi kapatır | **Hollow Purple** + Sub-Bass Patlaması |
+| 🤺 **Spider Stance** | Bir El Önde Büyük, Bir El Arkada Küçük | İki el derinlik perspektifi modu | Çift El Senkronizasyonu |
+
+---
+
+## 📊 Performans ve Sistem Karşılaştırması
+
+| Kriter | Geleneksel Electron Çözümleri | Jagwey Web Shooter (v0.1.5) |
+|---|---|---|
+| **Bellek Tüketimi (RAM)** | ~450 MB – 850 MB | **~42 MB – 65 MB** (Rust + WebView2) |
+| **Kamera & Takip Gecikmesi** | ~80 ms – 140 ms | **~12 ms – 24 ms** (RVFC + 1 Euro Filtresi) |
+| **Kare Hızı (FPS)** | 30 – 60 FPS | **60 FPS / 120 FPS Pürüzsüz Mod** |
+| **İşlem Başlatma Çakışması** | Çift tıklamada bellek sızıntısı | **Tek Süreç Kilidi (Single Instance)** |
+| **Pencere Çizim Katmanı** | Opak veya donan donuk pencereler | **100% Saydam Click-Through (`WS_EX_TRANSPARENT`)** |
+| **Birim Testleri** | Sınırlı | **18 / 18 Başarılı Test** |
 
 ---
 
 ## 🇬🇧 English Documentation
 
-**Jagwey Web Shooter** is a zero-latency, transparent desktop overlay built with Tauri 2, MediaPipe Hands (Float16 SIMD), and native Win32 window management APIs.
+**Jagwey Web Shooter** is an ultra-fast, zero-latency transparent desktop overlay built with Tauri 2, MediaPipe Hands (Float16 SIMD), and native Win32 window management APIs.
 
 ### 🚀 Highlights
-- **Satoru Gojo's Hollow Purple (Kūshiki: Murasaki):** Use the two-finger flick gesture to obliterate active tabs (`Ctrl+W`) or windows (`WM_CLOSE`) with an authentic Blue + Red fusion animation and explosive sub-bass synth sound.
-- **Infinity Shield Protection:** Prevents accidental closes on IDEs (VS Code), documents, or uncommitted work with a 2.4s cancelable hexagonal barrier.
-- **AI Workspace Assistant:** Connect local Ollama (`llama3.2`) or Google Gemini (`gemini-2.5-flash`) to intelligently auto-tile and organize open windows on your desktop.
-- **Dual-Hand Tracking:** Track both hands simultaneously at up to 120 FPS with real-time exponential smoothing for jitter-free tracking.
-- **Ultra Lightweight:** Uses only **~42 MB RAM** (native Rust + WebView2). Camera turns off cleanly when idle or minimized.
+- **1 Euro Filter & 12ms Prediction (`src/filter.js`):** Adaptive jitter damping during rest, zero latency during fast gestures, and a 12ms predictive lead for snapping to targets.
+- **Realistic Spider-Man Web Simulation:** Procedurally generated radial spokes with gravity-curved droop rings (260ms weave animation, dual black/white contrast outlines, and background spotlight isolation).
+- **Satoru Gojo's Hollow Purple (Kūshiki: Murasaki):** Dynamic thumb-flick gesture trigger with Blue + Red spiral energy fusion, devastating sub-bass synth acoustics, and safe tab/window closing.
+- **Infinity Shield Protection:** Prevents accidental closes on IDEs (VS Code), documents, and terminals with a 2.4s cancelable hexagonal barrier.
+- **Local User Profiles (`src/profiles.js`):** Create named profiles, store settings snapshots, track reaction times, and log top speeds.
+- **AI Hardware Advisor & Offline Knowledge Base:** Automatically detects machine specs to recommend ideal Ollama models, backed by an offline chatbot knowledge base.
+- **Single-Instance Hardening:** Native mutex prevention ensuring zero process duplication and automatic focus recovery.
 
 ---
 
-## 🛠️ Kurulum ve Derleme / Development & Build
+## 🛠️ Kurulum, Test ve Derleme / Development & Build
 
 ### Gereksinimler / Prerequisites
 - Windows 10 / 11 (64-bit)
@@ -207,7 +238,7 @@ flowchart TD
 # 1. Bağımlılıkları yükle
 npm install
 
-# 2. Birim testlerini çalıştır (10/10 test)
+# 2. 18 birim testini çalıştır
 npm test
 
 # 3. Geliştirici modunda çalıştır
@@ -218,8 +249,8 @@ npm run desktop:build
 ```
 
 ### Derleme Çıktıları
-- **Standalone Portable Exe:** `dist-win/jagwey-web-shooter.exe`
-- **NSIS Windows Installer:** `dist-win/Jagwey Web Shooter_0.1.0_x64-setup.exe`
+- **Standalone Taşınabilir Sürüm:** `dist-win/jagwey-web-shooter.exe`
+- **Windows Kurulum Paketi:** `dist-win/Jagwey Web Shooter_0.1.5_x64-setup.exe`
 
 ---
 
@@ -228,5 +259,5 @@ npm run desktop:build
 - **Geliştirici:** Jagwey (Osman) — [github.com/jagwey/web-shooter](https://github.com/jagwey/web-shooter)
 - **Lisans:** **MIT License**
 - **SpiderSense Uyarlaması:** Jest geometrisi ve sinematik eğrisel ağ çizimi Rittika Das'ın [SpiderSense](https://github.com/rittika-das/SpiderSense) projesinden uyarlanmıştır (MIT Lisansı korunmuştur, bkz. [`NOTICE`](./NOTICE)).
-- **El Modeli:** Google MediaPipe Tasks Vision (`hand_landmarker.task`), Apache 2.0 Lisansı.
-- Ses efektleri 100% prosedürel HTML5 Web Audio API ile sıfırdan sentezlenmiştir (harici dosya gerektirmez).
+- **El Algılama Modeli:** Google MediaPipe Tasks Vision (`hand_landmarker.task`), Apache 2.0 Lisansı.
+- Ses efektleri 100% prosedürel HTML5 Web Audio API ile sıfırdan sentezlenmiştir (harici MP3/WAV gerektirmez).

@@ -73,12 +73,7 @@ struct SaveResponse {
 }
 
 fn read_monitors(window: &WebviewWindow) -> Result<Vec<MonitorInfo>, String> {
-    let monitors = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        window.available_monitors()
-    })) {
-        Ok(Ok(m)) => m,
-        _ => Vec::new(),
-    };
+    let monitors = window.available_monitors().map_err(|err| err.to_string())?;
     let mut listed = Vec::new();
     for monitor in monitors {
         let pos = monitor.position();
@@ -95,17 +90,7 @@ fn read_monitors(window: &WebviewWindow) -> Result<Vec<MonitorInfo>, String> {
             primary,
         });
     }
-    if listed.is_empty() {
-        listed.push(MonitorInfo {
-            id: "primary|0,0".into(),
-            name: "Primary Display".into(),
-            x: 0,
-            y: 0,
-            width: 1920,
-            height: 1080,
-            primary: true,
-        });
-    } else if !listed.iter().any(|item| item.primary) {
+    if !listed.is_empty() && !listed.iter().any(|item| item.primary) {
         listed[0].primary = true;
     }
     Ok(listed)
@@ -318,19 +303,13 @@ fn watch_monitors(app: AppHandle) {
     std::thread::spawn(move || {
         let mut last = String::new();
         loop {
-            std::thread::sleep(Duration::from_millis(2500));
+            std::thread::sleep(Duration::from_millis(1200));
             let Some(window) = app.get_webview_window("control") else {
                 continue;
             };
-            let monitors = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                read_monitors(&window)
-            })) {
-                Ok(Ok(m)) => m,
-                _ => continue,
-            };
-            if monitors.is_empty() {
+            let Ok(monitors) = read_monitors(&window) else {
                 continue;
-            }
+            };
             let fingerprint = monitors
                 .iter()
                 .map(|item| format!("{}:{}x{}", item.id, item.width, item.height))
@@ -518,8 +497,8 @@ fn close_window(hwnd: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn close_active_tab() -> Result<(), String> {
-    win32::close_active_tab()
+fn close_active_tab(hwnd: i64) -> Result<(), String> {
+    win32::close_active_tab(hwnd)
 }
 
 #[tauri::command]
@@ -535,6 +514,16 @@ fn get_foreground_window() -> Result<Option<win32::DesktopWindow>, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Must be first: a second launch focuses the running window instead of fighting over the WebView2 profile.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(w) = app.get_webview_window("control") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--tray"]),
@@ -571,13 +560,15 @@ pub fn run() {
             get_foreground_window
         ])
         .setup(|app| {
-            let _ = build_tray(app);
+            build_tray(app)?;
             let settings = load_settings(app.handle());
             let _ = apply_hotkeys(app.handle(), &settings);
             if settings.start_with_windows {
                 let _ = apply_autostart(app.handle(), true);
             }
             if let Some(window) = app.get_webview_window("control") {
+                let _ = window.maximize();
+                let _ = window.show();
                 let handle = window.clone();
                 window.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { api, .. } = event {
@@ -585,13 +576,6 @@ pub fn run() {
                         let _ = handle.hide();
                         let _ = handle.emit("shell-hidden", ());
                     }
-                });
-                let win = window.clone();
-                tauri::async_runtime::spawn(async move {
-                    std::thread::sleep(Duration::from_millis(200));
-                    let _ = win.maximize();
-                    let _ = win.show();
-                    let _ = win.set_focus();
                 });
             }
             if std::env::args().any(|arg| arg == "--tray") {

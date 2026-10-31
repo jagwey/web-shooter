@@ -18,6 +18,7 @@
           </div>
         </div>
         <div style="display: flex; align-items: center; gap: 8px;">
+          <button type="button" class="btn ghost" id="checkUpdateBtn" style="padding: 5px 12px; font-size: 0.85rem; border-radius: 999px;">🔄 <span data-i18n="checkUpdate">Güncellemeleri kontrol et</span></button>
           <button type="button" class="btn ghost" id="fullscreenToggleBtn" title="Tam Ekran Aç / Kapat" style="padding: 5px 12px; font-size: 0.85rem; border-radius: 999px;">⛶ <span data-i18n="fullscreen">Tam Ekran</span></button>
           <div class="lang" role="group" aria-label="Language">
             <button type="button" id="langTr" data-lang="tr">TR</button>
@@ -25,6 +26,11 @@
           </div>
         </div>
       </header>
+
+      <div id="updateBar" class="update-bar" hidden>
+        <span id="updateText"></span>
+        <button type="button" class="btn" id="updateBtn" data-i18n="updateNow">Güncelle</button>
+      </div>
 
       <section id="onboarding">
         <article class="card step" data-step="welcome">
@@ -73,8 +79,9 @@
               <button type="button" class="btn-icon" id="cameraExpandBtn" title="Büyüt / Küçült">🔍</button>
             </div>
           </div>
+          <p class="hint" id="webcamTip" data-i18n="webcamTip" style="margin: 0 0 8px; font-size: 0.82rem; opacity: 0.8;">💡 Geniş açılı, 720p/1080p 60fps kaliteli bir webcam önerilir. İyi ışık + elin tamamı kadrajda olsun; hızlı harekette takip daha sağlam olur.</p>
 
-          <div class="camera-stage" id="cameraStage">
+          <div class="camera-stage mirrored" id="cameraStage">
             <video id="video" autoplay playsinline muted></video>
             <canvas id="cameraCanvas"></canvas>
             <div class="camera-hud">
@@ -102,6 +109,7 @@
             </div>
             <p id="modelLabel" style="font-size: 0.76rem; color: var(--muted); margin: 0;" data-i18n="modelLoading">El takibi hazırlanıyor…</p>
           </div>
+          <small id="deviceLabel" style="display: block; margin-top: 4px; font-size: 0.72rem; color: var(--muted);"></small>
 
           <div class="meters" style="margin-top: 10px;">
             <span><b id="fpsValue">0</b> <small data-i18n="fps">Kare</small></span>
@@ -159,11 +167,28 @@
               <p data-i18n="guidePurpleDesc">İşaret ve orta parmağını uzat (Gojo fiske işareti).</p>
             </div>
           </div>
+          <p style="margin: 10px 0 0; font-size: 0.76rem; color: var(--muted);">💡 Elini kameradan 40–80 cm uzakta, avuç kameraya dönük ve iyi ışıkta tut. Kamera kartındaki rozet ve parmak ışıkları jestin algılandığını gösterir. Örtü açık değilse pencere yakalama çalışmaz.</p>
         </section>
       </div>
 
       <!-- Sağ Kolon: Özellikler, Temalar, Custom FX, AI Lab, Monitörler -->
       <div class="dashboard-right">
+        <!-- Local profiles -->
+        <section class="card">
+          <h2 data-i18n="profileTitle">Profil</h2>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; gap: 6px;">
+              <select id="profileSelect" style="flex: 1;"></select>
+              <button type="button" class="btn ghost" id="profileDelete" data-i18n="profileDelete">Sil</button>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <input id="profileName" maxlength="32" style="flex: 1;" placeholder="Yeni profil adı">
+              <button type="button" class="btn" id="profileAdd" data-i18n="profileAdd">Ekle</button>
+            </div>
+            <small id="profileStats"></small>
+          </div>
+        </section>
+
         <!-- Features & Hybrid Mode -->
         <section class="card">
           <h2 data-i18n="combinedFeatures">Özellikler & Hibrit Mod</h2>
@@ -283,8 +308,16 @@
             <div class="ai-chat-log" id="aiChatLog">
               <div class="ai-msg ai-bot">
                 <strong>Jagwey AI:</strong>
-                <span>Selam Osman! Sisteminiz, 120 FPS el algılama motorunuz ve Win32 pencere yöneticiniz hazır. Yukarıdaki butonlardan hızlı test yapabilir veya bana soru sorabilirsiniz!</span>
+                <span>Selam! Uygulamanın rehberiyim: her özelliği adım adım anlatırım. "Nasıl...?" diye sor ya da aşağıdan bir konu seç. Yapay zeka eklemeden de çalışırım.</span>
               </div>
+            </div>
+            <div class="chip-row" id="aiSuggestChips">
+              <button type="button" class="chip" data-ask="Ağ nasıl atılır?">Ağ nasıl atılır?</button>
+              <button type="button" class="chip" data-ask="Pencere nasıl taşınır?">Pencere nasıl taşınır?</button>
+              <button type="button" class="chip" data-ask="Yapay zeka nasıl eklenir?">Yapay zeka nasıl eklenir?</button>
+              <button type="button" class="chip" data-ask="Hangi yapay zeka modelini kurmalıyım?">Hangi model bana uygun?</button>
+              <button type="button" class="chip" data-ask="Jest algılanmıyor, neden?">Jest algılanmıyor</button>
+              <button type="button" class="chip" data-ask="Neler sorabilirim?">Neler sorabilirim?</button>
             </div>
             <form class="ai-chat-input-row" id="aiChatForm">
               <input type="text" id="aiChatInput" placeholder="Yapay zekaya bir şey sor veya komut ver..." data-i18n-placeholder="aiChatPlaceholder" />
@@ -310,7 +343,7 @@
               <div class="device-row" id="aiModelRow">
                 <span data-i18n="aiModel">Model</span>
                 <div style="display: flex; gap: 4px; width: 65%;">
-                  <input type="text" id="aiModel" class="device-select" style="padding: 4px 8px; font-size: 0.8rem; flex: 1;" placeholder="gemini-2.5-flash / llama3.2" />
+                  <input type="text" id="aiModel" class="device-select" style="padding: 4px 8px; font-size: 0.8rem; flex: 1;" placeholder="gemini-3.5-flash-lite / llama3.2" />
                   <button type="button" class="btn ghost" id="aiFetchModelsBtn" style="padding: 2px 6px; font-size: 0.72rem;">Tara</button>
                 </div>
               </div>
@@ -341,8 +374,10 @@
 
         <!-- Bindings & Hotkeys -->
         <details class="card">
-          <summary data-i18n="bindings">Tuşlar</summary>
+          <summary data-i18n="bindings">Komutlar</summary>
+          <p class="quiet" data-i18n="bindingsHint">Her satır: yapılacak iş → onu tetikleyen el hareketi veya klavye tuşu.</p>
           <div id="bindingList" class="binding-list"></div>
+          <strong class="bind-title" data-i18n="bindingsNew">Yeni komut ekle</strong>
           <div class="bind-form">
             <select id="bindAction"></select>
             <input id="bindCustom" type="text" data-i18n-placeholder="customAction" placeholder="Yeni eylem adı" />

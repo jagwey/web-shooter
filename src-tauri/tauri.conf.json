@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Jagwey Web Shooter",
-  "version": "0.1.0",
+  "version": "0.1.5",
   "identifier": "com.jagwey.webshooter",
   "build": {
     "beforeDevCommand": "npm run prepare:assets && npm run dev",
@@ -40,12 +40,13 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' blob: data: https://cdn.jsdelivr.net https://storage.googleapis.com http://localhost:*; worker-src 'self' blob:"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' blob: data: https://cdn.jsdelivr.net https://storage.googleapis.com https://generativelanguage.googleapis.com https://api.groq.com https://openrouter.ai https://api.openai.com https://text.pollinations.ai http://localhost:* http://127.0.0.1:*; worker-src 'self' blob:"
     }
   },
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -54,6 +55,17 @@
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERCOTc5NEFCQjcxRkVGQjMKUldTejd4KzNxNVNYMjB3bE5vdTd4RmJyN3A3UGtGcG5uNkNBaUZhOGhKWUVneElNUE5TNW5XMXUK",
+      "endpoints": [
+        "https://github.com/jagwey/web-shooter/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

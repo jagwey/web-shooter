@@ -17,4 +17,8 @@ commands.allow = [
   "fling_window",
   "cancel_fling",
   "camera_holders",
+  "close_window",
+  "close_active_tab",
+  "minimize_window",
+  "get_foreground_window",
 ]

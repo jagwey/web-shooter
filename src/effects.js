@@ -216,21 +216,17 @@ export function createWebFx(ctx, hooks = {}) {
     return look.quality !== "low";
   }
 
-  function shoot(startX, startY) {
-    const target = webTarget(startX, startY);
-    activeWeb = {
-      startX,
-      startY,
-      targetX: target.x,
-      targetY: target.y,
-      progress: 0,
-      opacity: 1,
-      age: 0,
+  // rect = target window in canvas px; web lands on the point and stays inside that window.
+  function shoot(x, y, rect = null) {
+    activeWeb = null;
+    webImpact = {
+      x,
+      y,
+      rect,
+      life: 1,
+      maxRadius: rect ? Math.hypot(rect.w, rect.h) : 320,
     };
-    webImpact = null;
-    muzzleFlash = { x: startX, y: startY, life: 1 };
-    shockwave = { x: startX, y: startY, radius: 8, life: 1 };
-    spawnParticles(startX, startY, full() ? 16 : 4);
+    hooks.onImpact?.(x, y);
   }
 
   function triggerPurple(x, y) {
@@ -417,14 +413,18 @@ export function createWebFx(ctx, hooks = {}) {
     }
 
     const progress = 1 - impact.life;
-    const radius = Math.min(impact.maxRadius * Math.pow(progress, 0.65), impact.maxRadius);
-    const spokes = full() ? 18 : 8;
-    const fade = Math.max(impact.life, 0);
+    // Fast spread (first ~25% of life), then hold and fade.
+    const radius = impact.maxRadius * Math.min(1, Math.pow(progress * 4, 0.6));
+    const spokes = 12;
+    const fade = Math.min(1, impact.life * 2.5);
 
     ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    ctx.shadowColor = look.glow;
-    ctx.shadowBlur = full() ? 20 : 0;
+    if (impact.rect) {
+      ctx.beginPath();
+      ctx.rect(impact.rect.x, impact.rect.y, impact.rect.w, impact.rect.h);
+      ctx.clip();
+    }
+    ctx.shadowBlur = 0;
 
     for (let i = 0; i < spokes; i += 1) {
       const angle = (Math.PI * 2 * i) / spokes;
@@ -436,12 +436,12 @@ export function createWebFx(ctx, hooks = {}) {
       ctx.beginPath();
       ctx.moveTo(impact.x, impact.y);
       ctx.quadraticCurveTo(controlX, controlY, endX, endY);
-      ctx.strokeStyle = `rgba(255, 255, 255, ${Math.max(0.15, fade)})`;
-      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.9 * fade})`;
+      ctx.lineWidth = 1.4;
       ctx.stroke();
     }
 
-    const rings = full() ? 13 : 4;
+    const rings = 8;
     for (let r = 1; r <= rings; r += 1) {
       const ringRadius = radius * (r / rings);
       ctx.beginPath();
@@ -461,40 +461,8 @@ export function createWebFx(ctx, hooks = {}) {
         const controlY = impact.y + Math.sin(middleAngle) * controlRadius;
         ctx.quadraticCurveTo(controlX, controlY, x, y);
       }
-      const alpha = Math.max(0.18, 0.9 - r * 0.045) * fade;
-      ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
-      ctx.lineWidth = r <= 2 ? 2.4 : 1.15;
-      ctx.stroke();
-    }
-
-    ctx.shadowBlur = full() ? 8 : 0;
-    const fineSpokes = full() ? 36 : 0;
-    for (let i = 0; i < fineSpokes; i += 1) {
-      const angle = (Math.PI * 2 * i) / 36;
-      ctx.beginPath();
-      ctx.moveTo(impact.x, impact.y);
-      ctx.lineTo(impact.x + Math.cos(angle) * radius, impact.y + Math.sin(angle) * radius);
-      ctx.strokeStyle = rgba(look.fine, 0.18 * fade);
-      ctx.lineWidth = 0.6;
-      ctx.stroke();
-    }
-
-    const coreSize = 10 + progress * 24;
-    ctx.shadowColor = "#ffffff";
-    ctx.shadowBlur = 35;
-    ctx.beginPath();
-    ctx.arc(impact.x, impact.y, coreSize, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(255, 255, 255, ${0.95 * fade})`;
-    ctx.fill();
-
-    for (let i = 0; i < 12; i += 1) {
-      const angle = (Math.PI * 2 * i) / 12;
-      const outer = 35 + progress * 45;
-      ctx.beginPath();
-      ctx.moveTo(impact.x + Math.cos(angle) * 12, impact.y + Math.sin(angle) * 12);
-      ctx.lineTo(impact.x + Math.cos(angle) * outer, impact.y + Math.sin(angle) * outer);
-      ctx.strokeStyle = `rgba(255, 255, 255, ${0.6 * fade})`;
-      ctx.lineWidth = 1.3;
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.8 * fade})`;
+      ctx.lineWidth = 1;
       ctx.stroke();
     }
 

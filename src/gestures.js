@@ -89,6 +89,30 @@ export function isGojoSign(points) {
   return indexOpen && middleOpen && ringClosed && pinkyClosed;
 }
 
+/** Bounding-box diagonal of a hand in image space; grows as the hand nears the camera. */
+export function handSpan(points) {
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  return Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+}
+
+// Front hand must look this much bigger than the back hand (thrust at the camera vs. held at the chest).
+export const PURPLE_SPAN_RATIO = 1.4;
+
+/**
+ * Gojo's Hollow Purple stance: two hands, one pushed toward the camera, the other pulled back.
+ * Returns the front hand's index, or -1. Any front pose works (claw, finger gun) except the web sign.
+ */
+export function purpleFrontHand(hands, gestures) {
+  if (hands.length < 2) return -1;
+  const [a, b] = [handSpan(hands[0]), handSpan(hands[1])];
+  const front = a >= b ? 0 : 1;
+  const ratio = Math.max(a, b) / (Math.min(a, b) || 1e-6);
+  if (ratio < PURPLE_SPAN_RATIO) return -1;
+  if (gestures[front] === "web") return -1;
+  return front;
+}
+
 /** web, flick (Gojo purple), point, fist, palm, or null. */
 export function classifyGesture(points) {
   if (isWebSign(points)) return "web";

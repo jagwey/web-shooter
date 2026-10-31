@@ -1,10 +1,12 @@
 import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
 import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, removeBinding, upsertBinding } from "./bindings.js";
-import { autoTileWorkspace, chatWithAi, fetchOllamaModels, optimizeSettingsWithAi, sendAiGreeting, testAiConnection } from "./ai.js";
-import { emitTo, inDesktop, invoke, listen } from "./desktop.js";
-import { classifyGesture } from "./gestures.js";
+import { DEFAULT_MODELS, OPENAI_PRESETS, autoTileWorkspace, chatWithAi, fetchOllamaModels, optimizeSettingsWithAi, sendAiGreeting, testAiConnection } from "./ai.js";
+import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen } from "./desktop.js";
+import { classifyGesture, purpleFrontHand } from "./gestures.js";
+import { createHandFilter, filterLandmarks, predict } from "./filter.js";
 import { registerCustomLook } from "./effects.js";
 import { getLang, initI18n, setLang, t } from "./i18n.js";
+import { activeProfile, createProfile, loadProfiles, recordMs, recordShot, removeProfile, saveProfiles } from "./profiles.js";
 import {
   isAudioEnabled,
   playFling,
@@ -37,10 +39,10 @@ const state = {
   detectTimer: 0,
   idleTimer: 0,
   cameraExpanded: false,
-  cameraMirrored: false,
+  cameraMirrored: true,
   hands: [
-    { lastGesture: null, grab: null, samples: [], smoothed: null },
-    { lastGesture: null, grab: null, samples: [], smoothed: null },
+    { lastGesture: null, grab: null, samples: [], filter: null },
+    { lastGesture: null, grab: null, samples: [], filter: null },
   ],
   pendingCloses: new Map(),
   lastHit: "",
@@ -71,6 +73,18 @@ const GESTURE_KEYS = {
   flick: "gestureFlick",
   point: "gesturePoint",
 };
+const STABLE_MS = 120;
+const ACTION_COOLDOWN_MS = 600;
+// Fast motion blurs the hand for a few frames; keep grabs alive instead of dropping the window.
+const MISS_GRACE_MS = 300;
+// Pointer lead along hand velocity; roughly one camera frame of hidden latency.
+const PREDICT_MS = 12;
+// Hollow Purple: the two-hand stance must hold this long, and the webbed tab stays a target this long after release.
+const PURPLE_HOLD_MS = 250;
+const PURPLE_TARGET_MS = 3000;
+
+let profiles = null;
+let profileSaveTimer = 0;
 
 initI18n();
 wireChrome();
@@ -102,17 +116,19 @@ function wireChrome() {
   if (camSelect) {
     camSelect.addEventListener("change", async (e) => {
       const deviceId = e.target.value;
-      if (state.settings) {
-        state.settings.cameraDeviceId = deviceId;
-        await persist();
-      }
-      if (state.cameraWanted) {
-        stopCamera(false);
-        state.cameraWanted = true;
-        await startCamera();
-      }
+      if (!state.settings) return;
+      const previous = state.settings.cameraDeviceId;
+      state.settings.cameraDeviceId = deviceId;
+      camSelect.disabled = true;
+      // startCamera opens the new device before closing the old one, so a failed switch keeps the old image.
+      const ok = await startCamera();
+      if (!ok && state.stream) state.settings.cameraDeviceId = previous;
+      await persist();
+      camSelect.disabled = false;
+      renderCameraSelect();
     });
   }
+  navigator.mediaDevices?.addEventListener?.("devicechange", () => listCameras());
 
   const soundToggle = document.getElementById("soundToggle");
   if (soundToggle) {
@@ -220,8 +236,8 @@ function wireChrome() {
   const refreshCamerasBtn = document.getElementById("refreshCamerasBtn");
   if (refreshCamerasBtn) {
     refreshCamerasBtn.addEventListener("click", async () => {
-      await describeCamera();
-      renderCameraSelect();
+      await listCameras();
+      if (!state.stream) startCamera();
     });
   }
 
@@ -264,18 +280,6 @@ function wireChrome() {
       const msg = document.getElementById("aiStatusMessage");
       if (msg) msg.textContent = "Bağlanıyor / Testing...";
       const res = await testAiConnection(state.settings);
-      if (msg) msg.textContent = res.message;
-    });
-  }
-
-  const aiTileBtn = document.getElementById("aiTileBtn");
-  if (aiTileBtn) {
-    aiTileBtn.addEventListener("click", async () => {
-      const msg = document.getElementById("aiStatusMessage");
-      if (msg) msg.textContent = "Pencereler taranıyor...";
-      const windows = await invoke("list_windows");
-      const snap = await invoke("desktop_snapshot");
-      const res = await autoTileWorkspace(state.settings, windows, snap?.monitors || state.monitors);
       if (msg) msg.textContent = res.message;
     });
   }
@@ -441,6 +445,13 @@ function wireAi() {
     });
   }
 
+  document.getElementById("aiSuggestChips")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-ask]");
+    if (!btn || !chatForm || !chatInput) return;
+    chatInput.value = btn.dataset.ask;
+    chatForm.requestSubmit();
+  });
+
   const fetchModelsBtn = document.getElementById("aiFetchModelsBtn");
   if (fetchModelsBtn) {
     fetchModelsBtn.addEventListener("click", async () => {
@@ -473,10 +484,7 @@ function appendAiChat(role, text) {
   log.scrollTop = log.scrollHeight;
 }
 
-async function boot() {
-  paintLang();
-  const loaded = await invoke("get_settings");
-  state.settings = loaded?.unsupported ? fallbackSettings() : loaded;
+function applySettingsEffects() {
   if (state.settings.lang) initI18n(state.settings.lang);
   if (state.settings.customFx) {
     registerCustomLook(state.settings.customFx);
@@ -489,8 +497,87 @@ async function boot() {
     focusFrameOnly: Boolean(state.settings.focusFrameOnly),
     customFx: state.settings.customFx,
   });
+}
+
+// Shots and best ms change many times a second; write storage at most every 2 s.
+function queueProfileSave() {
+  if (profileSaveTimer) return;
+  profileSaveTimer = setTimeout(() => {
+    profileSaveTimer = 0;
+    saveProfiles(localStorage, profiles);
+    renderProfiles();
+  }, 2000);
+}
+
+function snapshotProfile() {
+  if (!profiles || !state.settings) return;
+  activeProfile(profiles).settings = structuredClone(state.settings);
+  saveProfiles(localStorage, profiles);
+}
+
+async function switchProfile(id) {
+  snapshotProfile();
+  profiles.activeId = id;
+  const next = activeProfile(profiles);
+  if (next.settings) state.settings = { ...state.settings, ...structuredClone(next.settings) };
+  applySettingsEffects();
+  await persist();
+}
+
+function wireProfiles() {
+  const select = document.getElementById("profileSelect");
+  const nameInput = document.getElementById("profileName");
+  select.addEventListener("change", () => switchProfile(select.value));
+  document.getElementById("profileAdd").addEventListener("click", async () => {
+    snapshotProfile();
+    const created = createProfile(profiles, nameInput.value, state.settings);
+    nameInput.value = "";
+    await switchProfile(created.id);
+  });
+  document.getElementById("profileDelete").addEventListener("click", async () => {
+    const current = activeProfile(profiles);
+    if (!window.confirm(`${t("profileDelete")}: ${current.name}?`)) return;
+    if (!removeProfile(profiles, current.id)) return;
+    const next = activeProfile(profiles);
+    if (next.settings) state.settings = { ...state.settings, ...structuredClone(next.settings) };
+    applySettingsEffects();
+    await persist();
+  });
+}
+
+function renderProfiles() {
+  const select = document.getElementById("profileSelect");
+  if (!profiles || !select) return;
+  const active = activeProfile(profiles);
+  const signature = profiles.list.map((p) => `${p.id}:${p.name}`).join("|");
+  if (select.dataset.sig !== signature) {
+    select.replaceChildren(...profiles.list.map((p) => new Option(p.name, p.id)));
+    select.dataset.sig = signature;
+  }
+  select.value = active.id;
+  document.getElementById("profileDelete").disabled = profiles.list.length <= 1;
+  document.getElementById("profileName").placeholder = t("profileNamePh");
+  document.getElementById("profileStats").textContent = t("profileStats")
+    .replace("{shots}", active.stats.shots)
+    .replace("{best}", active.stats.bestMs == null ? "—" : `${active.stats.bestMs}ms`);
+}
+
+async function boot() {
+  paintLang();
+  const loaded = await invoke("get_settings");
+  state.settings = loaded?.unsupported ? fallbackSettings() : loaded;
+  profiles = loadProfiles(localStorage);
+  const startProfile = activeProfile(profiles);
+  if (startProfile.settings) {
+    state.settings = { ...state.settings, ...startProfile.settings };
+    invoke("save_settings", { settings: state.settings });
+  }
+  wireProfiles();
+  applySettingsEffects();
 
   await refreshDesktop();
+  offerUpdate();
+  document.getElementById("checkUpdateBtn").addEventListener("click", manualUpdateCheck);
   listen("monitors-changed", (event) => {
     state.monitors = event.payload.monitors || [];
     if (event.payload.fallback) setMessage("monitorBanner", t("monitorGone"));
@@ -528,9 +615,10 @@ async function boot() {
   }, 2000);
   if (!inDesktop()) document.getElementById("shellBanner").hidden = false;
   if (state.settings.onboarded) {
-    showHome();
+    // Start the camera first so a UI paint error can never block hand tracking.
     state.cameraWanted = true;
     startCamera();
+    showHome();
   } else {
     showStep("welcome");
   }
@@ -634,6 +722,7 @@ async function persist() {
     return;
   }
   if (saved?.settings) state.settings = saved.settings;
+  snapshotProfile();
   if (saved?.warnings?.length) setMessage("cameraMessage", t("hotkeyFail"));
   if (state.overlay?.visible) {
     const frame = await invoke("place_overlay");
@@ -665,7 +754,7 @@ async function ensureLandmarker() {
       tag: "Yerel",
     },
     {
-      wasm: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm",
+      wasm: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21/wasm",
       model: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
       tag: "CDN",
     },
@@ -685,9 +774,9 @@ async function ensureLandmarker() {
           },
           runningMode: "VIDEO",
           numHands: 2,
-          minHandDetectionConfidence: 0.5,
-          minHandPresenceConfidence: 0.5,
-          minTrackingConfidence: 0.5,
+          minHandDetectionConfidence: 0.4,
+          minHandPresenceConfidence: 0.3,
+          minTrackingConfidence: 0.3,
         });
         state.delegate = "GPU";
       } catch (gpuErr) {
@@ -699,9 +788,9 @@ async function ensureLandmarker() {
           },
           runningMode: "VIDEO",
           numHands: 2,
-          minHandDetectionConfidence: 0.5,
-          minHandPresenceConfidence: 0.5,
-          minTrackingConfidence: 0.5,
+          minHandDetectionConfidence: 0.4,
+          minHandPresenceConfidence: 0.3,
+          minTrackingConfidence: 0.3,
         });
         state.delegate = "CPU";
       }
@@ -724,31 +813,70 @@ async function ensureLandmarker() {
   return null;
 }
 
+async function openStream(deviceId) {
+  const targetFps = state.settings?.targetFps || 120;
+  const videoConstraints = {
+    width: { ideal: 640 },
+    height: { ideal: 480 },
+    frameRate: { ideal: targetFps >= 60 ? 60 : 30, max: 60 },
+  };
+  if (deviceId) {
+    videoConstraints.deviceId = { exact: deviceId };
+  } else {
+    videoConstraints.facingMode = "user";
+  }
+  return navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
+}
+
+const VIRTUAL_CAMERA = /droidcam|obs|virtual|manycam|xsplit|snap camera|iriun|epoccam|camo/i;
+
+// Virtual cams (DroidCam, OBS...) give a blank frame when their source is off, so default to a real camera.
+async function preferRealCamera(stream) {
+  if (!VIRTUAL_CAMERA.test(stream.getVideoTracks()[0]?.label || "")) return stream;
+  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  const real = devices.find((d) => d.kind === "videoinput" && d.deviceId && !VIRTUAL_CAMERA.test(d.label));
+  if (!real) return stream;
+  try {
+    const next = await openStream(real.deviceId);
+    stream.getTracks().forEach((track) => track.stop());
+    return next;
+  } catch {
+    return stream;
+  }
+}
+
 async function startCamera() {
+  // Rapid switches: only the latest call may attach its stream.
+  const token = (state.cameraToken = (state.cameraToken || 0) + 1);
   state.cameraWanted = true;
   state.cameraPaused = false;
   setMessage("cameraMessage", "");
   setMessage("onboardCameraMessage", "");
   try {
-    const targetFps = state.settings?.targetFps || 120;
-    const videoConstraints = {
-      width: { ideal: 640 },
-      height: { ideal: 480 },
-      frameRate: { ideal: targetFps >= 120 ? 60 : 30, max: targetFps >= 120 ? 120 : 60 },
-    };
-    if (state.settings?.cameraDeviceId) {
-      videoConstraints.deviceId = { exact: state.settings.cameraDeviceId };
-    } else {
-      videoConstraints.facingMode = "user";
+    const wanted = state.settings?.cameraDeviceId;
+    let stream;
+    try {
+      stream = await openStream(wanted);
+    } catch (error) {
+      // Saved device unplugged: fall back to the default camera instead of failing forever.
+      const missing = error?.name === "NotFoundError" || error?.name === "OverconstrainedError";
+      if (!wanted || !missing || state.stream) throw error;
+      stream = await openStream(null);
+      state.settings.cameraDeviceId = "";
     }
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: videoConstraints,
-    });
+    if (!state.settings?.cameraDeviceId) stream = await preferRealCamera(stream);
+    if (token !== state.cameraToken) {
+      stream.getTracks().forEach((track) => track.stop());
+      return true; // superseded, not failed: the caller must not revert the newer choice
+
+    }
+    cancelDetect();
     stopTracks();
     state.stream = stream;
+    state.lastVideoTime = -1;
     video.srcObject = stream;
     await video.play();
+    document.getElementById("cameraRetry").hidden = true;
     await describeCamera();
     render();
 
@@ -762,7 +890,8 @@ async function startCamera() {
 
     return true;
   } catch (error) {
-    state.cameraWanted = false;
+    // A failed switch keeps the camera that is already running.
+    if (!state.stream) state.cameraWanted = false;
     await describeHolders();
     const key = cameraErrorKey(error);
     const extra = key === "cameraBusy" ? holderSuffix() : "";
@@ -785,7 +914,7 @@ function cameraErrorKey(error) {
 function stopCamera(user) {
   if (user) state.cameraWanted = false;
   state.cameraPaused = !user && state.cameraWanted;
-  clearTimeout(state.detectTimer);
+  cancelDetect();
   clearTimeout(state.idleTimer);
   stopTracks();
   for (let i = 0; i < state.hands.length; i += 1) {
@@ -808,8 +937,14 @@ function stopTracks() {
   video.srcObject = null;
 }
 
-function scheduleDetect(delay) {
+function cancelDetect() {
   clearTimeout(state.detectTimer);
+  if (state.frameCb) video.cancelVideoFrameCallback?.(state.frameCb);
+  state.frameCb = 0;
+}
+
+function scheduleDetect(delay) {
+  cancelDetect();
   if (!state.stream) return;
   state.detectTimer = window.setTimeout(detectTick, delay);
 }
@@ -823,6 +958,21 @@ async function detectTick() {
     scheduleDetect(35);
     return;
   }
+  // Same camera frame as last tick: detecting again only burns the main thread.
+  if (video.currentTime === state.lastVideoTime) {
+    // Wait for the camera's next frame instead of polling, so detection starts the moment it lands.
+    if (video.requestVideoFrameCallback) {
+      cancelDetect();
+      state.frameCb = video.requestVideoFrameCallback(() => {
+        state.frameCb = 0;
+        detectTick();
+      });
+    } else {
+      scheduleDetect(10);
+    }
+    return;
+  }
+  state.lastVideoTime = video.currentTime;
   try {
     state.inFlight = true;
     const now = performance.now();
@@ -830,12 +980,9 @@ async function detectTick() {
     const detectMs = performance.now() - now;
 
     const hands = result.landmarks || [];
-    onHands(hands, detectMs);
     state.inFlight = false;
-
-    const targetFps = state.settings?.targetFps || 120;
-    const interval = targetFps >= 120 ? 8 : 16;
-    scheduleDetect(interval);
+    // onHands schedules the next tick via nextGap().
+    onHands(hands, detectMs);
   } catch (err) {
     state.inFlight = false;
     scheduleDetect(50);
@@ -853,13 +1000,18 @@ function onHands(hands, detectMs) {
   if (!hands || hands.length === 0) {
     state.missStreak += 1;
     document.getElementById("handValue").textContent = t("handNo");
-    for (let i = 0; i < state.hands.length; i += 1) {
-      if (state.hands[i].grab) releaseGrab(i);
-      state.hands[i].lastGesture = null;
+    if (performance.now() - (state.lastHandAt || 0) > MISS_GRACE_MS) {
+      for (let i = 0; i < state.hands.length; i += 1) {
+        if (state.hands[i].grab) releaseGrab(i);
+        state.hands[i].lastGesture = null;
+        state.hands[i].filter = null;
+      }
     }
     armIdleRelease();
   } else {
     state.missStreak = 0;
+    state.lastHandAt = performance.now();
+    if (profiles && recordMs(activeProfile(profiles), detectMs)) queueProfileSave();
     clearTimeout(state.idleTimer);
     document.getElementById("handValue").textContent = hands.length >= 2 ? t("handBoth") : t("handOne");
 
@@ -868,30 +1020,38 @@ function onHands(hands, detectMs) {
       const rawLandmarks = hands[i];
       const handState = state.hands[i];
 
-      // Jitter Reduction Filter (EMA smoothing):
-      const SMOOTH = state.settings?.smoothing || 0.65;
-      const landmarks = rawLandmarks.map((curr, idx) => {
-        const prev = handState.smoothed?.[idx];
-        if (!prev) return { ...curr };
-        return {
-          x: prev.x * (1 - SMOOTH) + curr.x * SMOOTH,
-          y: prev.y * (1 - SMOOTH) + curr.y * SMOOTH,
-          z: (prev.z || 0) * (1 - SMOOTH) + (curr.z || 0) * SMOOTH,
-        };
+      const now = performance.now();
+      // Higher smoothing setting = more responsive, so it scales the filter's resting cutoff.
+      handState.filter ||= createHandFilter();
+      const landmarks = filterLandmarks(handState.filter, rawLandmarks, now, {
+        minCutoff: 4 * (state.settings?.smoothing || 0.65),
       });
-      handState.smoothed = landmarks;
 
-      const gesture = classifyGesture(landmarks);
-      const action = actionFor(state.settings.bindings, "gesture", gesture);
+      handState.landmarks = landmarks;
+
+      // Debounce: a pose must hold STABLE_MS before it counts, so flicker between poses never fires.
+      const raw = classifyGesture(landmarks);
+      if (raw !== handState.pendingGesture) {
+        handState.pendingGesture = raw;
+        handState.pendingSince = now;
+      }
+      const gesture = now - handState.pendingSince >= STABLE_MS ? raw : handState.lastGesture;
+      const bound = actionFor(state.settings.bindings, "gesture", gesture);
+      // Purple is two-handed only (checkPurpleStance); a single-hand pose never fires it.
+      const action = bound === "hollow_purple" ? null : bound;
       const edge = gesture !== handState.lastGesture;
-      const point = screenPoint(landmarks[8]);
+      const point = screenPoint(predict(handState.filter, 8, landmarks[8], PREDICT_MS));
 
-      if (handState.grab && action !== "grab") {
+      // Web and grab are holds: the webbed tab follows the hand until the pose ends.
+      const holds = action === "grab" || action === "shoot";
+      if (handState.grab && !holds) {
         releaseGrab(i);
-      } else if (action === "grab" && !edge) {
+      } else if (holds && !edge) {
         moveGrab(i, point);
-      } else if (edge) {
+      } else if (edge && (action === "grab" || !(now - (handState.lastFireAt || 0) < ACTION_COOLDOWN_MS))) {
+        if (action && action !== "grab") handState.lastFireAt = now;
         runActionForHand(i, action, point, true);
+        if (action === "shoot") beginGrab(i, point);
       }
       handState.lastGesture = gesture;
     }
@@ -900,10 +1060,38 @@ function onHands(hands, detectMs) {
       if (state.hands[i].grab) releaseGrab(i);
       state.hands[i].lastGesture = null;
     }
+    checkPurpleStance(maxHands);
   }
 
   const gap = nextGap(hands.length > 0, detectMs);
   scheduleDetect(gap);
+}
+
+// Gojo stance: one hand thrust at the camera, the other back at the chest, held PURPLE_HOLD_MS.
+// Fires once per stance, and only at a webbed tab (held by the back hand, or released moments ago).
+function checkPurpleStance(handCount) {
+  const hands = state.hands.slice(0, handCount);
+  const front = handCount === 2 ? purpleFrontHand(hands.map((h) => h.landmarks), hands.map((h) => h.lastGesture)) : -1;
+  const now = performance.now();
+  // Dragging a grabbed window toward the camera is not a stance.
+  if (front < 0 || state.hands[front].grab) {
+    state.purpleSince = 0;
+    state.purpleFired = false;
+    return;
+  }
+  state.purpleSince ||= now;
+  if (state.purpleFired || now - state.purpleSince < PURPLE_HOLD_MS) return;
+  state.purpleFired = true;
+
+  const back = state.hands[1 - front];
+  let webbed = back.grab ? { hwnd: back.grab.hwnd, title: state.lastHit } : null;
+  for (const h of state.hands) {
+    if (!webbed && h.lastWebbed && now - h.lastWebbed.at < PURPLE_TARGET_MS) webbed = h.lastWebbed;
+  }
+  if (!webbed) return;
+  for (const h of state.hands) h.lastWebbed = null;
+  cancelGrab(undefined, true);
+  triggerHollowPurple(screenPoint(state.hands[front].landmarks[9]), webbed);
 }
 
 function drawCameraLandmarks(hands) {
@@ -987,7 +1175,7 @@ function updateGestureHud(hands) {
     web: { icon: "🕸️", title: "AĞ ATIŞI (Spider-Man)" },
     fist: { icon: "✊", title: "PENCERE TUTMA (Yumruk)" },
     palm: { icon: "🖐️", title: "SERBEST BIRAK / İPTAL" },
-    flick: { icon: "🤌", title: "SEKME KAPAT (Gojo Moru)" },
+    flick: { icon: "🤌", title: "İKİ PARMAK" },
     point: { icon: "👆", title: "HEDEFLEME (İşaret)" },
   };
 
@@ -1022,12 +1210,14 @@ function updateFingerPills(landmarks) {
 }
 
 function nextGap(hand, detectMs) {
-  if (!hand) return state.missStreak > 6 ? 250 : 80;
+  // Right after losing the hand, re-detect on the very next camera frame.
+  if (!hand) return state.missStreak > 6 ? 120 : 8;
   const targetFps = state.settings?.targetFps || 120;
-  if (targetFps <= 60 || state.settings?.fxPreset === "low" || state.settings?.fxPreset === "light") {
-    return Math.max(16, detectMs);
+  if (targetFps < 60 || state.settings?.fxPreset === "low" || state.settings?.fxPreset === "light") {
+    return Math.max(33, detectMs * 1.5);
   }
-  return Math.min(30, Math.max(6, detectMs * 1.05));
+  // detectTick already waits for the next camera frame; only a slow detector gets breathing room for the UI.
+  return detectMs > 12 ? detectMs * 0.5 : 0;
 }
 
 function armIdleRelease() {
@@ -1054,8 +1244,19 @@ function screenPoint(landmark) {
 function runActionForHand(handIndex, action, point, edge) {
   if (!action || !edge) return;
   if (action === "shoot" && point) {
-    emitTo("overlay", "overlay-shot", { x: point.nx, y: point.ny });
+    if (profiles) {
+      recordShot(activeProfile(profiles));
+      queueProfileSave();
+    }
     playThwip();
+    invoke("window_at", { x: point.sx, y: point.sy })
+      .catch(() => null)
+      .then((found) => {
+        const win = found && !found.unsupported && found.hwnd
+          ? { x: found.x, y: found.y, width: found.width, height: found.height }
+          : null;
+        emitTo("overlay", "overlay-shot", { x: point.nx, y: point.ny, win });
+      });
     return;
   }
   if (action === "hollow_purple" && point) {
@@ -1081,26 +1282,21 @@ function runActionForHand(handIndex, action, point, edge) {
     toggleOverlay();
     return;
   }
-  if (action === "show_control") invoke("show_control");
+  if (action === "show_control") invoke("show_control_cmd").catch(() => {});
 }
 
-async function triggerHollowPurple(point) {
+async function triggerHollowPurple(point, knownWin) {
   if (state.settings.hollowPurpleEnabled === false) return;
 
   emitTo("overlay", "overlay-purple", { x: point.nx, y: point.ny });
   playHollowPurple();
 
-  let targetWin = await invoke("window_at", { x: point.sx, y: point.sy });
+  let targetWin = knownWin || (await invoke("window_at", { x: point.sx, y: point.sy }));
   if (!targetWin || targetWin.unsupported || !targetWin.hwnd) {
     targetWin = await invoke("get_foreground_window");
   }
 
-  if (!targetWin || targetWin.unsupported || !targetWin.hwnd) {
-    if (state.settings.closeMode === "tab") {
-      await invoke("close_active_tab");
-    }
-    return;
-  }
+  if (!targetWin || targetWin.unsupported || !targetWin.hwnd) return;
 
   const sensitiveRegex =
     /github|gitlab|google docs|google sheets|sheets\.google|docs\.google|notion|figma|visual studio|code|vscode|jira|trello|bank|pay|checkout|save|unsaved|draft|taslak|kaydedilmedi/i;
@@ -1133,15 +1329,24 @@ async function triggerHollowPurple(point) {
 }
 
 async function executeClose(win) {
-  if (state.settings.closeMode === "window") {
-    await invoke("close_window", { hwnd: win.hwnd });
-  } else {
-    await invoke("close_active_tab");
+  const command = state.settings.closeMode === "window" ? "close_window" : "close_active_tab";
+  try {
+    await invoke(command, { hwnd: win.hwnd });
+  } catch (err) {
+    setMessage("shellBanner", `Kapatılmadı: "${win.title}" (${err})`);
   }
 }
 
 async function beginGrab(handIndex, point) {
-  const found = await invoke("window_at", { x: point.sx, y: point.sy });
+  // One window_at lookup at a time; moveGrab calls this every frame until it lands.
+  if (state.hands[handIndex].grabbing) return;
+  state.hands[handIndex].grabbing = true;
+  let found;
+  try {
+    found = await invoke("window_at", { x: point.sx, y: point.sy });
+  } finally {
+    state.hands[handIndex].grabbing = false;
+  }
   if (!found || found.unsupported || !found.hwnd) return;
   state.hands[handIndex].grab = {
     hwnd: found.hwnd,
@@ -1213,6 +1418,7 @@ async function releaseGrab(handIndex) {
   emitTo("overlay", "overlay-clear", { id: handIndex });
   emitTo("overlay", "overlay-target-window", { id: handIndex, clear: true });
   if (!grab) return;
+  handState.lastWebbed = { hwnd: grab.hwnd, title: state.lastHit, at: performance.now() };
 
   const now = performance.now();
   let recent = handState.samples.filter((sample) => now - sample.t < 160);
@@ -1284,34 +1490,38 @@ async function hitAt(x, y, nudge) {
 async function describeCamera() {
   const track = state.stream?.getVideoTracks?.()[0];
   if (!track) return;
-  const settings = track.getSettings();
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  const videoDevices = devices.filter((d) => d.kind === "videoinput");
-  state.videoDevices = videoDevices;
-  const match = devices.find((device) => device.deviceId === settings.deviceId);
+  state.activeDeviceId = track.getSettings().deviceId || "";
+  await listCameras();
+  const match = state.videoDevices.find((device) => device.deviceId === state.activeDeviceId);
   state.deviceLabel = match?.label || track.label || t("deviceUnknown");
-  renderCameraSelect();
+  render();
   await describeHolders();
+}
+
+async function listCameras() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    state.videoDevices = devices.filter((d) => d.kind === "videoinput" && d.deviceId);
+  } catch {
+    state.videoDevices = [];
+  }
+  renderCameraSelect();
 }
 
 function renderCameraSelect() {
   const select = document.getElementById("cameraSelect");
   if (!select) return;
-  if (!state.videoDevices || state.videoDevices.length <= 1) {
-    select.hidden = true;
-    return;
-  }
-  select.hidden = false;
+  const devices = state.videoDevices || [];
+  select.hidden = devices.length === 0;
+  const current = state.activeDeviceId || state.settings?.cameraDeviceId;
   select.replaceChildren();
-  for (const device of state.videoDevices) {
+  devices.forEach((device, index) => {
     const opt = document.createElement("option");
     opt.value = device.deviceId;
-    opt.textContent = device.label || `${t("camera")} ${select.childElementCount + 1}`;
-    if (device.deviceId === state.settings?.cameraDeviceId) {
-      opt.selected = true;
-    }
+    opt.textContent = device.label || `${t("camera")} ${index + 1}`;
+    opt.selected = device.deviceId === current;
     select.append(opt);
-  }
+  });
 }
 
 async function describeHolders() {
@@ -1355,6 +1565,7 @@ function render() {
   if (!state.settings) return;
   paintLang();
   applyTheme(state.settings.theme || "spiderman");
+  renderProfiles();
 
   const overlayOn = Boolean(state.overlay?.visible);
   document.getElementById("overlayToggle").setAttribute("aria-pressed", String(overlayOn));
@@ -1392,14 +1603,20 @@ function render() {
 
   if (state._syncCustomFxUI) state._syncCustomFxUI();
 
-  document.getElementById("autostartToggle").setAttribute("aria-pressed", String(state.settings.startWithWindows));
-  document.getElementById("idleToggle").setAttribute("aria-pressed", String(state.settings.releaseCameraWhenIdle));
-  document.getElementById("cameraState").textContent = state.cameraPaused ? t("cameraPaused") : t("cameraHint");
-  document.getElementById("deviceLabel").textContent = state.deviceLabel || t("deviceUnknown");
+  // Missing elements must never abort render (a crash here used to stop the camera from starting).
+  const setAttr = (id, name, value) => document.getElementById(id)?.setAttribute(name, value);
+  const setText = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  };
+  setAttr("autostartToggle", "aria-pressed", String(state.settings.startWithWindows));
+  setAttr("idleToggle", "aria-pressed", String(state.settings.releaseCameraWhenIdle));
+  setText("cameraState", state.cameraPaused ? t("cameraPaused") : t("cameraHint"));
+  setText("deviceLabel", state.deviceLabel || t("deviceUnknown"));
   paintLiveStatus();
-  document.getElementById("hitLabel").textContent = `${t("lastHit")}: ${state.lastHit || t("noHit")}`;
-  document.getElementById("win32Label").textContent = state.win32 ? t("win32Ready") : t("win32Stub");
-  document.getElementById("fpsValue").textContent = String(state.renderFps);
+  setText("hitLabel", `${t("lastHit")}: ${state.lastHit || t("noHit")}`);
+  setText("win32Label", state.win32 ? t("win32Ready") : t("win32Stub"));
+  setText("fpsValue", String(state.renderFps));
 
   renderTheme();
   renderCloseModeChips();
@@ -1480,6 +1697,10 @@ function renderAiProviderChips() {
     ["none", "aiNone"],
     ["gemini", "aiGemini"],
     ["ollama", "aiOllama"],
+    ["groq", "aiGroq"],
+    ["openrouter", "aiOpenRouter"],
+    ["pollinations", "aiPollinations"],
+    ["lmstudio", "aiLmStudio"],
     ["custom", "aiCustom"],
   ];
   const current = state.settings.aiProvider || "none";
@@ -1491,9 +1712,9 @@ function renderAiProviderChips() {
     const active = current === prov;
     button.setAttribute("aria-pressed", String(active));
     button.addEventListener("click", async () => {
+      // A model name from another provider would just 404, so switch to this one's default.
+      if (prov !== current) state.settings.aiModel = DEFAULT_MODELS[prov] || "";
       state.settings.aiProvider = prov;
-      if (prov === "gemini" && !state.settings.aiModel) state.settings.aiModel = "gemini-2.5-flash";
-      if (prov === "ollama" && !state.settings.aiModel) state.settings.aiModel = "llama3.2";
       await persist();
     });
     root.append(button);
@@ -1503,8 +1724,9 @@ function renderAiProviderChips() {
   const endpointRow = document.getElementById("aiEndpointRow");
   const modelRow = document.getElementById("aiModelRow");
 
-  if (keyRow) keyRow.hidden = current === "none" || current === "ollama";
-  if (endpointRow) endpointRow.hidden = current === "none" || current === "gemini";
+  const preset = OPENAI_PRESETS[current];
+  if (keyRow) keyRow.hidden = current === "none" || current === "ollama" || preset?.key === false;
+  if (endpointRow) endpointRow.hidden = current === "none" || current === "gemini" || Boolean(preset);
   if (modelRow) modelRow.hidden = current === "none";
 
   const keyInput = document.getElementById("aiApiKey");
@@ -1512,7 +1734,7 @@ function renderAiProviderChips() {
   const endInput = document.getElementById("aiEndpoint");
   if (endInput && endInput !== document.activeElement) endInput.value = state.settings.aiEndpoint || "http://localhost:11434";
   const modInput = document.getElementById("aiModel");
-  if (modInput && modInput !== document.activeElement) modInput.value = state.settings.aiModel || "gemini-2.5-flash";
+  if (modInput && modInput !== document.activeElement) modInput.value = state.settings.aiModel || DEFAULT_MODELS[current] || "";
 }
 
 function renderFpsChips() {
@@ -1564,6 +1786,8 @@ function renderMonitors(root) {
 async function chooseMonitor(mode, id) {
   state.settings.monitorMode = mode;
   if (id) state.settings.monitorId = id;
+  renderMonitors(document.getElementById("onboardMonitors"));
+  renderMonitors(document.getElementById("monitorList"));
   await persist();
 }
 
@@ -1574,7 +1798,11 @@ function renderBindings() {
     const row = document.createElement("div");
     row.className = "binding";
     const label = document.createElement("span");
-    label.textContent = `${actionLabel(binding.action)} · ${inputLabel(binding.input)}`;
+    label.className = "binding-action";
+    label.textContent = actionLabel(binding.action);
+    const trigger = document.createElement("kbd");
+    trigger.className = "binding-trigger";
+    trigger.textContent = `${binding.input.kind === "gesture" ? "✋" : "⌨"} ${inputLabel(binding.input)}`;
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "btn ghost";
@@ -1583,7 +1811,7 @@ function renderBindings() {
       state.settings.bindings = removeBinding(state.settings.bindings, binding.id);
       await persist();
     });
-    row.append(label, remove);
+    row.append(label, trigger, remove);
     root.append(row);
   }
 }
@@ -1594,7 +1822,8 @@ function actionLabel(action) {
 
 function inputLabel(input) {
   if (input.kind === "gesture") return t(GESTURE_KEYS[input.value] || "kindGesture");
-  return input.value;
+  // Stored as Tauri accelerator ("CommandOrControl+Alt+J"); show it the way users read keys.
+  return input.value.replace("CommandOrControl", "Ctrl").split("+").join(" + ");
 }
 
 function syncBindForm() {
@@ -1635,6 +1864,55 @@ function syncBindForm() {
   document.getElementById("bindKind").querySelector('[value="hotkey"]').textContent = t("kindHotkey");
 }
 
+async function manualUpdateCheck() {
+  const bar = document.getElementById("updateBar");
+  const text = document.getElementById("updateText");
+  const button = document.getElementById("updateBtn");
+  const check = document.getElementById("checkUpdateBtn");
+  check.disabled = true;
+  bar.hidden = false;
+  button.hidden = true;
+  text.textContent = t("updateChecking");
+  try {
+    const update = await checkForUpdate({ loud: true });
+    if (update) return showUpdate(update);
+    let version = "";
+    try { version = await (await import("@tauri-apps/api/app")).getVersion(); } catch {}
+    text.textContent = t("updateLatest").replace("{v}", version);
+    setTimeout(() => { if (button.hidden) bar.hidden = true; }, 4000);
+  } catch {
+    text.textContent = t("updateCheckFailed");
+  } finally {
+    check.disabled = false;
+  }
+}
+
+async function offerUpdate() {
+  const update = await checkForUpdate();
+  if (update) showUpdate(update);
+}
+
+function showUpdate(update) {
+  const bar = document.getElementById("updateBar");
+  const text = document.getElementById("updateText");
+  const button = document.getElementById("updateBtn");
+  text.textContent = t("updateReady").replace("{v}", update.version);
+  bar.hidden = false;
+  button.hidden = false;
+  button.disabled = false;
+  button.onclick = async () => {
+    button.disabled = true;
+    try {
+      await installUpdate(update, (pct) => {
+        text.textContent = pct == null ? t("updateDownloading") : `${t("updateDownloading")} %${pct}`;
+      });
+    } catch {
+      text.textContent = t("updateFailed");
+      button.disabled = false;
+    }
+  };
+}
+
 function captureHotkey() {
   const button = document.getElementById("bindCapture");
   button.textContent = t("bindingsListening");
@@ -1648,7 +1926,7 @@ function captureHotkey() {
     if (event.shiftKey) parts.push("Shift");
     parts.push(event.code.startsWith("Key") ? event.code.slice(3) : event.code);
     state.hotkeyDraft = parts.join("+");
-    button.textContent = state.hotkeyDraft;
+    button.textContent = inputLabel({ kind: "hotkey", value: state.hotkeyDraft });
     window.removeEventListener("keydown", onKey, true);
     state.listening = false;
   };

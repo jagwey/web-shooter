@@ -10,6 +10,27 @@
  */
 
 import { invoke } from "./desktop.js";
+import { answerGuide, isQuestion, GUIDE_HELP, GUIDE_TEXT } from "./guide.js";
+import { adviseModel } from "./modelAdvisor.js";
+
+// Used when the model field is left empty.
+export const DEFAULT_MODELS = {
+  gemini: "gemini-3.5-flash-lite",
+  ollama: "llama3.2",
+  groq: "llama-3.3-70b-versatile",
+  openrouter: "meta-llama/llama-3.3-70b-instruct:free",
+  pollinations: "openai",
+  lmstudio: "local-model",
+  custom: "gpt-4o-mini",
+};
+
+// OpenAI-compatible providers with a fixed endpoint. key: false = never send a key.
+export const OPENAI_PRESETS = {
+  groq: { label: "Groq", endpoint: "https://api.groq.com/openai/v1", key: true },
+  openrouter: { label: "OpenRouter", endpoint: "https://openrouter.ai/api/v1", key: true },
+  pollinations: { label: "Pollinations", chatUrl: "https://text.pollinations.ai/openai", key: false },
+  lmstudio: { label: "LM Studio", endpoint: "http://localhost:1234/v1", key: false },
+};
 
 /**
  * Fetch available local models from Ollama
@@ -50,7 +71,7 @@ export async function testAiConnection(settings) {
     if (provider === "gemini") {
       const key = settings.aiApiKey?.trim();
       if (!key) return { ok: false, message: "Gemini API anahtarı giriniz." };
-      const model = settings.aiModel?.trim() || "gemini-2.5-flash";
+      const model = settings.aiModel?.trim() || DEFAULT_MODELS.gemini;
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
       const res = await fetch(url, {
         method: "POST",
@@ -94,6 +115,14 @@ export async function testAiConnection(settings) {
       return { ok: true, latency, message: `Özel Endpoint Aktif (${latency}ms)` };
     }
 
+    const preset = OPENAI_PRESETS[provider];
+    if (preset) {
+      if (preset.key && !settings.aiApiKey?.trim()) return { ok: false, message: `${preset.label} API anahtarı giriniz.` };
+      const reply = await queryCustomText(settings, "Reply with one word.", "Say JAGWEY_ONLINE");
+      const latency = Math.round(performance.now() - startTime);
+      return { ok: true, latency, message: `${preset.label} Hazır (${latency}ms) · [${openAiTarget(settings).model}] ${reply.slice(0, 40)}` };
+    }
+
     return { ok: false, message: "Bilinmeyen sağlayıcı" };
   } catch (error) {
     return { ok: false, message: `Bağlantı Hatası: ${error.message}` };
@@ -124,6 +153,13 @@ export async function sendAiGreeting(settings, hardwareInfo = {}) {
     } catch {
       /* fallback below */
     }
+  } else if (OPENAI_PRESETS[provider] && check.ok) {
+    try {
+      const reply = await queryCustomText(settings, "Türkçe, kısa yaz.", prompt);
+      if (reply) return { text: reply, latency };
+    } catch {
+      /* fallback below */
+    }
   }
 
   // Built-in high-quality response
@@ -145,6 +181,15 @@ export async function chatWithAi(settings, userMessage, context = {}) {
     return await sendAiGreeting(settings, context);
   }
 
+  // "Which model should I install?" flow: asks GPU/RAM, then recommends. Before the guide, which would match "ollama".
+  const advice = adviseModel(userMessage || "");
+  if (advice) return { text: advice };
+
+  // How-to questions go to the offline guide first, so "nasıl ayarlarım?" never triggers a command.
+  const asking = isQuestion(userMessage || "");
+  const guideAnswer = answerGuide(userMessage || "");
+  if (asking && guideAnswer) return { text: guideAnswer };
+
   if (cleanMsg.includes("optimize") || cleanMsg.includes("ayarla") || cleanMsg.includes("hızlandır") || cleanMsg.includes("kasıyor")) {
     const opt = optimizeSettingsWithAi(settings, context);
     return {
@@ -161,14 +206,24 @@ export async function chatWithAi(settings, userMessage, context = {}) {
   }
 
   // Real LLM Queries
-  const systemPrompt = `Sen Windows için Jagwey Web Shooter masaüstü el hareketi ve pencere yönetimi asistanısın. Kullanıcıya kısa, yararlı, Türkçe yanıt ver.`;
+  const systemPrompt = `Sen Windows için Jagwey Web Shooter masaüstü el hareketi ve pencere yönetimi asistanısın. Kullanıcıya yararlı, adım adım, Türkçe yanıt ver. Uygulama hakkında yalnız aşağıdaki rehberdeki bilgilere dayan; rehberde olmayan özellik uydurma.\n\n--- REHBER ---\n${GUIDE_TEXT}\n--- REHBER SONU ---`;
+
+  if (provider === "custom" || OPENAI_PRESETS[provider]) {
+    try {
+      const reply = await queryCustomText(settings, systemPrompt, userMessage);
+      return { text: reply || "Anladım, emrindeyim!" };
+    } catch (e) {
+      const name = OPENAI_PRESETS[provider]?.label || "Özel API";
+      return { text: `${name} yanıt veremedi: ${e.message}.\n\n${guideAnswer || GUIDE_HELP}` };
+    }
+  }
 
   if (provider === "gemini") {
     try {
       const reply = await queryGeminiText(settings, `${systemPrompt}\n\nKullanıcı: ${userMessage}`);
       return { text: reply || "Anladım, emrindeyim!" };
     } catch (e) {
-      return { text: `Gemini yanıt veremedi: ${e.message}. Yerel motor hazır.` };
+      return { text: `Gemini yanıt veremedi: ${e.message}.\n\n${guideAnswer || GUIDE_HELP}` };
     }
   }
 
@@ -177,13 +232,11 @@ export async function chatWithAi(settings, userMessage, context = {}) {
       const reply = await queryOllamaText(settings, `${systemPrompt}\n\nKullanıcı: ${userMessage}`);
       return { text: reply || "Anladım, emrindeyim!" };
     } catch (e) {
-      return { text: `Ollama yanıt veremedi: ${e.message}. Yerel motor devrede.` };
+      return { text: `Ollama yanıt veremedi: ${e.message}.\n\n${guideAnswer || GUIDE_HELP}` };
     }
   }
 
-  return {
-    text: `Jagwey Yerel Motor: "${userMessage}" isteğini kaydettim. 'Pencereleri düzenle' veya 'Optimize et' diyerek masaüstünü tek tıkla yönetebilirsin!`,
-  };
+  return { text: guideAnswer || GUIDE_HELP };
 }
 
 /**
@@ -275,14 +328,14 @@ export async function autoTileWorkspace(settings, windows, monitors) {
 
 async function queryGeminiText(settings, prompt) {
   const key = settings.aiApiKey?.trim();
-  const model = settings.aiModel?.trim() || "gemini-2.5-flash";
+  const model = settings.aiModel?.trim() || DEFAULT_MODELS.gemini;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: 200, temperature: 0.7 },
+      generationConfig: { maxOutputTokens: 700, temperature: 0.4 },
     }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -301,4 +354,34 @@ async function queryOllamaText(settings, prompt) {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   return data.response?.trim() || "";
+}
+
+// Presets ignore aiEndpoint, so a leftover Ollama URL can't hijack them.
+function openAiTarget(settings) {
+  const preset = OPENAI_PRESETS[settings.aiProvider];
+  const base = (preset?.endpoint || settings.aiEndpoint?.trim() || "http://localhost:11434/v1").replace(/\/$/, "");
+  return { url: preset?.chatUrl || `${base}/chat/completions`, model: settings.aiModel?.trim() || DEFAULT_MODELS[settings.aiProvider] || "gpt-4o-mini" };
+}
+
+// OpenAI-compatible chat (OpenAI, Groq, OpenRouter, Pollinations, LM Studio...).
+async function queryCustomText(settings, system, userMessage) {
+  const { url, model } = openAiTarget(settings);
+  const key = OPENAI_PRESETS[settings.aiProvider]?.key === false ? "" : settings.aiApiKey?.trim();
+  const headers = { "Content-Type": "application/json" };
+  if (key) headers.Authorization = `Bearer ${key}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: userMessage },
+      ],
+      temperature: 0.4,
+    }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content?.trim() || "";
 }

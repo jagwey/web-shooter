@@ -167,7 +167,8 @@ impl Settings {
         if !matches!(self.close_mode.as_str(), "tab" | "window") {
             self.close_mode = "tab".into();
         }
-        if !matches!(self.ai_provider.as_str(), "none" | "gemini" | "ollama" | "custom") {
+        if !matches!(self.ai_provider.as_str(), "none" | "gemini" | "ollama" | "groq" | "openrouter" | "pollinations" | "lmstudio" | "custom"
+        ) {
             self.ai_provider = "none".into();
         }
         if self.target_fps != 60 && self.target_fps != 120 {

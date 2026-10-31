@@ -27,13 +27,17 @@ mod platform {
     use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT, TRUE, WPARAM};
     use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
     use windows::Win32::System::Threading::GetCurrentProcessId;
-    use windows::Win32::UI::Input::KeyboardAndMouse::{keybd_event, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, VK_CONTROL};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
+        KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_RMENU,
+        VK_RSHIFT, VK_RWIN, VK_W,
+    };
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GA_ROOT, GWL_EXSTYLE, GetAncestor, GetClassNameW, GetForegroundWindow,
         GetWindowLongPtrW, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
-        GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, PostMessageW, SetWindowPos,
-        ShowWindow, WindowFromPoint, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SWP_NOACTIVATE,
-        SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE, WS_EX_TOOLWINDOW,
+        GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, PostMessageW,
+        SetForegroundWindow, SetWindowPos, ShowWindow, WindowFromPoint, SW_MAXIMIZE, SW_MINIMIZE,
+        SW_RESTORE, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE, WS_EX_TOOLWINDOW,
     };
     use windows_registry::CURRENT_USER;
 
@@ -147,13 +151,33 @@ mod platform {
         Ok(list)
     }
 
+    fn root_of(hwnd: HWND) -> HWND {
+        let root = unsafe { GetAncestor(hwnd, GA_ROOT) };
+        if root.0.is_null() { hwnd } else { root }
+    }
+
+    /// Live, user-facing top-level window that is not ours, the shell, or Task Manager.
+    fn checked_target(raw: i64) -> Result<(HWND, DesktopWindow), String> {
+        let hwnd = hwnd_of(raw);
+        if raw == 0 || unsafe { !IsWindow(Some(hwnd)).as_bool() } {
+            return Err("window gone".into());
+        }
+        if root_of(hwnd) != hwnd || class_name(hwnd) == "TaskManagerWindow" {
+            return Err("window protected".into());
+        }
+        let desc = describe(hwnd).ok_or("window protected")?;
+        Ok((hwnd, desc))
+    }
+
     pub fn window_at(x: i32, y: i32) -> Result<Option<DesktopWindow>, String> {
         let hwnd = unsafe { WindowFromPoint(POINT { x, y }) };
         if !hwnd.0.is_null() {
-            let root = unsafe { GetAncestor(hwnd, GA_ROOT) };
-            let target = if root.0.is_null() { hwnd } else { root };
+            let target = root_of(hwnd);
             if let Some(desc) = describe(target) {
                 return Ok(Some(desc));
+            }
+            if skipped_class(&class_name(target)) {
+                return Ok(None);
             }
         }
         // Fallback: search top-to-bottom z-order windows
@@ -167,7 +191,7 @@ mod platform {
     }
 
     pub fn move_window(raw: i64, x: i32, y: i32) -> Result<DesktopWindow, String> {
-        let hwnd = hwnd_of(raw);
+        let (hwnd, _) = checked_target(raw)?;
         unsafe {
             if IsZoomed(hwnd).as_bool() {
                 let _ = ShowWindow(hwnd, SW_RESTORE);
@@ -318,7 +342,7 @@ mod platform {
     }
 
     pub fn close_window(raw: i64) -> Result<(), String> {
-        let hwnd = hwnd_of(raw);
+        let (hwnd, _) = checked_target(raw)?;
         unsafe {
             PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0))
                 .map_err(|err| err.to_string())?;
@@ -326,19 +350,54 @@ mod platform {
         Ok(())
     }
 
-    pub fn close_active_tab() -> Result<(), String> {
-        unsafe {
-            const VK_W: u8 = 0x57;
-            keybd_event(VK_CONTROL.0 as u8, 0, KEYBD_EVENT_FLAGS(0), 0);
-            keybd_event(VK_W, 0, KEYBD_EVENT_FLAGS(0), 0);
-            keybd_event(VK_W, 0, KEYEVENTF_KEYUP, 0);
-            keybd_event(VK_CONTROL.0 as u8, 0, KEYEVENTF_KEYUP, 0);
+    fn key(vk: VIRTUAL_KEY, up: bool) -> INPUT {
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: vk,
+                    wScan: 0,
+                    dwFlags: if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) },
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        }
+    }
+
+    /// Ctrl+W only to `raw`, and only if it is (or can become) the foreground window.
+    /// Held Shift/Alt/Win are released first so the stroke never becomes Ctrl+Shift+W.
+    pub fn close_active_tab(raw: i64) -> Result<(), String> {
+        let (hwnd, _) = checked_target(raw)?;
+        let is_front = || root_of(unsafe { GetForegroundWindow() }) == hwnd;
+        if !is_front() {
+            let _ = unsafe { SetForegroundWindow(hwnd) };
+            std::thread::sleep(Duration::from_millis(60));
+            if !is_front() {
+                return Err("target not foreground".into());
+            }
+        }
+        let mut inputs = Vec::with_capacity(10);
+        for vk in [VK_LSHIFT, VK_RSHIFT, VK_LMENU, VK_RMENU, VK_LWIN, VK_RWIN] {
+            if unsafe { GetAsyncKeyState(vk.0 as i32) } < 0 {
+                inputs.push(key(vk, true));
+            }
+        }
+        inputs.extend([
+            key(VK_CONTROL, false),
+            key(VK_W, false),
+            key(VK_W, true),
+            key(VK_CONTROL, true),
+        ]);
+        let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+        if sent as usize != inputs.len() {
+            return Err("input blocked".into());
         }
         Ok(())
     }
 
     pub fn minimize_window(raw: i64) -> Result<(), String> {
-        let hwnd = hwnd_of(raw);
+        let (hwnd, _) = checked_target(raw)?;
         unsafe {
             let _ = ShowWindow(hwnd, SW_MINIMIZE);
         }
@@ -404,7 +463,7 @@ pub fn close_window(_raw: i64) -> Result<(), String> {
 }
 
 #[cfg(not(windows))]
-pub fn close_active_tab() -> Result<(), String> {
+pub fn close_active_tab(_raw: i64) -> Result<(), String> {
     Err("win32-only".into())
 }
 

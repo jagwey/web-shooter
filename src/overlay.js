@@ -52,8 +52,11 @@ function loop(now) {
 
   // Draw target window focus frames (Clean bounding boxes with contrast corner reticles)
   if (showFocusFrame || focusFrameOnly) {
-    for (const win of targetWindows.values()) {
-      drawFocusFrame(win);
+    const rects = [...targetWindows.values()].map((win) => [win, windowRect(win)]).filter(([, r]) => r);
+    drawSpotlight(rects.map(([, r]) => r));
+    for (const [win, r] of rects) {
+      drawNet(win, r, now);
+      drawFocusFrame(win, r);
     }
   }
 
@@ -87,35 +90,103 @@ function getThemeColor() {
   return "#9cf0c4";
 }
 
-function drawFocusFrame(win) {
-  if (!frame) return;
+function windowRect(win) {
+  if (!frame) return null;
   const scaleX = canvas.width / (frame.width || window.innerWidth);
   const scaleY = canvas.height / (frame.height || window.innerHeight);
+  const r = { x: (win.x - frame.x) * scaleX, y: (win.y - frame.y) * scaleY, w: win.width * scaleX, h: win.height * scaleY };
+  return r.w > 0 && r.h > 0 ? r : null;
+}
 
-  const x = (win.x - frame.x) * scaleX;
-  const y = (win.y - frame.y) * scaleY;
-  const w = win.width * scaleX;
-  const h = win.height * scaleY;
+// Dim everything except the caught windows so the target pops.
+function drawSpotlight(rects) {
+  if (!rects.length) return;
+  ctx.save();
+  ctx.fillStyle = "rgba(0, 0, 0, 0.42)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.fillStyle = "#000";
+  for (const r of rects) ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.restore();
+}
 
-  if (w <= 0 || h <= 0) return;
+// Orb-weaver net: spokes from the tether anchor (window center) to the edges, sagging rings between them.
+function drawNet(win, { x, y, w, h }, now) {
+  const grow = Math.min(1, (now - (win.born || now)) / 260);
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const isLow = preset === "low" || preset === "light";
+  const spokes = isLow ? 10 : 16;
+  const rings = isLow ? 5 : 8;
+  const ends = [];
+  for (let i = 0; i < spokes; i += 1) {
+    const a = (i / spokes) * Math.PI * 2 + 0.2;
+    const dx = Math.cos(a);
+    const dy = Math.sin(a);
+    // Distance from center to the rectangle edge along this ray.
+    const t = Math.min(dx ? w / 2 / Math.abs(dx) : Infinity, dy ? h / 2 / Math.abs(dy) : Infinity);
+    ends.push([dx * t, dy * t]);
+  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.55)";
+  ctx.lineWidth = isLow ? 2.5 : 3.5;
+  tracePass();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
+  ctx.lineWidth = isLow ? 1 : 1.4;
+  tracePass();
+  ctx.restore();
 
+  function tracePass() {
+    ctx.beginPath();
+    for (const [ex, ey] of ends) {
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + ex * grow, cy + ey * grow);
+    }
+    for (let k = 1; k <= rings; k += 1) {
+      const f = (k / rings) ** 1.15;
+      if (f > grow) break;
+      for (let i = 0; i <= spokes; i += 1) {
+        const [ex, ey] = ends[i % spokes];
+        const px = cx + ex * f;
+        const py = cy + ey * f;
+        if (i === 0) {
+          ctx.moveTo(px, py);
+          continue;
+        }
+        const [qx, qy] = ends[(i - 1) % spokes];
+        // Silk sags toward the hub between two spokes.
+        const mx = cx + ((qx + ex) / 2) * f * 0.88;
+        const my = cy + ((qy + ey) / 2) * f * 0.88;
+        ctx.quadraticCurveTo(mx, my, px, py);
+      }
+    }
+    ctx.stroke();
+  }
+}
+
+function drawFocusFrame(win, { x, y, w, h }) {
   const color = getThemeColor();
   ctx.save();
   ctx.globalCompositeOperation = "source-over";
 
-  // High-contrast glowing outline
-  ctx.strokeStyle = color;
-  ctx.lineWidth = win.grabbed ? 3.5 : 2.5;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = win.grabbed ? 20 : 12;
-
-  const radius = 10;
+  // Crisp high-contrast outline: dark halo under a white line reads on any background.
+  const radius = 8;
   ctx.beginPath();
   if (ctx.roundRect) ctx.roundRect(x, y, w, h, radius);
   else ctx.rect(x, y, w, h);
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.85)";
+  ctx.lineWidth = 6;
+  ctx.stroke();
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 2.5;
   ctx.stroke();
 
   // Corner Focus Brackets
+  ctx.strokeStyle = color;
   const bracket = Math.min(24, Math.min(w, h) / 4);
   ctx.lineWidth = 4.5;
   ctx.beginPath();
@@ -182,74 +253,37 @@ function drawTether(line) {
   const cx = (x0 + x1) / 2 + perpX * (sag * 0.4);
   const cy = (y0 + y1) / 2 + Math.abs(perpY * sag) + 4;
 
+  // Plain silk strand: dark halo + thin white core, no glow.
   ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-
-  const isLow = preset === "low" || preset === "light";
-  let glowColor = "#9cf0c4";
-  let coreColor = "rgba(216, 255, 233, 0.95)";
-  if (preset === "sakura") {
-    glowColor = "#f472b6";
-    coreColor = "rgba(255, 241, 242, 0.98)";
-  } else if (preset === "clean") {
-    glowColor = "#38bdf8";
-    coreColor = "rgba(248, 250, 252, 0.98)";
-  } else if (preset === "midnight") {
-    glowColor = "#22d3ee";
-    coreColor = "rgba(236, 254, 255, 0.98)";
-  } else if (preset === "sage") {
-    glowColor = "#6ee7b7";
-    coreColor = "rgba(240, 253, 244, 0.98)";
-  } else if (preset === "spiderman") {
-    glowColor = "#ff3b3b";
-    coreColor = "rgba(255, 255, 255, 0.98)";
-  } else if (preset === "miles") {
-    glowColor = "#ff0055";
-    coreColor = "rgba(255, 220, 100, 0.95)";
-  } else if (preset === "symbiote") {
-    glowColor = "#c084fc";
-    coreColor = "rgba(235, 215, 255, 0.95)";
-  } else if (preset === "neon") {
-    glowColor = "#ff4dff";
-    coreColor = "rgba(124, 255, 107, 0.9)";
-  } else if (preset === "classic") {
-    glowColor = "#00d9ff";
-    coreColor = "rgba(210, 245, 255, 0.95)";
-  } else if (preset === "gojo") {
-    glowColor = "#a855f7";
-    coreColor = "rgba(235, 215, 255, 0.98)";
-  }
-
-  ctx.strokeStyle = glowColor;
-  ctx.lineWidth = isLow ? 3 : 6;
-  ctx.shadowColor = glowColor;
-  ctx.shadowBlur = isLow ? 0 : 16;
+  ctx.lineCap = "round";
   ctx.beginPath();
   ctx.moveTo(x0, y0);
   ctx.quadraticCurveTo(cx, cy, x1, y1);
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.6)";
+  ctx.lineWidth = 3.5;
   ctx.stroke();
-
-  ctx.strokeStyle = coreColor;
-  ctx.lineWidth = isLow ? 2 : 2.5;
-  ctx.shadowBlur = isLow ? 0 : 6;
-  ctx.beginPath();
-  ctx.moveTo(x0, y0);
-  ctx.quadraticCurveTo(cx, cy, x1, y1);
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+  ctx.lineWidth = 1.5;
   ctx.stroke();
 
   ctx.fillStyle = "#ffffff";
   ctx.beginPath();
-  ctx.arc(x0, y0, 5, 0, Math.PI * 2);
-  ctx.arc(x1, y1, 6, 0, Math.PI * 2);
+  ctx.arc(x0, y0, 3, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.restore();
 }
 
-function shootNormalized(nx, ny) {
+function shootNormalized(nx, ny, win) {
   fit();
   fx.setPreset(preset);
-  fx.shoot(nx * canvas.width, ny * canvas.height);
+  let rect = null;
+  if (win && frame?.width) {
+    const sx = canvas.width / frame.width;
+    const sy = canvas.height / frame.height;
+    rect = { x: (win.x - frame.x) * sx, y: (win.y - frame.y) * sy, w: win.width * sx, h: win.height * sy };
+  }
+  fx.shoot(nx * canvas.width, ny * canvas.height, rect);
   kick();
 }
 
@@ -264,8 +298,8 @@ listen("overlay-preset", (event) => {
 });
 
 listen("overlay-shot", (event) => {
-  const { x, y } = event.payload;
-  shootNormalized(x, y);
+  const { x, y, win } = event.payload;
+  shootNormalized(x, y, win);
 });
 
 listen("overlay-purple", (event) => {
@@ -302,7 +336,8 @@ listen("overlay-target-window", (event) => {
     if (id !== undefined) targetWindows.delete(id);
     else targetWindows.clear();
   } else if (win) {
-    targetWindows.set(id ?? 0, win);
+    const key = id ?? 0;
+    targetWindows.set(key, { ...win, born: targetWindows.get(key)?.born ?? performance.now() });
     kick();
   }
 });
