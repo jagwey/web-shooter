@@ -23,6 +23,8 @@ const LOOKS = {
     head: "#ffffff",
     fine: [255, 120, 120],
     particle: [255, 220, 220],
+    thickness: 3.2,
+    particleStyle: "webs",
   },
   miles: {
     quality: "full",
@@ -32,7 +34,9 @@ const LOOKS = {
     fiber: [255, 80, 120],
     head: "#ffd700",
     fine: [255, 200, 50],
-    particle: [255, 220, 100],
+    particle: [255, 225, 90],
+    thickness: 3.4,
+    particleStyle: "sparks",
   },
   symbiote: {
     quality: "full",
@@ -43,6 +47,8 @@ const LOOKS = {
     head: "#d8b4fe",
     fine: [192, 132, 252],
     particle: [243, 232, 255],
+    thickness: 4.0,
+    particleStyle: "purple",
   },
   classic: {
     quality: "full",
@@ -53,6 +59,8 @@ const LOOKS = {
     head: "#00d9ff",
     fine: [190, 240, 255],
     particle: [220, 250, 255],
+    thickness: 3.0,
+    particleStyle: "webs",
   },
   mint: {
     quality: "full",
@@ -63,6 +71,8 @@ const LOOKS = {
     head: "#9cf0c4",
     fine: [180, 245, 210],
     particle: [220, 255, 236],
+    thickness: 3.0,
+    particleStyle: "stardust",
   },
   neon: {
     quality: "full",
@@ -73,6 +83,8 @@ const LOOKS = {
     head: "#7cff6b",
     fine: [255, 80, 220],
     particle: [210, 255, 140],
+    thickness: 3.2,
+    particleStyle: "sparks",
   },
   gojo: {
     quality: "full",
@@ -83,6 +95,8 @@ const LOOKS = {
     head: "#c084fc",
     fine: [192, 132, 252],
     particle: [243, 232, 255],
+    thickness: 3.4,
+    particleStyle: "purple",
   },
   sakura: {
     quality: "full",
@@ -92,7 +106,9 @@ const LOOKS = {
     fiber: [255, 228, 230],
     head: "#fb7185",
     fine: [244, 114, 182],
-    particle: [255, 241, 242],
+    particle: [255, 210, 225],
+    thickness: 2.8,
+    particleStyle: "sakura",
   },
   clean: {
     quality: "full",
@@ -103,6 +119,8 @@ const LOOKS = {
     head: "#e0f2fe",
     fine: [56, 189, 248],
     particle: [248, 250, 252],
+    thickness: 2.6,
+    particleStyle: "stardust",
   },
   midnight: {
     quality: "full",
@@ -113,6 +131,8 @@ const LOOKS = {
     head: "#a5f3fc",
     fine: [34, 211, 238],
     particle: [207, 250, 254],
+    thickness: 3.0,
+    particleStyle: "stardust",
   },
   sage: {
     quality: "full",
@@ -123,6 +143,8 @@ const LOOKS = {
     head: "#a7f3d0",
     fine: [110, 231, 183],
     particle: [236, 253, 245],
+    thickness: 3.0,
+    particleStyle: "stardust",
   },
   low: {
     quality: "low",
@@ -394,6 +416,7 @@ export function createWebFx(ctx, hooks = {}) {
       }
     }
 
+    const scaleW = Math.max(0.4, (look.thickness || 3) / 3);
     ctx.shadowColor = look.glow;
     ctx.shadowBlur = full() ? 16 : 0;
     strokeCurve(
@@ -403,13 +426,13 @@ export function createWebFx(ctx, hooks = {}) {
       controlY,
       currentX,
       currentY,
-      rgba(look.beam, 0.5),
-      full() ? 16 : 8,
+      rgba(look.beam, 0.55),
+      (full() ? 16 : 8) * scaleW,
     );
 
     ctx.shadowBlur = 0;
-    strokeCurve(web.startX, web.startY, controlX, controlY, currentX, currentY, "rgba(8, 10, 18, 0.8)", full() ? 8 : 4);
-    strokeCurve(web.startX, web.startY, controlX, controlY, currentX, currentY, "rgba(255, 255, 255, 0.98)", full() ? 3.2 : 1.8);
+    strokeCurve(web.startX, web.startY, controlX, controlY, currentX, currentY, "rgba(8, 10, 18, 0.8)", (full() ? 8 : 4) * scaleW);
+    strokeCurve(web.startX, web.startY, controlX, controlY, currentX, currentY, "rgba(255, 255, 255, 0.98)", (full() ? 3.2 : 1.8) * scaleW);
 
     const fiberCount = full() ? 7 : 0;
     for (let i = 0; i < fiberCount; i += 1) {
@@ -538,12 +561,19 @@ export function createWebFx(ctx, hooks = {}) {
 
   function drawParticles(step) {
     if (webParticles.length === 0) return;
+    const style = look.particleStyle || "sparks";
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     for (let i = webParticles.length - 1; i >= 0; i -= 1) {
       const particle = webParticles[i];
       particle.x += particle.vx * step;
       particle.y += particle.vy * step;
+      if (style === "fire") {
+        particle.vy -= 0.14 * step; // upward ember buoyancy
+      } else if (style === "sakura") {
+        particle.vy += 0.05 * step; // gentle petal drift
+        particle.vx += Math.sin(particle.life * 10) * 0.08 * step;
+      }
       particle.vx *= Math.pow(0.97, step);
       particle.vy *= Math.pow(0.97, step);
       particle.life -= 0.025 * step;
@@ -551,12 +581,52 @@ export function createWebFx(ctx, hooks = {}) {
         webParticles.splice(i, 1);
         continue;
       }
-      ctx.beginPath();
-      ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
       ctx.fillStyle = rgba(look.particle, particle.life);
+      ctx.strokeStyle = rgba(look.particle, particle.life);
       ctx.shadowColor = look.glow;
       ctx.shadowBlur = full() ? 6 : 0;
-      ctx.fill();
+
+      if (style === "sparks") {
+        // Electric spark streak
+        ctx.beginPath();
+        ctx.moveTo(particle.x, particle.y);
+        ctx.lineTo(particle.x - particle.vx * 2.4, particle.y - particle.vy * 2.4);
+        ctx.lineWidth = Math.max(1, particle.size * 0.75);
+        ctx.stroke();
+      } else if (style === "stardust") {
+        // 4-point twinkling star diamond
+        const r = particle.size * (0.8 + 0.5 * Math.sin(particle.life * 18));
+        ctx.beginPath();
+        ctx.moveTo(particle.x, particle.y - r * 1.6);
+        ctx.lineTo(particle.x + r * 0.5, particle.y - r * 0.5);
+        ctx.lineTo(particle.x + r * 1.6, particle.y);
+        ctx.lineTo(particle.x + r * 0.5, particle.y + r * 0.5);
+        ctx.lineTo(particle.x, particle.y + r * 1.6);
+        ctx.lineTo(particle.x - r * 0.5, particle.y + r * 0.5);
+        ctx.lineTo(particle.x - r * 1.6, particle.y);
+        ctx.lineTo(particle.x - r * 0.5, particle.y - r * 0.5);
+        ctx.closePath();
+        ctx.fill();
+      } else if (style === "sakura") {
+        // Soft cherry-blossom oval petal
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, particle.size * 1.25, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (style === "purple") {
+        // Void orb: dark core with glowing violet rim
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, particle.size * 1.35, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = `rgba(18, 6, 34, ${particle.life * 0.9})`;
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, particle.size * 0.65, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Default / webs / fire glowing ember
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
     ctx.restore();
   }

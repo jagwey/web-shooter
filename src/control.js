@@ -57,6 +57,7 @@ const state = {
   videoDevices: [],
   hotkeyDraft: "",
   listening: false,
+  activeTab: "all",
 };
 
 const ACTION_KEYS = {
@@ -319,6 +320,7 @@ function wireChrome() {
 
   wireCustomFx();
   wireAi();
+  wireTabsAndPresets();
 
   const refreshCamerasBtn = document.getElementById("refreshCamerasBtn");
   if (refreshCamerasBtn) {
@@ -463,6 +465,105 @@ function wireCustomFx() {
   }
 
   state._syncCustomFxUI = syncToUI;
+}
+
+function formatSmoothingBadge(val) {
+  const pct = Math.round((Number(val) || 0.75) * 100);
+  const label = pct >= 80 ? t("smoothingFast") : pct <= 50 ? t("smoothingSmooth") : "Dengeli";
+  return `%${pct} · ${label}`;
+}
+
+function wireTabsAndPresets() {
+  const tabNav = document.getElementById("dashboardTabs");
+  if (tabNav) {
+    tabNav.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-tab-target]");
+      if (!btn) return;
+      state.activeTab = btn.dataset.tabTarget || "all";
+      renderDashboardTabs();
+    });
+  }
+
+  const smoothingSlider = document.getElementById("smoothingSlider");
+  const smoothingValue = document.getElementById("smoothingValue");
+  if (smoothingSlider) {
+    smoothingSlider.addEventListener("input", (e) => {
+      const val = Number(e.target.value) || 0.75;
+      if (state.settings) state.settings.smoothing = val;
+      if (smoothingValue) smoothingValue.textContent = formatSmoothingBadge(val);
+    });
+    smoothingSlider.addEventListener("change", (e) => {
+      const val = Number(e.target.value) || 0.75;
+      if (state.settings) state.settings.smoothing = val;
+      persist();
+    });
+  }
+
+  const applyGesturePreset = async (mode) => {
+    if (!state.settings) return;
+    if (mode === "all") {
+      state.settings.showWebs = true;
+      state.settings.showFocusFrame = true;
+      state.settings.focusFrameOnly = false;
+      state.settings.dualHands = true;
+      state.settings.airVolumeToggle = true;
+      state.settings.airMediaToggle = true;
+      state.settings.ninjaShieldToggle = true;
+      state.settings.airZoomToggle = true;
+      state.settings.airScrollToggle = true;
+      state.settings.hollowPurpleEnabled = true;
+      state.settings.safetyGuard = true;
+      state.settings.smoothing = 0.80;
+    } else if (mode === "core") {
+      state.settings.showWebs = true;
+      state.settings.showFocusFrame = true;
+      state.settings.focusFrameOnly = false;
+      state.settings.dualHands = true;
+      state.settings.airVolumeToggle = false;
+      state.settings.airMediaToggle = false;
+      state.settings.ninjaShieldToggle = false;
+      state.settings.airZoomToggle = false;
+      state.settings.airScrollToggle = false;
+      state.settings.hollowPurpleEnabled = true;
+      state.settings.safetyGuard = true;
+      state.settings.smoothing = 0.85;
+    } else if (mode === "eco") {
+      state.settings.showWebs = false;
+      state.settings.showFocusFrame = true;
+      state.settings.focusFrameOnly = true;
+      state.settings.dualHands = false;
+      state.settings.bodyTracking = false;
+      state.settings.airVolumeToggle = false;
+      state.settings.airMediaToggle = false;
+      state.settings.ninjaShieldToggle = false;
+      state.settings.airZoomToggle = false;
+      state.settings.airScrollToggle = true;
+      state.settings.hollowPurpleEnabled = false;
+      state.settings.targetFps = 60;
+      state.settings.smoothing = 0.70;
+    }
+    emitTo("overlay", "overlay-settings", {
+      showWebs: state.settings.showWebs,
+      showFocusFrame: state.settings.showFocusFrame,
+      focusFrameOnly: state.settings.focusFrameOnly,
+    });
+    await persist();
+    render();
+  };
+
+  document.getElementById("presetAllBtn")?.addEventListener("click", () => applyGesturePreset("all"));
+  document.getElementById("presetCoreBtn")?.addEventListener("click", () => applyGesturePreset("core"));
+  document.getElementById("presetEcoBtn")?.addEventListener("click", () => applyGesturePreset("eco"));
+}
+
+function renderDashboardTabs() {
+  const active = state.activeTab || "all";
+  document.querySelectorAll("#dashboardTabs [data-tab-target]").forEach((btn) => {
+    btn.setAttribute("aria-selected", String(btn.dataset.tabTarget === active));
+  });
+  document.querySelectorAll(".dashboard-right [data-tab]").forEach((card) => {
+    card.hidden = active !== "all" && card.dataset.tab !== active;
+  });
 }
 
 function wireAi() {
@@ -809,6 +910,7 @@ function fallbackSettings() {
     customFx: null,
     theme: "sakura",
     sniperTarget: "gemini_web",
+    smoothing: 0.75,
     airVolumeToggle: true,
     airMediaToggle: true,
     ninjaShieldToggle: true,
@@ -1529,6 +1631,9 @@ function onHands(hands, detectMs) {
               const steps = Math.trunc(handState.dialAccumulator / STEP_RAD);
               if (steps !== 0) {
                 adjustVolume(steps).catch(() => {});
+                emitTo("overlay", "overlay-toast", {
+                  text: steps > 0 ? `🔊 Ses +${steps}` : `🔉 Ses ${steps}`,
+                });
                 handState.dialAccumulator -= steps * STEP_RAD;
                 handState.pinchState = null; // Collision prevention with pinch zoom
               }
@@ -1554,6 +1659,7 @@ function onHands(hands, detectMs) {
           if (pinch.isClosed) {
             if (handState.pinchState === "open" && now - (handState.lastZoomAt || 0) >= 260) {
               zoomDesktop(false).catch(() => {});
+              emitTo("overlay", "overlay-toast", { text: "🔍 Uzaklaştır (Zoom -)" });
               handState.lastZoomAt = now;
               handState.dialAccumulator = 0; // Collision prevention with knob dial
             }
@@ -1561,6 +1667,7 @@ function onHands(hands, detectMs) {
           } else if (pinch.isOpen) {
             if (handState.pinchState === "closed" && now - (handState.lastZoomAt || 0) >= 260) {
               zoomDesktop(true).catch(() => {});
+              emitTo("overlay", "overlay-toast", { text: "🔍 Yakınlaştır (Zoom +)" });
               handState.lastZoomAt = now;
               handState.dialAccumulator = 0; // Collision prevention with knob dial
             }
@@ -1580,6 +1687,7 @@ function onHands(hands, detectMs) {
             handState.mediaHoldFired = true;
             handState.lastMediaHoldAt = now;
             mediaPlayPause().catch(() => {});
+            emitTo("overlay", "overlay-toast", { text: "⏯️ Medya Oynat / Duraklat" });
           }
         } else if (handState.mediaHoldFired && now - (handState.lastMediaHoldAt || 0) > 1500) {
           handState.mediaHoldFired = false;
@@ -1589,6 +1697,7 @@ function onHands(hands, detectMs) {
           if (now - (handState.lastMediaFlickAt || 0) > 800) {
             handState.lastMediaFlickAt = now;
             mediaNextTrack().catch(() => {});
+            emitTo("overlay", "overlay-toast", { text: "⏭️ Sonraki Parça" });
           }
         }
       } else if (gesture !== "palm") {
@@ -1739,6 +1848,7 @@ function checkNinjaShieldStance(handCount) {
   if (isNinjaShield(h0.landmarks, h1.landmarks, dualHistory, { now })) {
     state.lastNinjaShieldAt = now;
     showDesktop().catch(() => {});
+    emitTo("overlay", "overlay-toast", { text: "🥷 Ninja Kalkanı · Masaüstü" });
   }
 }
 
@@ -2643,6 +2753,18 @@ function render() {
 
   if (state._syncCustomFxUI) state._syncCustomFxUI();
 
+  const smoothingSlider = document.getElementById("smoothingSlider");
+  const smoothingValue = document.getElementById("smoothingValue");
+  const smoothVal = Number(state.settings.smoothing) || 0.75;
+  if (smoothingSlider && document.activeElement !== smoothingSlider) {
+    smoothingSlider.value = String(smoothVal);
+  }
+  if (smoothingValue) {
+    smoothingValue.textContent = formatSmoothingBadge(smoothVal);
+  }
+
+  renderDashboardTabs();
+
   // Missing elements must never abort render (a crash here used to stop the camera from starting).
   const setAttr = (id, name, value) => document.getElementById(id)?.setAttribute(name, value);
   const setText = (id, value) => {
@@ -2677,24 +2799,29 @@ function renderTheme() {
   if (!root) return;
   root.replaceChildren();
   const themes = [
-    ["sakura", "themeSakura"],
-    ["clean", "themeClean"],
-    ["midnight", "themeMidnight"],
-    ["sage", "themeSage"],
-    ["mint", "themeMint"],
-    ["spiderman", "themeSpiderman"],
-    ["miles", "themeMiles"],
-    ["symbiote", "themeSymbiote"],
-    ["neon", "themeNeon"],
-    ["gojo", "themeGojo"],
-    ["custom", "themeCustom"],
+    ["spiderman", "themeSpiderman", "#ff4d4d", "#3b82f6"],
+    ["miles", "themeMiles", "#ff1744", "#ffd700"],
+    ["gojo", "themeGojo", "#c084fc", "#7c3aed"],
+    ["symbiote", "themeSymbiote", "#a855f7", "#1e1b4b"],
+    ["sakura", "themeSakura", "#f472b6", "#ec4899"],
+    ["midnight", "themeMidnight", "#22d3ee", "#0284c7"],
+    ["neon", "themeNeon", "#7cff6b", "#ff4dff"],
+    ["mint", "themeMint", "#9cf0c4", "#10b981"],
+    ["clean", "themeClean", "#f8fafc", "#38bdf8"],
+    ["custom", "themeCustom", state.settings?.customFx?.primary || "#00f5ff", state.settings?.customFx?.glow || "#a855f7"],
   ];
-  for (const [id, key] of themes) {
+  const currentTheme = state.settings.theme === "sage" ? "mint" : (state.settings.theme || "sakura");
+  for (const [id, key, c1, c2] of themes) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "chip";
-    button.textContent = t(key);
-    const active = (state.settings.theme || "sakura") === id;
+    button.className = "chip theme-chip";
+    const swatch = document.createElement("span");
+    swatch.className = "theme-swatch";
+    swatch.style.background = `linear-gradient(135deg, ${c1} 0%, ${c2} 100%)`;
+    const label = document.createElement("span");
+    label.textContent = t(key);
+    button.append(swatch, label);
+    const active = currentTheme === id;
     button.setAttribute("aria-pressed", String(active));
     button.addEventListener("click", async () => {
       state.settings.theme = id;

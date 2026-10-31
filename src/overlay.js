@@ -21,6 +21,9 @@ let focusFrameOnly = false;
 let showWebs = true;
 let showFocusFrame = true;
 let preset = "sakura";
+let customAccent = "";
+let customThickness = 3;
+let activeToast = null;
 let running = false;
 let frames = 0;
 let fpsStamp = performance.now();
@@ -65,7 +68,7 @@ function loop(now) {
       if (!win.grabbed) targetWindows.delete(id);
     }
   }
-  const busy = fx.hasWork() || tethers.size > 0 || targetWindows.size > 0;
+  const busy = fx.hasWork() || tethers.size > 0 || targetWindows.size > 0 || Boolean(activeToast && now < activeToast.until);
   if (!busy) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     running = false;
@@ -97,6 +100,11 @@ function loop(now) {
       drawTether(line.cur);
     }
   }
+  if (activeToast && now < activeToast.until) {
+    drawToast(now);
+  } else if (activeToast) {
+    activeToast = null;
+  }
   frames += 1;
   if (now - fpsStamp >= 500) {
     const fps = Math.round((frames * 1000) / (now - fpsStamp));
@@ -118,12 +126,13 @@ function ease(cur, target, k, keys) {
 }
 
 function getThemeColor() {
+  if (preset === "custom" && customAccent) return customAccent;
   if (preset === "sakura") return "#f472b6";
   if (preset === "clean") return "#38bdf8";
   if (preset === "midnight") return "#22d3ee";
   if (preset === "sage") return "#6ee7b7";
   if (preset === "spiderman") return "#ff3b3b";
-  if (preset === "miles") return "#ff0055";
+  if (preset === "miles") return "#ffd700";
   if (preset === "symbiote") return "#c084fc";
   if (preset === "neon") return "#ff4dff";
   if (preset === "gojo") return "#a855f7";
@@ -369,25 +378,66 @@ function drawTether(line) {
   const sag = Math.min(dist * 0.04, 25);
   const cx = (x0 + x1) / 2 + perpX * (sag * 0.4);
   const cy = (y0 + y1) / 2 + Math.abs(perpY * sag) + 4;
+  const color = getThemeColor();
+  const scaleW = Math.max(0.5, (preset === "custom" ? customThickness : 3) / 3);
 
-  // Plain silk strand: dark halo + thin white core, no glow.
+  // Theme-tinted silk strand: dark contrast halo + theme accent sheath + bright white core
   ctx.save();
   ctx.lineCap = "round";
   ctx.beginPath();
   ctx.moveTo(x0, y0);
   ctx.quadraticCurveTo(cx, cy, x1, y1);
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.65)";
-  ctx.lineWidth = 6;
-  ctx.stroke();
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.96)";
-  ctx.lineWidth = 2.4;
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.7)";
+  ctx.lineWidth = 7 * scaleW;
   ctx.stroke();
 
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = 0.65;
+  ctx.lineWidth = 4.4 * scaleW;
+  ctx.stroke();
+
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.96)";
+  ctx.lineWidth = 2.2 * scaleW;
+  ctx.stroke();
+
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x0, y0, 4.5 * scaleW, 0, Math.PI * 2);
+  ctx.fill();
   ctx.fillStyle = "#ffffff";
   ctx.beginPath();
-  ctx.arc(x0, y0, 3, 0, Math.PI * 2);
+  ctx.arc(x0, y0, 2.5 * scaleW, 0, Math.PI * 2);
   ctx.fill();
 
+  ctx.restore();
+}
+
+function drawToast(now) {
+  if (!activeToast) return;
+  const remain = Math.max(0, activeToast.until - now);
+  const alpha = Math.min(1, remain / 220);
+  const color = getThemeColor();
+  const text = activeToast.text || "";
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = "bold 14px system-ui, sans-serif";
+  const w = ctx.measureText(text).width + 36;
+  const h = 34;
+  const x = (canvas.width - w) / 2;
+  const y = 28;
+  ctx.fillStyle = "rgba(10, 15, 25, 0.88)";
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, w, h, 999);
+  else ctx.rect(x, y, w, h);
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.8;
+  ctx.stroke();
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, canvas.width / 2, y + h / 2);
   ctx.restore();
 }
 
@@ -463,8 +513,17 @@ listen("overlay-settings", (event) => {
   }
   if (event.payload?.customFx) {
     registerCustomLook(event.payload.customFx);
+    customAccent = event.payload.customFx.primary || "#00f5ff";
+    customThickness = Number(event.payload.customFx.thickness) || 3;
     if (preset === "custom") fx.setPreset("custom");
   }
+});
+
+listen("overlay-toast", (event) => {
+  const text = event.payload?.text;
+  if (!text) return;
+  activeToast = { text, until: performance.now() + (event.payload?.duration || 1100) };
+  kick();
 });
 
 window.addEventListener("resize", fit);

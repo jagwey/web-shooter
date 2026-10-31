@@ -78,6 +78,12 @@ pub struct Settings {
     pub sniper_target: String,
     #[serde(default)]
     pub custom_gestures: Option<serde_json::Value>,
+    #[serde(default = "default_smoothing")]
+    pub smoothing: f32,
+}
+
+fn default_smoothing() -> f32 {
+    0.75
 }
 
 fn default_sniper_target() -> String {
@@ -152,6 +158,7 @@ impl Default for Settings {
             body_tracking: false,
             sniper_target: "gemini_web".into(),
             custom_gestures: None,
+            smoothing: 0.75,
         }
     }
 }
@@ -204,6 +211,10 @@ impl Settings {
             self.target_fps = 120;
         }
         self.idle_release_secs = self.idle_release_secs.clamp(5, 300);
+        if !self.smoothing.is_finite() {
+            self.smoothing = 0.75;
+        }
+        self.smoothing = self.smoothing.clamp(0.2, 1.0);
         self.bindings.retain(|item| {
             !item.action.trim().is_empty()
                 && matches!(item.input.kind.as_str(), "gesture" | "hotkey")
