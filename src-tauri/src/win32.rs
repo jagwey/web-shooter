@@ -1,4 +1,4 @@
-﻿use serde::Serialize;
+use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,8 +30,8 @@ mod platform {
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GA_ROOT, GWL_EXSTYLE, GetAncestor, GetClassNameW, GetWindowLongPtrW,
         GetWindowRect, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
-        IsWindowVisible, SetWindowPos, WindowFromPoint, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
-        WS_EX_TOOLWINDOW,
+        IsWindowVisible, IsZoomed, SetWindowPos, ShowWindow, WindowFromPoint, SW_MAXIMIZE,
+        SW_RESTORE, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, WS_EX_TOOLWINDOW,
     };
     use windows_registry::CURRENT_USER;
 
@@ -147,17 +147,29 @@ mod platform {
 
     pub fn window_at(x: i32, y: i32) -> Result<Option<DesktopWindow>, String> {
         let hwnd = unsafe { WindowFromPoint(POINT { x, y }) };
-        if hwnd.0.is_null() {
-            return Ok(None);
+        if !hwnd.0.is_null() {
+            let root = unsafe { GetAncestor(hwnd, GA_ROOT) };
+            let target = if root.0.is_null() { hwnd } else { root };
+            if let Some(desc) = describe(target) {
+                return Ok(Some(desc));
+            }
         }
-        let root = unsafe { GetAncestor(hwnd, GA_ROOT) };
-        let target = if root.0.is_null() { hwnd } else { root };
-        Ok(describe(target))
+        // Fallback: search top-to-bottom z-order windows
+        let list = list_windows()?;
+        for win in list {
+            if x >= win.x && x < win.x + win.width && y >= win.y && y < win.y + win.height {
+                return Ok(Some(win));
+            }
+        }
+        Ok(None)
     }
 
     pub fn move_window(raw: i64, x: i32, y: i32) -> Result<DesktopWindow, String> {
         let hwnd = hwnd_of(raw);
         unsafe {
+            if IsZoomed(hwnd).as_bool() {
+                let _ = ShowWindow(hwnd, SW_RESTORE);
+            }
             SetWindowPos(hwnd, None, x, y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER)
                 .map_err(|err| err.to_string())?;
         }
@@ -171,7 +183,9 @@ mod platform {
         let hwnd = raw;
         std::thread::spawn(move || {
             let _ = move_window(hwnd, window.x + 28, window.y + 12);
-            std::thread::sleep(Duration::from_millis(90));
+            std::thread::sleep(Duration::from_millis(50));
+            let _ = move_window(hwnd, window.x + 14, window.y + 6);
+            std::thread::sleep(Duration::from_millis(50));
             let _ = move_window(hwnd, window.x, window.y);
         });
         Ok(())
@@ -193,18 +207,18 @@ mod platform {
             let mut y = start.y as f32;
             let mut vx = vx;
             let mut vy = vy;
-            for _ in 0..28 {
+            for _ in 0..36 {
                 if generation.load(Ordering::Relaxed) != token {
                     return;
                 }
                 x += vx;
                 y += vy;
-                vx *= 0.82;
-                vy *= 0.82;
+                vx *= 0.86;
+                vy *= 0.86;
                 if let Err(_) = move_window(raw, x.round() as i32, y.round() as i32) {
                     return;
                 }
-                if vx.abs() < 1.5 && vy.abs() < 1.5 {
+                if vx.abs() < 1.0 && vy.abs() < 1.0 {
                     break;
                 }
                 std::thread::sleep(Duration::from_millis(16));
@@ -213,10 +227,17 @@ mod platform {
         });
     }
 
-    fn snap_window(raw: i64, x: i32, y: i32, width: i32, height: i32, monitors: &[(i32, i32, i32, i32)]) {
+    fn snap_window(raw: i64, x: i32, y: i32, width: i32, _height: i32, monitors: &[(i32, i32, i32, i32)]) {
         for (mx, my, mw, mh) in monitors {
             let near_left = (x - mx).abs() < 48;
             let near_right = ((x + width) - (mx + mw)).abs() < 48;
+            let near_top = (y - my).abs() < 36;
+            if near_top && !near_left && !near_right {
+                unsafe {
+                    let _ = ShowWindow(hwnd_of(raw), SW_MAXIMIZE);
+                }
+                return;
+            }
             if !near_left && !near_right {
                 continue;
             }
@@ -233,8 +254,22 @@ mod platform {
                     SWP_NOACTIVATE | SWP_NOZORDER,
                 );
             }
-            let _ = height;
             return;
+        }
+
+        // Safe screen clamp so flung window is not lost off-screen:
+        if !monitors.is_empty() {
+            let margin = 100;
+            let min_x = monitors.iter().map(|(mx, _, _, _)| *mx).min().unwrap_or(0);
+            let max_x = monitors.iter().map(|(mx, _, mw, _)| mx + mw).max().unwrap_or(1920);
+            let min_y = monitors.iter().map(|(_, my, _, _)| *my).min().unwrap_or(0);
+            let max_y = monitors.iter().map(|(_, my, _, mh)| my + mh).max().unwrap_or(1080);
+
+            let clamped_x = x.clamp(min_x - width + margin, max_x - margin);
+            let clamped_y = y.clamp(min_y, max_y - margin);
+            if clamped_x != x || clamped_y != y {
+                let _ = move_window(raw, clamped_x, clamped_y);
+            }
         }
     }
 

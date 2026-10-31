@@ -53,6 +53,7 @@ const LOOKS = {
     particle: [220, 255, 236],
   },
 };
+LOOKS.light = LOOKS.low;
 
 function stepOf(dt) {
   return Math.min(dt, 50) / FRAME_MS;
@@ -73,7 +74,8 @@ export function createWebFx(ctx, hooks = {}) {
   let lastDraw = performance.now();
 
   function setPreset(name) {
-    look = LOOKS[name] || LOOKS.mint;
+    const key = name === "light" ? "low" : name;
+    look = LOOKS[key] || LOOKS.mint;
   }
 
   function full() {

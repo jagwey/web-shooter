@@ -135,6 +135,23 @@ summary { cursor: pointer; font-weight: 650; }
   gap: 12px;
   padding: 12px;
 }
+.device-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.device-select {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--mint);
+  border-radius: 8px;
+  padding: 2px 6px;
+  font-size: 0.78rem;
+  max-width: 140px;
+  cursor: pointer;
+}
 video {
   width: 112px;
   height: 84px;

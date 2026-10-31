@@ -63,16 +63,47 @@ function drawTether(line) {
   const y0 = line.y0 * canvas.height;
   const x1 = line.x1 * canvas.width;
   const y1 = line.y1 * canvas.height;
+
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const dist = Math.hypot(dx, dy) || 1;
+  const perpX = -dy / dist;
+  const perpY = dx / dist;
+
+  const sag = Math.min(dist * 0.04, 25);
+  const cx = (x0 + x1) / 2 + perpX * (sag * 0.4);
+  const cy = (y0 + y1) / 2 + Math.abs(perpY * sag) + 4;
+
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  ctx.strokeStyle = "rgba(216, 255, 233, 0.9)";
-  ctx.lineWidth = preset === "low" ? 2 : 3;
-  ctx.shadowColor = "#9cf0c4";
-  ctx.shadowBlur = preset === "low" ? 0 : 12;
+
+  const isLow = preset === "low" || preset === "light";
+  const glowColor = preset === "neon" ? "#ff4dff" : preset === "classic" ? "#00d9ff" : "#9cf0c4";
+  const coreColor = preset === "neon" ? "rgba(124, 255, 107, 0.9)" : preset === "classic" ? "rgba(210, 245, 255, 0.95)" : "rgba(216, 255, 233, 0.95)";
+
+  ctx.strokeStyle = glowColor;
+  ctx.lineWidth = isLow ? 3 : 6;
+  ctx.shadowColor = glowColor;
+  ctx.shadowBlur = isLow ? 0 : 16;
   ctx.beginPath();
   ctx.moveTo(x0, y0);
-  ctx.lineTo(x1, y1);
+  ctx.quadraticCurveTo(cx, cy, x1, y1);
   ctx.stroke();
+
+  ctx.strokeStyle = coreColor;
+  ctx.lineWidth = isLow ? 2 : 2.5;
+  ctx.shadowBlur = isLow ? 0 : 6;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.quadraticCurveTo(cx, cy, x1, y1);
+  ctx.stroke();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(x0, y0, 5, 0, Math.PI * 2);
+  ctx.arc(x1, y1, 6, 0, Math.PI * 2);
+  ctx.fill();
+
   ctx.restore();
 }
 

@@ -32,6 +32,7 @@ const state = {
   win32: false,
   renderFps: 0,
   deviceLabel: "",
+  videoDevices: [],
   hotkeyDraft: "",
   listening: false,
 };
@@ -76,6 +77,21 @@ function wireChrome() {
     }
   });
   document.getElementById("cameraRetry").addEventListener("click", () => startCamera());
+  const camSelect = document.getElementById("cameraSelect");
+  if (camSelect) {
+    camSelect.addEventListener("change", async (e) => {
+      const deviceId = e.target.value;
+      if (state.settings) {
+        state.settings.cameraDeviceId = deviceId;
+        await persist();
+      }
+      if (state.cameraWanted) {
+        stopCamera(false);
+        state.cameraWanted = true;
+        await startCamera();
+      }
+    });
+  }
   document.getElementById("autostartToggle").addEventListener("click", () => {
     state.settings.startWithWindows = !state.settings.startWithWindows;
     persist();
@@ -156,6 +172,7 @@ function fallbackSettings() {
     monitorId: "",
     fxPreset: "mint",
     bindings: defaultBindings(),
+    cameraDeviceId: "",
   };
 }
 
@@ -252,9 +269,19 @@ async function startCamera() {
   setMessage("cameraMessage", "");
   setMessage("onboardCameraMessage", "");
   try {
+    const videoConstraints = {
+      width: { ideal: 640 },
+      height: { ideal: 480 },
+      frameRate: { ideal: 30, max: 30 },
+    };
+    if (state.settings?.cameraDeviceId) {
+      videoConstraints.deviceId = { exact: state.settings.cameraDeviceId };
+    } else {
+      videoConstraints.facingMode = "user";
+    }
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
-      video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30, max: 30 } },
+      video: videoConstraints,
     });
     stopTracks();
     state.stream = stream;
@@ -370,9 +397,13 @@ function onHand(landmarks, detectMs) {
     state.missStreak = 0;
     clearTimeout(state.idleTimer);
     const point = screenPoint(landmarks[8]);
-    if (state.grab && action !== "grab") releaseGrab();
-    else if (action === "grab" && !edge) moveGrab(point);
-    else if (edge) runAction(action, point, true);
+    if (state.grab && action !== "grab") {
+      releaseGrab();
+    } else if (action === "grab" && !edge) {
+      moveGrab(point);
+    } else if (edge) {
+      runAction(action, point, true);
+    }
   }
   state.lastGesture = gesture;
   const gap = nextGap(Boolean(landmarks), detectMs);
@@ -381,7 +412,7 @@ function onHand(landmarks, detectMs) {
 
 function nextGap(hand, detectMs) {
   if (!hand) return state.missStreak > 6 ? 250 : 80;
-  if (state.settings.fxPreset === "low") return Math.max(33, detectMs);
+  if (state.settings.fxPreset === "low" || state.settings.fxPreset === "light") return Math.max(33, detectMs);
   return Math.min(40, Math.max(8, detectMs * 1.15));
 }
 
@@ -473,17 +504,35 @@ async function releaseGrab() {
   state.grab = null;
   emitTo("overlay", "overlay-clear", {});
   if (!grab) return;
-  const recent = state.samples.filter((sample) => performance.now() - sample.t < 120);
-  const first = recent[0];
-  const last = recent[recent.length - 1];
+
+  const now = performance.now();
+  let recent = state.samples.filter((sample) => now - sample.t < 160);
+  if (recent.length < 2 && state.samples.length >= 2) {
+    recent = state.samples.slice(-3);
+  }
+
   let vx = 0;
   let vy = 0;
-  if (first && last && last.t > first.t) {
-    const dt = (last.t - first.t) / 16;
-    vx = (last.x - first.x) / dt;
-    vy = (last.y - first.y) / dt;
+  if (recent.length >= 2) {
+    const first = recent[0];
+    const last = recent[recent.length - 1];
+    const dtMs = last.t - first.t;
+    if (dtMs > 4) {
+      const dtFrames = dtMs / 16;
+      vx = ((last.x - first.x) / dtFrames) * 1.35;
+      vy = ((last.y - first.y) / dtFrames) * 1.35;
+    }
   }
-  if (Math.hypot(vx, vy) > 4) await invoke("fling_window", { hwnd: grab.hwnd, vx, vy });
+
+  const speed = Math.hypot(vx, vy);
+  if (speed > 3) {
+    const maxSpeed = 75;
+    if (speed > maxSpeed) {
+      vx = (vx / speed) * maxSpeed;
+      vy = (vy / speed) * maxSpeed;
+    }
+    await invoke("fling_window", { hwnd: grab.hwnd, vx, vy });
+  }
   render();
 }
 
@@ -495,8 +544,14 @@ function cancelGrab(clearWeb) {
 }
 
 async function hitAt(x, y, nudge) {
-  const found = await invoke("window_at", { x: Math.round(x), y: Math.round(y) });
-  if (!found || found.unsupported || !found.hwnd) return;
+  let found = await invoke("window_at", { x: Math.round(x), y: Math.max(35, Math.round(y)) });
+  if (!found || found.unsupported || !found.hwnd) {
+    const list = await invoke("list_windows");
+    if (Array.isArray(list) && list.length > 0) {
+      found = list[0];
+    }
+  }
+  if (!found || !found.hwnd) return;
   state.lastHit = found.title || state.lastHit;
   if (nudge) await invoke("nudge_window", { hwnd: found.hwnd });
   render();
@@ -507,9 +562,32 @@ async function describeCamera() {
   if (!track) return;
   const settings = track.getSettings();
   const devices = await navigator.mediaDevices.enumerateDevices();
+  const videoDevices = devices.filter((d) => d.kind === "videoinput");
+  state.videoDevices = videoDevices;
   const match = devices.find((device) => device.deviceId === settings.deviceId);
   state.deviceLabel = match?.label || track.label || t("deviceUnknown");
+  renderCameraSelect();
   await describeHolders();
+}
+
+function renderCameraSelect() {
+  const select = document.getElementById("cameraSelect");
+  if (!select) return;
+  if (!state.videoDevices || state.videoDevices.length <= 1) {
+    select.hidden = true;
+    return;
+  }
+  select.hidden = false;
+  select.replaceChildren();
+  for (const device of state.videoDevices) {
+    const opt = document.createElement("option");
+    opt.value = device.deviceId;
+    opt.textContent = device.label || `${t("camera")} ${select.childElementCount + 1}`;
+    if (device.deviceId === state.settings?.cameraDeviceId) {
+      opt.selected = true;
+    }
+    select.append(opt);
+  }
 }
 
 async function describeHolders() {
@@ -605,14 +683,15 @@ function renderFx() {
     ["classic", "fxClassic"],
     ["mint", "fxMint"],
     ["neon", "fxNeon"],
-    ["low", "fxLow"],
+    ["light", "fxLight"],
   ];
   for (const [id, key] of presets) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "chip";
     button.textContent = t(key);
-    button.setAttribute("aria-pressed", String(state.settings.fxPreset === id));
+    const active = state.settings.fxPreset === id || (id === "light" && state.settings.fxPreset === "low");
+    button.setAttribute("aria-pressed", String(active));
     button.addEventListener("click", async () => {
       state.settings.fxPreset = id;
       emitTo("overlay", "overlay-preset", { preset: id });

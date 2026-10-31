@@ -30,6 +30,8 @@ pub struct Settings {
     pub monitor_id: String,
     pub fx_preset: String,
     pub bindings: Vec<Binding>,
+    #[serde(default)]
+    pub camera_device_id: String,
 }
 
 impl Default for Settings {
@@ -44,6 +46,7 @@ impl Default for Settings {
             monitor_id: String::new(),
             fx_preset: "mint".into(),
             bindings: default_bindings(),
+            camera_device_id: String::new(),
         }
     }
 }
@@ -77,7 +80,7 @@ impl Settings {
         if !matches!(self.monitor_mode.as_str(), "one" | "all") {
             self.monitor_mode = "one".into();
         }
-        if !matches!(self.fx_preset.as_str(), "classic" | "mint" | "neon" | "low") {
+        if !matches!(self.fx_preset.as_str(), "classic" | "mint" | "neon" | "low" | "light") {
             self.fx_preset = "mint".into();
         }
         self.idle_release_secs = self.idle_release_secs.clamp(5, 300);

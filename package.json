@@ -8,7 +8,7 @@
     "dev": "vite --host 127.0.0.1 --port 4731 --strictPort",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4731 --strictPort",
-    "test": "node --test",
+    "test": "node --test \"test/*.test.js\"",
     "desktop": "tauri dev",
     "desktop:build": "tauri build"
   },

@@ -57,7 +57,10 @@
         <section class="status-card">
           <video id="video" autoplay playsinline muted></video>
           <div class="status-copy">
-            <strong id="deviceLabel" data-i18n="deviceUnknown">Kamera</strong>
+            <div class="device-row">
+              <strong id="deviceLabel" data-i18n="deviceUnknown">Kamera</strong>
+              <select id="cameraSelect" class="device-select" aria-label="Camera Device" hidden></select>
+            </div>
             <p id="holderLabel"></p>
             <p id="modelLabel" data-i18n="modelLoading">El takibi hazırlanıyor…</p>
           </div>
