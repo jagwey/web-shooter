@@ -4,6 +4,8 @@ description = "Overlay, Win32 window play, settings, and camera status"
 commands.allow = [
   "get_settings",
   "save_settings",
+  "get_profiles",
+  "save_profiles_cmd",
   "desktop_snapshot",
   "toggle_overlay",
   "place_overlay",
@@ -14,6 +16,7 @@ commands.allow = [
   "window_at",
   "window_client",
   "move_window",
+  "move_window_fast",
   "place_window",
   "nudge_window",
   "fling_window",

@@ -107,9 +107,10 @@
               <select id="cameraSelect" class="device-select" aria-label="Camera Device"></select>
               <button type="button" class="btn ghost" id="refreshCamerasBtn" style="padding: 4px 8px; font-size: 0.75rem;" data-i18n="cameraRefresh">↻ Yenile</button>
             </div>
-            <p id="modelLabel" style="font-size: 0.76rem; color: var(--muted); margin: 0;" data-i18n="modelLoading">El takibi hazırlanıyor…</p>
+            <p id="modelLabel" style="font-size: 0.76rem; color: var(--muted); margin: 0;">El takibi hazırlanıyor…</p>
           </div>
           <small id="deviceLabel" style="display: block; margin-top: 4px; font-size: 0.72rem; color: var(--muted);"></small>
+          <small id="holderLabel" style="display: block; margin-top: 2px; font-size: 0.72rem; color: var(--muted);"></small>
 
           <div class="meters" style="margin-top: 10px;">
             <span><b id="fpsValue">0</b> <small data-i18n="fps">Kare</small></span>
@@ -396,6 +397,10 @@
                   <input type="text" id="aiModel" class="device-select" style="padding: 4px 8px; font-size: 0.8rem; flex: 1;" placeholder="gemini-3.5-flash-lite / llama3.2" />
                   <button type="button" class="btn ghost" id="aiFetchModelsBtn" style="padding: 2px 6px; font-size: 0.72rem;">Tara</button>
                 </div>
+              </div>
+              <div class="device-row" style="justify-content: space-between; margin-top: 4px;">
+                <button type="button" class="btn ghost" id="aiTestBtn" style="padding: 4px 10px; font-size: 0.75rem;">🔌 Bağlantıyı Test Et</button>
+                <small id="aiStatusMessage" style="font-size: 0.75rem; color: var(--muted);"></small>
               </div>
             </div>
           </details>

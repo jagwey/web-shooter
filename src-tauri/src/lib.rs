@@ -1,7 +1,7 @@
 mod settings;
 mod win32;
 
-use settings::{load_settings, store_settings, Settings};
+use settings::{load_profiles_json, load_settings, store_profiles_json, store_settings, Settings};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -400,9 +400,21 @@ fn save_settings(app: AppHandle, settings: Settings) -> Result<SaveResponse, Str
 }
 
 #[tauri::command]
+fn get_profiles(app: AppHandle) -> Option<String> {
+    load_profiles_json(&app)
+}
+
+#[tauri::command]
+fn save_profiles_cmd(app: AppHandle, data: String) -> Result<(), String> {
+    store_profiles_json(&app, &data)
+}
+
+#[tauri::command]
 fn desktop_snapshot(app: AppHandle) -> Result<Snapshot, String> {
-    let window = app.get_webview_window("control").ok_or("control missing")?;
-    let monitors = read_monitors(&window)?;
+    let monitors = app
+        .get_webview_window("control")
+        .and_then(|window| read_monitors(&window).ok())
+        .unwrap_or_default();
     let settings = load_settings(&app);
     let (frame, _) = frame_for(&monitors, &settings);
     let windows = win32::list_windows().unwrap_or_default();
@@ -471,6 +483,12 @@ fn window_client(hwnd: i64) -> Result<win32::DesktopWindow, String> {
 fn move_window(app: AppHandle, hwnd: i64, x: i32, y: i32) -> Result<win32::DesktopWindow, String> {
     app.state::<Shared>().fling_gen.fetch_add(1, Ordering::Relaxed);
     win32::move_window(hwnd, x, y)
+}
+
+#[tauri::command]
+fn move_window_fast(app: AppHandle, hwnd: i64, x: i32, y: i32) -> Result<(), String> {
+    app.state::<Shared>().fling_gen.fetch_add(1, Ordering::Relaxed);
+    win32::move_window_fast(hwnd, x, y)
 }
 
 #[tauri::command]
@@ -582,6 +600,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_settings,
             save_settings,
+            get_profiles,
+            save_profiles_cmd,
             desktop_snapshot,
             toggle_overlay,
             place_overlay,
@@ -592,6 +612,7 @@ pub fn run() {
             window_at,
             window_client,
             move_window,
+            move_window_fast,
             place_window,
             nudge_window,
             fling_window,

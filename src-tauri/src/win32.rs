@@ -45,8 +45,9 @@ mod platform {
         GetWindowLongPtrW, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
         EnumChildWindows, GetClientRect, GetWindowThreadProcessId, IsIconic,
         IsWindow, IsWindowVisible, IsZoomed, PostMessageW, SetForegroundWindow, SetWindowPos,
-        ShowWindow, WindowFromPoint, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SWP_NOACTIVATE,
-        SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE, WS_EX_TOOLWINDOW,
+        ShowWindow, WindowFromPoint, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SWP_ASYNCWINDOWPOS,
+        SWP_DEFERERASE, SWP_NOACTIVATE, SWP_NOSENDCHANGING, SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE,
+        WS_EX_TOOLWINDOW,
     };
     use windows_registry::CURRENT_USER;
 
@@ -293,14 +294,62 @@ mod platform {
         Ok(with_client(desc, content_of(hwnd)))
     }
 
+    /// Ultra-low-latency window move for live hand dragging and fling loops.
+    /// Avoids `describe(hwnd)` / `EnumChildWindows` and uses `SWP_ASYNCWINDOWPOS` so the
+    /// caller never blocks on the target application's message loop.
+    pub fn move_window_fast(raw: i64, x: i32, y: i32) -> Result<(), String> {
+        let hwnd = hwnd_of(raw);
+        if raw == 0 || unsafe { !IsWindow(Some(hwnd)).as_bool() } {
+            return Err("window gone".into());
+        }
+        let class = class_name(hwnd);
+        if root_of(hwnd) != hwnd || class == "TaskManagerWindow" || skipped_class(&class) {
+            return Err("window protected".into());
+        }
+        let mut pid = 0u32;
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+        if pid == unsafe { GetCurrentProcessId() } {
+            return Err("window protected".into());
+        }
+        unsafe {
+            if IsZoomed(hwnd).as_bool() {
+                let _ = ShowWindow(hwnd, SW_RESTORE);
+            }
+            SetWindowPos(
+                hwnd,
+                None,
+                x,
+                y,
+                0,
+                0,
+                SWP_ASYNCWINDOWPOS
+                    | SWP_NOSIZE
+                    | SWP_NOACTIVATE
+                    | SWP_NOZORDER
+                    | SWP_NOSENDCHANGING
+                    | SWP_DEFERERASE,
+            )
+            .map_err(|err| err.to_string())?;
+        }
+        Ok(())
+    }
+
     pub fn move_window(raw: i64, x: i32, y: i32) -> Result<DesktopWindow, String> {
         let (hwnd, _) = checked_target(raw)?;
         unsafe {
             if IsZoomed(hwnd).as_bool() {
                 let _ = ShowWindow(hwnd, SW_RESTORE);
             }
-            SetWindowPos(hwnd, None, x, y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER)
-                .map_err(|err| err.to_string())?;
+            SetWindowPos(
+                hwnd,
+                None,
+                x,
+                y,
+                0,
+                0,
+                SWP_ASYNCWINDOWPOS | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSENDCHANGING,
+            )
+            .map_err(|err| err.to_string())?;
         }
         describe(hwnd).ok_or_else(|| "window disappeared".into())
     }
@@ -327,11 +376,11 @@ mod platform {
         };
         let hwnd = raw;
         std::thread::spawn(move || {
-            let _ = move_window(hwnd, window.x + 28, window.y + 12);
+            let _ = move_window_fast(hwnd, window.x + 28, window.y + 12);
             std::thread::sleep(Duration::from_millis(50));
-            let _ = move_window(hwnd, window.x + 14, window.y + 6);
+            let _ = move_window_fast(hwnd, window.x + 14, window.y + 6);
             std::thread::sleep(Duration::from_millis(50));
-            let _ = move_window(hwnd, window.x, window.y);
+            let _ = move_window_fast(hwnd, window.x, window.y);
         });
         Ok(())
     }
@@ -360,7 +409,7 @@ mod platform {
                 y += vy;
                 vx *= 0.86;
                 vy *= 0.86;
-                if let Err(_) = move_window(raw, x.round() as i32, y.round() as i32) {
+                if move_window_fast(raw, x.round() as i32, y.round() as i32).is_err() {
                     return;
                 }
                 if vx.abs() < 1.0 && vy.abs() < 1.0 {
@@ -651,9 +700,14 @@ mod platform {
 pub use platform::{
     adjust_volume, camera_holders, close_active_tab, close_window, fling_window,
     get_foreground_window, list_windows, media_next_track, media_play_pause, minimize_window,
-    move_window, nudge_window, place_window, scroll_wheel, show_desktop, window_at, window_client,
-    zoom_desktop,
+    move_window, move_window_fast, nudge_window, place_window, scroll_wheel, show_desktop,
+    window_at, window_client, zoom_desktop,
 };
+
+#[cfg(not(windows))]
+pub fn move_window_fast(_raw: i64, _x: i32, _y: i32) -> Result<(), String> {
+    Err("win32-only".into())
+}
 
 #[cfg(not(windows))]
 pub fn list_windows() -> Result<Vec<DesktopWindow>, String> {

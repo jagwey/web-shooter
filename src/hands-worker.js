@@ -70,28 +70,32 @@ self.onmessage = async (event) => {
   if (!message || typeof message !== "object") return;
 
   if (message.type === "init") {
-    for (const src of message.sources || []) {
-      try {
-        const vision = await FilesetResolver.forVisionTasks(src.wasm);
-        for (const delegate of ["GPU", "CPU"]) {
-          try {
-            landmarker = await createHands(vision, src.model, delegate);
-            if (landmarker) {
-              console.log(`[hands-worker] HandLandmarker initialized successfully (${delegate}, ${src.tag})`);
-              self.postMessage({ type: "ready", delegate, tag: src.tag });
-              return;
-            }
-          } catch (err) {
-            if (delegate === "GPU") {
-              console.warn(`[hands-worker] GPU delegate failed for ${src.tag}, falling back to CPU:`, err?.message || err);
-            } else {
-              console.error(`[hands-worker] CPU delegate failed for ${src.tag}:`, err?.message || err);
+    try {
+      for (const src of message.sources || []) {
+        try {
+          const vision = await FilesetResolver.forVisionTasks(src.wasm);
+          for (const delegate of ["GPU", "CPU"]) {
+            try {
+              landmarker = await createHands(vision, src.model, delegate);
+              if (landmarker) {
+                console.log(`[hands-worker] HandLandmarker initialized successfully (${delegate}, ${src.tag})`);
+                self.postMessage({ type: "ready", delegate, tag: src.tag });
+                return;
+              }
+            } catch (err) {
+              if (delegate === "GPU") {
+                console.warn(`[hands-worker] GPU delegate failed for ${src.tag}, falling back to CPU:`, err?.message || err);
+              } else {
+                console.error(`[hands-worker] CPU delegate failed for ${src.tag}:`, err?.message || err);
+              }
             }
           }
+        } catch (srcErr) {
+          console.warn(`[hands-worker] Vision tasks resolver failed for ${src.tag}:`, srcErr?.message || srcErr);
         }
-      } catch (srcErr) {
-        console.warn(`[hands-worker] Vision tasks resolver failed for ${src.tag}:`, srcErr?.message || srcErr);
       }
+    } catch (fatalErr) {
+      console.error("[hands-worker] Fatal init error:", fatalErr);
     }
     self.postMessage({ type: "error", message: "model" });
     return;

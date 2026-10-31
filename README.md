@@ -6,12 +6,12 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-0.2.0-emerald?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-0.3.0-emerald?style=for-the-badge)
 ![Tauri 2](https://img.shields.io/badge/Tauri_2-Rust_%2B_Vite-blue?style=for-the-badge)
 ![MediaPipe](https://img.shields.io/badge/MediaPipe_Hands-120_FPS_Float16-orange?style=for-the-badge)
-![Filter](https://img.shields.io/badge/Filter-1_Euro_%2B_12ms_Prediction-cyan?style=for-the-badge)
-![Win32](https://img.shields.io/badge/Win32_Native-Z--Order_Fling-purple?style=for-the-badge)
-![Tests](https://img.shields.io/badge/Tests-74%2F74_Passing-brightgreen?style=for-the-badge)
+![Filter](https://img.shields.io/badge/Filter-1_Euro_%2B_14--42ms_Adaptive_Lead-cyan?style=for-the-badge)
+![Win32](https://img.shields.io/badge/Win32_Native-SWP__ASYNCWINDOWPOS_Zero_Lag-purple?style=for-the-badge)
+![Tests](https://img.shields.io/badge/Tests-80%2F80_Unit_%2B_51%2F51_Stress-brightgreen?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
 **Windows Masaüstü Örümcek Ağı ve Jujutsu Kaisen "Hollow Purple" Katmanı**  
@@ -134,8 +134,9 @@ flowchart TD
     v017["<b>v0.1.7 — Çoklu Monitör ve OK Hareketi</b><br/>OK flick ile pencere simge durumuna küçültme<br/>Pencereleri diğer monitöre fırlatma desteği"]
     v018["<b>v0.1.8 — Web Worker ve 3D Jestler</b><br/>MediaPipe Web Worker (sıfır arayüz kasması)<br/>3D World Landmarks + 3/5 çoğunluk oyu (35/35 test)"]
     v020["<b>v0.2.0 — Masaüstü Süper Güçleri & AI Stüdyosu</b><br/>DJ Air Knob, Air Media, Ninja Shield, Pinch Zoom, Air Scroll<br/>AI Sniper, OCR Belge Tarayıcı, Özel Hareket Stüdyosu & UI Toggles (74/74 Test)"]
+    v030["<b>v0.3.0 — Sıfır Gecikme (Zero-Latency) & Tam Sistem Revizyonu</b><br/>Win32 SWP_ASYNCWINDOWPOS + Çapa Sürükleme + IPC Coalescing<br/>Avuç Merkezi Takibi, 14-42ms Adaptif Tahmin, Kamera & Profil Kalıcılığı (80/80 Test)"]
 
-    v010 --> v011 --> v012 --> v013 --> v014 --> v015 --> v016 --> v017 --> v018 --> v020
+    v010 --> v011 --> v012 --> v013 --> v014 --> v015 --> v016 --> v017 --> v018 --> v020 --> v030
 ```
 
 ### 📋 Sürümler Sırasıyla Ne Getirdi?
@@ -152,6 +153,7 @@ flowchart TD
 | **v0.1.7** | **Çoklu Monitör & OK Hareketi** | OK flick ile pencere simge durumuna küçültme (`minimize`), ağ ile yakalanan pencereyi ivmeli fırlatarak diğer monitöre aktarma (`throwToOtherMonitor`). | Tek monitöre sıkışma ve sekmeyi küçültmek için fareye ihtiyaç duyulması sorunu çözüldü. |
 | **v0.1.8** | **Web Worker & 3D Jest Güvenilirliği** | MediaPipe el takibinin Web Worker'a taşınması (`ImageBitmap`), arayüz kasmasının sıfırlanması, 3D World Landmarks ile ölçekten bağımsız el sınıflandırma, 5 karede 3 oy çoğunluk filtresi, 'Dur Eli' yelpaze tespiti (35/35 birim testi). | Kamera/model yükünün UI döngüsünü dondurması ve parmak açılarının yanlış jest tetiklemesi tamamen çözüldü. |
 | **v0.2.0** | **Masaüstü Süper Güçleri & AI Stüdyosu** | 🔊 **DJ Air Knob** (ses kontrolü), ⏸️ **Air Media Control** (oynat/durdur/sonraki), 🥷 **Ninja Shield** (Win+D patron modu), 🔍 **Pinch Zoom** (Büyüteç), 📜 **Air Scroll** (fare tekeri kaydırma), 🎯 **AI Sniper** (çift el nişan), 📄 **Kamera OCR**, 📸 **Özel Hareket Stüdyosu**, 🎛️ **5 Bağımsız UI Toggle**, Çene ölü bölge koruması | 74/74 birim testi, 51/51 stres testi, kusursuz onboarding ve sıfır çakışma garantisi |
+| **v0.3.0** | **Sıfır Gecikme & Tam Sistem Revizyonu** | 🚀 **Win32 `move_window_fast`** (`SWP_ASYNCWINDOWPOS | SWP_NOSENDCHANGING` ile <0.1ms asenkron pencere taşıma), ⚓ **Çapa (Anchor) Tabanlı Sürükleme** (sıfır DWM kenarlık kayması + 0ms istemci örtü güncellemesi + IPC Coalescing), 🖐️ **Avuç Merkezi Takibi & 14–42ms Adaptif Hız Öngörüsü**, 💨 **Motion-Blur Coasting & 3-Kare Tutuş Histerezisi**, 📷 **Anında Kamera Listeleme & 4sn Worker Fallback**, 👤 **Tauri `profiles.json` Kalıcılığı** | Kamera seçimi, model yükleme takılması, profil ekleme ve hızlı el hareketinde pencere gecikmesi/kopması tamamen giderildi (80/80 birim testi + 51/51 stres testi). |
 | **v0.1.9** | **AI Sniper, Kamera OCR & Özel Jestler** | 🎯 İki el / tabancayla hedefe nişan alıp Gemini/AI'ya sorma (Screen Sniper), 📄 kameradan anlık belge okuma (OCR & Panoya kopyalama), 📸 özel el hareketi kaydetme stüdyosu (şablon eşleme), ✌️ 'V' makas işaretiyle sekme kapatma, çene/yüz dinlenme kör noktası filtresi (40/40 birim testi). | Çeneyi dayayınca pencere tutma hatası, fiske atınca küçültmeme ve sekme kapatamama sorunları tamamen çözüldü. |
 
 ---

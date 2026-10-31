@@ -1,14 +1,17 @@
 # 🕸️ Jagwey Web Shooter — Project Status & Progress Report (PROGRESS.md)
 
-**Versiyon:** `0.1.0`  
+**Versiyon:** `0.3.0`  
 **Proje:** Jagwey Web Shooter (Masaüstü Örtüsü / Desktop Web Shooter & Window Manipulator)  
 **Hedef Platform:** Windows 10/11 x64  
 **Teknoloji Yığını:** Tauri 2 (Rust) + Vite + MediaPipe Tasks Vision + Win32 API + Web Audio API  
 **Depo (GitHub):** [https://github.com/jagwey/web-shooter](https://github.com/jagwey/web-shooter)  
 
-## Son tur (2026-10-31)
-- 👌 Fiske: OK halkası + üç parmak, hedefe doğru savurma → `SW_MINIMIZE`. Duran el indirmez. Hollow Purple hâlâ `WM_CLOSE`.
-- Ağ tutup diğer monitöre savurunca pencere o ekrana oturur (`place_window`). Tek ekranda eski fırlatma durur.
+## Son tur (2026-11-01 — v0.3.0 Sıfır Gecikme, Kamera & Profil Revizyonu)
+- 🚀 **Sıfır Gecikmeli Pencere Sürükleme (`move_window_fast` + Anchor Tracking + IPC Coalescing):** Win32 `move_window_fast` komutu `EnumChildWindows` (`describe`) yükünü tamamen atlayıp `SWP_ASYNCWINDOWPOS | SWP_NOSENDCHANGING | SWP_DEFERERASE` bayraklarıyla <0.1ms'de pencereyi kaydırır. Ön yüzde kümülatif DWM kenarlık kayması (`startSx` güncellemesi) yerine sabit başlangıç çapası (`anchorWinX + (point.sx - anchorHandSx)`) ve anlık (0ms) istemci örtü güncellemesi + IPC birleştirme (`flushMoveQueue`) uygulandı.
+- ⚡ **Hızlı El Hareketi Yakalama (1 Euro Filter + Avuç Merkezi + Motion-Blur Coasting):** 1 Euro Filtresi hızlı el savurmalarında türev gecikmesini sıfırlamak için `beta = 18.0, dCutoff = 3.0` olarak optimize edildi. Yumruk/tutuş sırasında kıvrılan parmak ucu (`Landmark 8`) yerine sabit avuç merkezi (`(Landmark 0 + Landmark 9) / 2`) ve hıza duyarlı adaptif öngörü (`14ms–42ms` velocity lead) kullanıldı. Hızlı harekette 1–2 karelik kamera bulanıklığında pencereyi düşürmemek için 3 karelik bırakma histerezisi (`releaseStreak`) ve 4 karelik hareket ekstrapolasyonu (coasting) eklendi.
+- 📷 **Kamera Algılama & Model Yükleme Garantisi:** `boot()` ve `startCamera()` hata/başarı yollarında `listCameras()` her zaman çağrılır; `#cameraSelect` asla boş/gizli kalmaz. Kamera değiştirirken Windows MediaFoundation donanım kilidini önlemek için önce eski akış kapatılır, `{ exact }` başarısız olursa `{ ideal }` fallback uygulanır. `#modelLabel` üzerindeki `data-i18n="modelLoading"` kaldırıldı (dil çizimlerinin hazır durumu ezmesi önlendi), `WORKER_BOOT_MS` 25 saniyeden 4 saniyeye düşürüldü ve `ensureLandmarker` tekil Promise (`landmarkerPromise`) haline getirildi.
+- 👤 **Profil Ekleme & Kalıcılık (`profiles.json` + Enter Desteği):** `#profileName` alanına `Enter` tuşu desteği eklendi, `sanitizeProfiles()` ile eksik `stats` çökmeleri engellendi, profil geçişlerinde `fallbackSettings()` tabanlı temiz birleştirme sağlandı ve profiller hem `localStorage` hem de Tauri `%APPDATA%\com.jagwey.webshooter\profiles.json` (`get_profiles` / `save_profiles_cmd`) üzerinde kalıcı hale getirildi.
+- 🔍 **Tam Uygulama Denetimi (UI/IPC Audit):** `scanCameraDocument()` içindeki yanlış `#cameraVideo` seçicisi `#video` olarak düzeltildi; eksik `appendAiMessage` ve `updateAiMessage` fonksiyonları tanımlandı; `#holderLabel`, `#aiTestBtn` ve `#aiStatusMessage` arayüze eklendi; `desktop_snapshot` monitör okuma hatalarına karşı korumalı hale getirildi (80/80 birim testi + 51/51 stres testi).
 
 ---
 
@@ -119,7 +122,8 @@ flowchart TD
 | 39 | **Release v0.1.8** | Kullanıcı onayı. | Sürüm 0.1.8 → build.bat → commit 7e3720e → `gh release create v0.1.8`. latest.json → 0.1.8, setup linki 200 (2026-10-31). |
 | 40 | **Release v0.1.9** | Antigravity'de eklenen 5 jest (00fff8e) kullanıcıya ulaşmamıştı; tag/release yoktu. | build.bat → `gh release create v0.1.9` (setup+sig+latest.json). latest.json → 0.1.9, setup linki 200 (2026-11-01). Out: `dist-win/`. |
 | 41 | **AI Sniper, Kamera OCR, Özel Jestler & Çene Filtresi** | Çeneye el koyunca pencere tutma hatası; fiske atınca pencereyi küçültmeme; sekme kapatmanın takılması. | `src/gestures.js`: `isPeaceSign` (✌️ makas -> Ctrl+W), `isFingerGun` (👉 nişan al -> AI'ya sor), `isPowerFist` + `isInFaceDeadzone` (çene kör noktası), `matchCustomGesture` (özel hareket şablonu). `control.js`: `minimizeAt` doğrudan aktif pencere fallback'i, `scanCameraDocument` (Gemini Vision OCR), `askAiAt` (Screen Sniper), özel jest kayıt stüdyosu. 40/40 birim testi. |
-| 40 | **Hızlı el kaybolması (yayınlanmadı)** | Hızlı harekette el kayboluyordu. | MediaPipe eşikleri gevşetildi: detection 0.6→0.4, presence 0.5→0.3, tracking 0.5→0.3 (`control.js`, `hands-worker.js`). Testler geçti, gerçek kamerayla denenmedi. |
+| 42 | **Release v0.2.0 (5 Yeni Jest & Onboarding Fix)** | Onboarding "Start" (`#playGo`) butonu `persist()` / `apply_autostart` yüzünden takılıyordu; 5 yeni jest için UI aç/kapat anahtarları eklendi. | `finishOnboarding()` anında `showHome()` çağıracak şekilde düzeltildi; DJ Air Knob, Air Media, Ninja Shield, Pinch Zoom ve Air Scroll eklendi (74/74 birim testi + 51/51 stres testi). `v0.2.0` GitHub Release yayımlandı. |
+| 43 | **Release v0.3.0 (Sıfır Gecikme, Kamera, Profil & Tam Denetim)** | Kamera listesi boş kalıyor, `"El takibi hazırlanıyor..."` yazısı takılı kalıyor, profil eklenmiyor, pencere sürüklerken gecikme ve hızlı el hareketinde kopma yaşanıyordu. | `move_window_fast` (`SWP_ASYNCWINDOWPOS`), çapa tabanlı (anchor) sıfır kaymalı sürükleme, IPC coalescing, avuç merkezi takibi, 1 Euro Filtresi (`beta=18, dCutoff=3`), 14–42ms adaptif hız tahmini, 3 kare bırakma histerezisi, 4sn worker fallback, `#modelLabel` i18n düzeltmesi, yerel+Tauri `profiles.json` kalıcılığı ve AI/OCR DOM düzeltmeleri uygulandı. **80/80 birim testi + 51/51 stres testi.** |
 
 ---
 

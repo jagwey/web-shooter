@@ -257,3 +257,19 @@ pub fn store_settings(app: &AppHandle, settings: &Settings) -> Result<(), String
     let text = serde_json::to_string_pretty(settings).map_err(|err| err.to_string())?;
     fs::write(path, text).map_err(|err| err.to_string())
 }
+
+pub fn profiles_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_config_dir().map_err(|err| err.to_string())?;
+    fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+    Ok(dir.join("profiles.json"))
+}
+
+pub fn load_profiles_json(app: &AppHandle) -> Option<String> {
+    let path = profiles_path(app).ok()?;
+    fs::read_to_string(path).ok()
+}
+
+pub fn store_profiles_json(app: &AppHandle, json: &str) -> Result<(), String> {
+    let path = profiles_path(app)?;
+    fs::write(path, json).map_err(|err| err.to_string())
+}

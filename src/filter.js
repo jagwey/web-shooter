@@ -22,7 +22,7 @@ function writePool(pool, xs) {
   return pool;
 }
 
-export function filterLandmarks(f, raw, t, { minCutoff = 1.8, beta = 13.0, dCutoff = 1.2 } = {}) {
+export function filterLandmarks(f, raw, t, { minCutoff = 1.8, beta = 18.0, dCutoff = 3.0 } = {}) {
   const n = raw.length * 3;
   const dt = (t - f.t) / 1000;
   f.t = t;
@@ -55,4 +55,10 @@ export function predict(f, idx, point, ms) {
   if (!f.dx) return point;
   const s = ms / 1000;
   return { x: point.x + f.dx[idx * 3] * s, y: point.y + f.dx[idx * 3 + 1] * s, z: point.z };
+}
+
+// Instantaneous 2D speed (normalized screen widths/sec) of landmark idx.
+export function handSpeed(f, idx = 9) {
+  if (!f || !f.dx) return 0;
+  return Math.hypot(f.dx[idx * 3] || 0, f.dx[idx * 3 + 1] || 0);
 }

@@ -3,12 +3,12 @@ import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, migrateBindings,
 import { DEFAULT_MODELS, OPENAI_PRESETS, autoTileWorkspace, chatWithAi, fetchOllamaModels, optimizeSettingsWithAi, sendAiGreeting, testAiConnection } from "./ai.js";
 import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen, adjustVolume, mediaPlayPause, mediaNextTrack, showDesktop, zoomDesktop, scrollWheel } from "./desktop.js";
 import { classifyGesture, hollowPurpleReady, isFingerExtended, isPeaceSign, isFingerGun, isPowerFist, isInFaceDeadzone, voteGesture, wristDepths, isAirKnobGrip, isAirMediaHold, isAirMediaFlick, isNinjaShield, isPinchZoom, isAirScroll } from "./gestures.js";
-import { createHandFilter, filterLandmarks, predict } from "./filter.js";
+import { createHandFilter, filterLandmarks, handSpeed, predict } from "./filter.js";
 import { registerCustomLook } from "./effects.js";
 import { clientOf } from "./target.js";
 import { flickAim, flickImpulse, throwToMonitor } from "./throw.js";
 import { getLang, initI18n, setLang, t } from "./i18n.js";
-import { activeProfile, createProfile, loadProfiles, recordMs, recordShot, removeProfile, saveProfiles } from "./profiles.js";
+import { activeProfile, createProfile, loadProfiles, recordMs, recordShot, removeProfile, sanitizeProfiles, saveProfiles } from "./profiles.js";
 import {
   isAudioEnabled,
   playFling,
@@ -124,9 +124,14 @@ function wireChrome() {
       const previous = state.settings.cameraDeviceId;
       state.settings.cameraDeviceId = deviceId;
       camSelect.disabled = true;
-      // startCamera opens the new device before closing the old one, so a failed switch keeps the old image.
+      // Release existing hardware lock before opening the newly selected camera on Windows MediaFoundation.
+      cancelDetect();
+      stopTracks();
       const ok = await startCamera();
-      if (!ok && state.stream) state.settings.cameraDeviceId = previous;
+      if (!ok && previous && previous !== deviceId) {
+        state.settings.cameraDeviceId = previous;
+        await startCamera();
+      }
       await persist();
       camSelect.disabled = false;
       renderCameraSelect();
@@ -550,20 +555,42 @@ function wireAi() {
   }
 }
 
+let aiMsgSeq = 0;
+
 function appendAiChat(role, text) {
+  return appendAiMessage(role, text);
+}
+
+function appendAiMessage(role, text) {
   const log = document.getElementById("aiChatLog");
-  if (!log) return;
+  const id = `ai-msg-${++aiMsgSeq}`;
+  if (!log) return id;
   const msgEl = document.createElement("div");
+  msgEl.id = id;
   msgEl.className = `ai-msg ${role === "user" ? "ai-user" : "ai-bot"}`;
   const strong = document.createElement("strong");
   strong.textContent = role === "user" ? "Sen: " : "Jagwey AI: ";
   const span = document.createElement("span");
+  span.className = "ai-msg-text";
   span.textContent = text;
   span.style.whiteSpace = "pre-wrap";
   msgEl.appendChild(strong);
   msgEl.appendChild(span);
   log.appendChild(msgEl);
   log.scrollTop = log.scrollHeight;
+  return id;
+}
+
+function updateAiMessage(id, text) {
+  const msgEl = id ? document.getElementById(id) : null;
+  const span = msgEl?.querySelector(".ai-msg-text") || msgEl?.querySelector("span");
+  if (span) {
+    span.textContent = text;
+    const log = document.getElementById("aiChatLog");
+    if (log) log.scrollTop = log.scrollHeight;
+  } else {
+    appendAiMessage("bot", text);
+  }
 }
 
 function applySettingsEffects() {
@@ -581,12 +608,18 @@ function applySettingsEffects() {
   });
 }
 
+function syncProfilesToStorage() {
+  if (!profiles) return;
+  saveProfiles(localStorage, profiles);
+  invoke("save_profiles_cmd", { data: JSON.stringify(profiles) }).catch(() => {});
+}
+
 // Shots and best ms change many times a second; write storage at most every 2 s.
 function queueProfileSave() {
   if (profileSaveTimer) return;
   profileSaveTimer = setTimeout(() => {
     profileSaveTimer = 0;
-    saveProfiles(localStorage, profiles);
+    syncProfilesToStorage();
     renderProfiles();
   }, 2000);
 }
@@ -594,14 +627,20 @@ function queueProfileSave() {
 function snapshotProfile() {
   if (!profiles || !state.settings) return;
   activeProfile(profiles).settings = structuredClone(state.settings);
-  saveProfiles(localStorage, profiles);
+  syncProfilesToStorage();
 }
 
 async function switchProfile(id) {
   snapshotProfile();
   profiles.activeId = id;
   const next = activeProfile(profiles);
-  if (next.settings) state.settings = { ...state.settings, ...structuredClone(next.settings) };
+  state.settings = {
+    ...fallbackSettings(),
+    ...(next.settings ? structuredClone(next.settings) : {}),
+  };
+  state.settings.bindings = migrateBindings(state.settings.bindings);
+  syncProfilesToStorage();
+  renderProfiles();
   applySettingsEffects();
   await persist();
 }
@@ -609,19 +648,39 @@ async function switchProfile(id) {
 function wireProfiles() {
   const select = document.getElementById("profileSelect");
   const nameInput = document.getElementById("profileName");
+  const addBtn = document.getElementById("profileAdd");
+  const delBtn = document.getElementById("profileDelete");
+  if (!select || !nameInput || !addBtn || !delBtn) return;
+
   select.addEventListener("change", () => switchProfile(select.value));
-  document.getElementById("profileAdd").addEventListener("click", async () => {
+
+  const handleAddProfile = async () => {
     snapshotProfile();
     const created = createProfile(profiles, nameInput.value, state.settings);
     nameInput.value = "";
     await switchProfile(created.id);
+  };
+
+  addBtn.addEventListener("click", handleAddProfile);
+  nameInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleAddProfile();
+    }
   });
-  document.getElementById("profileDelete").addEventListener("click", async () => {
+
+  delBtn.addEventListener("click", async () => {
     const current = activeProfile(profiles);
     if (!window.confirm(`${t("profileDelete")}: ${current.name}?`)) return;
     if (!removeProfile(profiles, current.id)) return;
     const next = activeProfile(profiles);
-    if (next.settings) state.settings = { ...state.settings, ...structuredClone(next.settings) };
+    state.settings = {
+      ...fallbackSettings(),
+      ...(next.settings ? structuredClone(next.settings) : {}),
+    };
+    state.settings.bindings = migrateBindings(state.settings.bindings);
+    syncProfilesToStorage();
+    renderProfiles();
     applySettingsEffects();
     await persist();
   });
@@ -631,6 +690,7 @@ function renderProfiles() {
   const select = document.getElementById("profileSelect");
   if (!profiles || !select) return;
   const active = activeProfile(profiles);
+  const stats = active.stats || { shots: 0, bestMs: null };
   const signature = profiles.list.map((p) => `${p.id}:${p.name}`).join("|");
   if (select.dataset.sig !== signature) {
     select.replaceChildren(...profiles.list.map((p) => new Option(p.name, p.id)));
@@ -640,8 +700,8 @@ function renderProfiles() {
   document.getElementById("profileDelete").disabled = profiles.list.length <= 1;
   document.getElementById("profileName").placeholder = t("profileNamePh");
   document.getElementById("profileStats").textContent = t("profileStats")
-    .replace("{shots}", active.stats.shots)
-    .replace("{best}", active.stats.bestMs == null ? "—" : `${active.stats.bestMs}ms`);
+    .replace("{shots}", stats.shots ?? 0)
+    .replace("{best}", stats.bestMs == null ? "—" : `${stats.bestMs}ms`);
 }
 
 async function boot() {
@@ -656,15 +716,23 @@ async function boot() {
   if (state.settings.airZoomToggle === undefined) state.settings.airZoomToggle = state.settings.air_zoom_enabled ?? true;
   if (state.settings.airScrollToggle === undefined) state.settings.airScrollToggle = state.settings.air_scroll_enabled ?? true;
   profiles = loadProfiles(localStorage);
+  try {
+    const remoteJson = await invoke("get_profiles");
+    if (remoteJson && typeof remoteJson === "string" && !localStorage.getItem("jagwey-profiles")) {
+      profiles = sanitizeProfiles(JSON.parse(remoteJson));
+      saveProfiles(localStorage, profiles);
+    }
+  } catch {}
   const startProfile = activeProfile(profiles);
   if (startProfile.settings) {
     state.settings = { ...state.settings, ...startProfile.settings };
-    invoke("save_settings", { settings: state.settings });
+    invoke("save_settings", { settings: state.settings }).catch(() => {});
   }
   if (state.settings) state.settings.bindings = migrateBindings(state.settings.bindings);
   wireProfiles();
   applySettingsEffects();
 
+  await listCameras();
   await refreshDesktop();
   offerUpdate();
   document.getElementById("checkUpdateBtn").addEventListener("click", manualUpdateCheck);
@@ -777,6 +845,11 @@ async function finishOnboarding() {
   } catch {}
   showHome();
   try {
+    await refreshDesktop();
+  } catch (err) {
+    console.warn("Failed to refresh desktop on finish onboarding:", err);
+  }
+  try {
     await persist();
   } catch (err) {
     console.warn("Failed to persist onboarding state:", err);
@@ -788,6 +861,7 @@ async function finishOnboarding() {
       console.warn("Failed to toggle overlay on finish onboarding:", err);
     }
   }
+  render();
 }
 
 async function changeLang(lang) {
@@ -806,10 +880,16 @@ function paintLang() {
 }
 
 async function refreshDesktop() {
-  const snap = await invoke("desktop_snapshot");
+  let snap = null;
+  try {
+    snap = await invoke("desktop_snapshot");
+  } catch (err) {
+    console.warn("desktop_snapshot error:", err);
+  }
   if (!snap || snap.unsupported || snap.error) {
     state.win32 = false;
     state.monitors = state.monitors || [];
+    paintLiveStatus();
     return;
   }
   state.monitors = snap.monitors || [];
@@ -817,10 +897,11 @@ async function refreshDesktop() {
   state.windowCount = snap.windowCount || 0;
   state.holders = snap.holders || [];
   if (snap.frame) state.overlay = snap.frame;
-  if (!state.settings.monitorId && state.monitors[0]) {
+  if (state.settings && !state.settings.monitorId && state.monitors[0]) {
     const primary = state.monitors.find((item) => item.primary) || state.monitors[0];
     state.settings.monitorId = primary.id;
   }
+  paintLiveStatus();
 }
 
 async function toggleOverlay() {
@@ -865,18 +946,22 @@ async function persist() {
   snapshotProfile();
   if (saved?.warnings?.length) setMessage("cameraMessage", t("hotkeyFail"));
   if (state.overlay?.visible) {
-    const frame = await invoke("place_overlay");
-    if (frame && !frame.unsupported) {
-      state.overlay = frame;
-      emitTo("overlay", "overlay-frame", frame);
-      emitTo("overlay", "overlay-preset", { preset: state.settings.theme || state.settings.fxPreset });
+    try {
+      const frame = await invoke("place_overlay");
+      if (frame && !frame.unsupported) {
+        state.overlay = frame;
+        emitTo("overlay", "overlay-frame", frame);
+        emitTo("overlay", "overlay-preset", { preset: state.settings.theme || state.settings.fxPreset });
+      }
+    } catch (err) {
+      console.warn("place_overlay invoke failed:", err);
     }
   }
   render();
 }
 
 let landmarker = null;
-let landmarkerLoading = false;
+let landmarkerPromise = null;
 
 // Optional body tracking (settings.bodyTracking): pose lite model, used only for arm depth.
 let poseLandmarker = null;
@@ -910,7 +995,7 @@ async function ensurePose() {
   poseLoading = false;
 }
 
-const WORKER_BOOT_MS = 25000;
+const WORKER_BOOT_MS = 4000;
 
 /** Resolves {tag} once the worker's model is ready, or null (then the main-thread path runs). */
 function startWorker(sources) {
@@ -970,85 +1055,91 @@ function startWorker(sources) {
 async function ensureLandmarker() {
   if (state.worker && state.workerReady) return state.worker;
   if (landmarker) return landmarker;
-  if (landmarkerLoading) return null;
-  landmarkerLoading = true;
+  if (landmarkerPromise) return landmarkerPromise;
 
-  const modelLabel = document.getElementById("modelLabel");
-  if (modelLabel) modelLabel.textContent = "El modeli yükleniyor…";
+  landmarkerPromise = (async () => {
+    const modelLabel = document.getElementById("modelLabel");
+    if (modelLabel) modelLabel.textContent = "El modeli yükleniyor…";
 
-  // Sources to try: 1) Local wasm & model, 2) Official CDN
-  const sources = [
-    {
-      wasm: new URL("/mediapipe", location.href).href,
-      model: new URL("/models/hand_landmarker.task", location.href).href,
-      tag: "Yerel",
-    },
-    {
-      wasm: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21/wasm",
-      model: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-      tag: "CDN",
-    },
-  ];
+    // Sources to try: 1) Local wasm & model, 2) Official CDN
+    const sources = [
+      {
+        wasm: new URL("/mediapipe", location.href).href,
+        model: new URL("/models/hand_landmarker.task", location.href).href,
+        tag: "Yerel",
+      },
+      {
+        wasm: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21/wasm",
+        model: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+        tag: "CDN",
+      },
+    ];
 
-  // Worker first: detection off the main thread keeps UI, overlay and cursor smooth.
-  const ready = await startWorker(sources);
-  if (ready) {
-    landmarkerLoading = false;
-    if (modelLabel) modelLabel.textContent = `${t("modelReady")} · ${state.delegate} (${ready.tag}, worker)`;
-    return state.worker;
-  }
+    // Worker first: detection off the main thread keeps UI, overlay and cursor smooth.
+    const ready = await startWorker(sources);
+    if (ready) {
+      if (modelLabel) modelLabel.textContent = `${t("modelReady")} · ${state.delegate} (${ready.tag}, worker)`;
+      return state.worker;
+    }
 
-  for (const src of sources) {
-    try {
-      console.log(`[MediaPipe] Initializing with ${src.tag}...`);
-      const vision = await FilesetResolver.forVisionTasks(src.wasm);
-
-      // Attempt GPU first, then CPU
+    for (const src of sources) {
       try {
-        landmarker = await HandLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: src.model,
-            delegate: "GPU",
-          },
-          runningMode: "VIDEO",
-          numHands: 2,
-          minHandDetectionConfidence: 0.4,
-          minHandPresenceConfidence: 0.35,
-          minTrackingConfidence: 0.35,
-        });
-        state.delegate = "GPU";
-      } catch (gpuErr) {
-        console.warn("[MediaPipe] GPU failed, falling back to CPU", gpuErr);
-        landmarker = await HandLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: src.model,
-            delegate: "CPU",
-          },
-          runningMode: "VIDEO",
-          numHands: 2,
-          minHandDetectionConfidence: 0.4,
-          minHandPresenceConfidence: 0.35,
-          minTrackingConfidence: 0.35,
-        });
-        state.delegate = "CPU";
-      }
+        console.log(`[MediaPipe] Initializing on main thread with ${src.tag}...`);
+        const vision = await FilesetResolver.forVisionTasks(src.wasm);
 
-      if (landmarker) {
-        state.workerReady = true;
-        landmarkerLoading = false;
-        if (modelLabel) {
-          modelLabel.textContent = `${t("modelReady")} · ${state.delegate} (${src.tag})`;
+        // Attempt GPU first, then CPU
+        try {
+          landmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: src.model,
+              delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            numHands: 2,
+            minHandDetectionConfidence: 0.4,
+            minHandPresenceConfidence: 0.35,
+            minTrackingConfidence: 0.35,
+          });
+          state.delegate = "GPU";
+        } catch (gpuErr) {
+          console.warn("[MediaPipe] GPU failed, falling back to CPU", gpuErr);
+          landmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: src.model,
+              delegate: "CPU",
+            },
+            runningMode: "VIDEO",
+            numHands: 2,
+            minHandDetectionConfidence: 0.4,
+            minHandPresenceConfidence: 0.35,
+            minTrackingConfidence: 0.35,
+          });
+          state.delegate = "CPU";
         }
-        return landmarker;
+
+        if (landmarker) {
+          state.workerReady = true;
+          if (modelLabel) {
+            modelLabel.textContent = `${t("modelReady")} · ${state.delegate} (${src.tag})`;
+          }
+          return landmarker;
+        }
+      } catch (err) {
+        console.warn(`[MediaPipe] Failed with ${src.tag}:`, err);
       }
-    } catch (err) {
-      console.warn(`[MediaPipe] Failed with ${src.tag}:`, err);
+    }
+
+    if (modelLabel) modelLabel.textContent = t("modelMissing");
+    return null;
+  })();
+
+  try {
+    return await landmarkerPromise;
+  } finally {
+    if (!landmarker && !(state.worker && state.workerReady)) {
+      landmarkerPromise = null;
     }
   }
-
-  landmarkerLoading = false;
-  if (modelLabel) modelLabel.textContent = t("modelMissing");
-  return null;
 }
 
 async function openStream(deviceId) {
@@ -1064,20 +1155,23 @@ async function openStream(deviceId) {
     { ideal: 30, min: 15 },
     { ideal: 30 },
   ];
+  const deviceModes = deviceId ? [{ exact: deviceId }, { ideal: deviceId }] : [null];
   let lastError;
-  for (const size of sizes) {
-    for (const rate of rates) {
-      const videoConstraints = {
-        ...size,
-        frameRate: rate,
-      };
-      if (deviceId) videoConstraints.deviceId = { exact: deviceId };
-      else videoConstraints.facingMode = "user";
-      try {
-        return await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
-      } catch (error) {
-        lastError = error;
-        if (error?.name !== "OverconstrainedError") throw error;
+  for (const devConstraint of deviceModes) {
+    for (const size of sizes) {
+      for (const rate of rates) {
+        const videoConstraints = {
+          ...size,
+          frameRate: rate,
+        };
+        if (devConstraint) videoConstraints.deviceId = devConstraint;
+        else videoConstraints.facingMode = "user";
+        try {
+          return await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
+        } catch (error) {
+          lastError = error;
+          if (error?.name !== "OverconstrainedError" && error?.name !== "NotFoundError") throw error;
+        }
       }
     }
   }
@@ -1148,6 +1242,7 @@ async function startCamera() {
   } catch (error) {
     // A failed switch keeps the camera that is already running.
     if (!state.stream) state.cameraWanted = false;
+    await listCameras();
     await describeHolders();
     const key = cameraErrorKey(error);
     const extra = key === "cameraBusy" ? holderSuffix() : "";
@@ -1288,13 +1383,37 @@ function onHands(hands, detectMs) {
   if (!hands || hands.length === 0) {
     state.missStreak += 1;
     document.getElementById("handValue").textContent = t("handNo");
-    if (performance.now() - (state.lastHandAt || 0) > MISS_GRACE_MS) {
+    const now = performance.now();
+    // Motion-blur coasting: if a hand is mid-sweep while holding a window, extrapolate for up to 4 frames (~100ms)
+    if (state.missStreak <= 4) {
+      for (let i = 0; i < state.hands.length; i += 1) {
+        const hs = state.hands[i];
+        if (hs.grab && hs.lastPoint && hs.samples?.length >= 2) {
+          const prev = hs.samples[hs.samples.length - 2];
+          const last = hs.samples[hs.samples.length - 1];
+          const dt = Math.max(8, last.t - prev.t);
+          const stepSx = Math.round(hs.lastPoint.sx + ((last.x - prev.x) / dt) * 14);
+          const stepSy = Math.round(hs.lastPoint.sy + ((last.y - prev.y) / dt) * 14);
+          const frame = state.overlay || { x: 0, y: 0, width: window.screen.width, height: window.screen.height };
+          const coastPoint = {
+            sx: stepSx,
+            sy: stepSy,
+            nx: (stepSx - frame.x) / Math.max(1, frame.width),
+            ny: (stepSy - frame.y) / Math.max(1, frame.height),
+          };
+          hs.lastPoint = coastPoint;
+          moveGrab(i, coastPoint);
+        }
+      }
+    }
+    if (now - (state.lastHandAt || 0) > MISS_GRACE_MS) {
       for (let i = 0; i < state.hands.length; i += 1) {
         if (state.hands[i].grab) releaseGrab(i);
         state.hands[i].lastGesture = null;
         state.hands[i].filter = null;
         state.hands[i].votes = [];
         state.hands[i].history = [];
+        state.hands[i].releaseStreak = 0;
         state.hands[i].lastKnobAngle = null;
         state.hands[i].dialAccumulator = 0;
         state.hands[i].pinchState = null;
@@ -1320,9 +1439,9 @@ function onHands(hands, detectMs) {
       handState.filter ||= createHandFilter();
       const smoothing = state.settings?.smoothing || 0.65;
       const landmarks = filterLandmarks(handState.filter, rawLandmarks, now, {
-        minCutoff: 3.0 * smoothing,
-        beta: 13.0,
-        dCutoff: 1.2,
+        minCutoff: 2.2 * smoothing,
+        beta: 18.0,
+        dCutoff: 3.0,
       });
 
       handState.landmarks = landmarks;
@@ -1346,15 +1465,15 @@ function onHands(hands, detectMs) {
       const flickOwned = gesture === "flick" && (bound == null || bound === "minimize");
       let action = bound === "hollow_purple" || flickOwned ? null : bound;
 
-      // Chin / Face resting deadzone guard:
-      const restingInFace = isInFaceDeadzone(landmarks);
+      // Chin / Face resting deadzone guard (bypassed while actively dragging a window so bottom-screen drags never drop):
+      const restingInFace = !handState.grab && isInFaceDeadzone(landmarks);
       // Transition guard: A grab is ONLY allowed if the hand was previously open (palm/web) or already holding.
-      if (gesture === "palm" || gesture === "web") {
+      if (gesture === "palm" || gesture === "web" || handState.grab) {
         handState.wasOpen = true;
       } else if (gesture !== "fist") {
         handState.wasOpen = false;
       }
-      const validPowerGrip = gesture === "fist" ? isPowerFist(landmarks) : true;
+      const validPowerGrip = gesture === "fist" ? (Boolean(handState.grab) || isPowerFist(landmarks)) : true;
 
       if (action === "grab") {
         if (restingInFace || !handState.wasOpen || !validPowerGrip) {
@@ -1369,7 +1488,7 @@ function onHands(hands, detectMs) {
 
       // 1. Air Scroll: Parallel index + middle finger vertical motion
       let airScrollActive = false;
-      if (state.settings?.airScrollToggle !== false) {
+      if (state.settings?.airScrollToggle !== false && !handState.grab) {
         const scroll = isAirScroll(landmarks, { aspectRatio: ar });
         if (scroll.active) {
           airScrollActive = true;
@@ -1477,18 +1596,43 @@ function onHands(hands, detectMs) {
       }
 
       const edge = gesture !== handState.lastGesture;
-      const point = screenPoint(predict(handState.filter, 8, landmarks[8], PREDICT_MS));
+      // Adaptive velocity lead: scales from 14ms at rest up to 42ms during rapid hand sweeps to cancel camera pipeline lag.
+      const speed = handSpeed(handState.filter, 9);
+      const leadMs = Math.min(42, Math.max(14, Math.round(14 + speed * 22)));
+      const palmAnchor = {
+        x: (landmarks[0].x + landmarks[9].x) * 0.5,
+        y: (landmarks[0].y + landmarks[9].y) * 0.5,
+        z: ((landmarks[0].z || 0) + (landmarks[9].z || 0)) * 0.5,
+      };
+      const grabPoint = screenPoint(predict(handState.filter, 9, palmAnchor, leadMs));
+      const aimPoint = screenPoint(predict(handState.filter, 8, landmarks[8], leadMs));
 
       // Web and grab are holds: the webbed tab follows the hand until the pose ends.
       const holds = action === "grab" || action === "shoot";
+      const activePoint = (handState.grab || holds) ? grabPoint : aimPoint;
+      handState.lastPoint = activePoint;
+
       if (handState.grab && !holds) {
-        releaseGrab(i);
+        // Explicit open palm releases/throws immediately; transient motion-blur requires 3 consecutive non-hold frames.
+        handState.releaseStreak = (handState.releaseStreak || 0) + 1;
+        if (gesture === "palm" || handState.releaseStreak >= 3) {
+          handState.releaseStreak = 0;
+          releaseGrab(i);
+        } else {
+          moveGrab(i, grabPoint);
+        }
       } else if (holds && !edge) {
-        moveGrab(i, point);
+        handState.releaseStreak = 0;
+        moveGrab(i, grabPoint);
       } else if (edge && (action === "grab" || !(now - (handState.lastFireAt || 0) < ACTION_COOLDOWN_MS))) {
+        handState.releaseStreak = 0;
         if (action && action !== "grab") handState.lastFireAt = now;
-        runActionForHand(i, action, point, true);
-        if (action === "shoot") beginGrab(i, point);
+        if (handState.grab && holds) {
+          moveGrab(i, grabPoint);
+        } else {
+          runActionForHand(i, action, activePoint, true);
+          if (action === "shoot") beginGrab(i, grabPoint);
+        }
       }
       handState.lastGesture = gesture;
       if (raw === "flick") trackFlick(i, landmarks, now, flickOwned && gesture === "flick");
@@ -1735,13 +1879,14 @@ function updateFingerPills(landmarks) {
 
 function nextGap(hand, detectMs) {
   // Right after losing the hand, re-detect on the very next camera frame.
-  if (!hand) return state.missStreak > 6 ? 120 : 8;
+  if (!hand) return state.missStreak > 6 ? 120 : 4;
   const targetFps = state.settings?.targetFps || 120;
   if (targetFps < 60 || state.settings?.fxPreset === "low" || state.settings?.fxPreset === "light") {
     return Math.max(33, detectMs * 1.5);
   }
-  // detectTick already waits for the next camera frame; only a slow detector gets breathing room for the UI.
-  return detectMs > 12 ? detectMs * 0.5 : 0;
+  // Zero artificial delay when a hand is present: detectTick uses requestVideoFrameCallback
+  // to synchronize directly with the camera's hardware frame delivery.
+  return 0;
 }
 
 function armIdleRelease() {
@@ -1998,16 +2143,16 @@ async function askAiAt(point) {
 }
 
 async function scanCameraDocument() {
-  const video = document.getElementById("cameraVideo");
-  if (!video || !video.videoWidth) {
+  const camVideo = document.getElementById("video");
+  if (!camVideo || !camVideo.videoWidth) {
     setMessage("shellBanner", "Kamera görüntüsü henüz hazır değil.");
     return;
   }
   const canvas = document.createElement("canvas");
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  canvas.width = camVideo.videoWidth;
+  canvas.height = camVideo.videoHeight;
   const ctx = canvas.getContext("2d");
-  ctx.drawImage(video, 0, 0);
+  ctx.drawImage(camVideo, 0, 0);
   const base64 = canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
 
   appendAiMessage("user", "📄 [Kameradan Belge / Metin Oku]");
@@ -2110,35 +2255,69 @@ async function executeClose(win, { forceWindow = false } = {}) {
 
 async function beginGrab(handIndex, point) {
   // One window_at lookup at a time; moveGrab calls this every frame until it lands.
-  if (state.hands[handIndex].grabbing) return;
-  state.hands[handIndex].grabbing = true;
+  const handState = state.hands[handIndex];
+  if (handState.grabbing) return;
+  handState.grabbing = true;
   let found;
   try {
     found = await invoke("window_at", { x: point.sx, y: point.sy });
   } finally {
-    state.hands[handIndex].grabbing = false;
+    handState.grabbing = false;
   }
   if (!found || found.unsupported || !found.hwnd) return;
   const box = clientOf(found);
-  state.hands[handIndex].grab = {
+  const currentPoint = handState.lastPoint || point;
+  handState.grab = {
     hwnd: found.hwnd,
+    anchorWinX: found.x,
+    anchorWinY: found.y,
+    anchorHandSx: currentPoint.sx,
+    anchorHandSy: currentPoint.sy,
+    offsetClientX: (box?.x ?? found.x) - found.x,
+    offsetClientY: (box?.y ?? found.y) - found.y,
     winX: found.x,
     winY: found.y,
     width: found.width,
     height: found.height,
-    startSx: point.sx,
-    startSy: point.sy,
-    shown: box,
+    shown: box || { x: found.x, y: found.y, width: found.width, height: found.height, hwnd: found.hwnd, title: found.title },
   };
-  state.hands[handIndex].samples = [{ t: performance.now(), x: point.sx, y: point.sy }];
+  handState.releaseStreak = 0;
+  handState.samples = [{ t: performance.now(), x: currentPoint.sx, y: currentPoint.sy }];
   state.lastHit = found.title;
-  sendTether(handIndex, point, box || found);
+  sendTether(handIndex, currentPoint, handState.grab.shown);
   emitTo("overlay", "overlay-target-window", {
     id: handIndex,
-    window: { ...(box || found), title: found.title, grabbed: true },
+    window: { ...handState.grab.shown, title: found.title, grabbed: true },
   });
   playGrab();
   render();
+}
+
+function flushMoveQueue(handIndex) {
+  const handState = state.hands[handIndex];
+  if (handState.moving || !handState.pendingMove) return;
+  handState.moving = true;
+  (async () => {
+    try {
+      while (handState.pendingMove && handState.grab) {
+        const next = handState.pendingMove;
+        handState.pendingMove = null;
+        try {
+          const res = await invoke("move_window_fast", next);
+          if (res?.unsupported) {
+            await invoke("move_window", next);
+          }
+        } catch {
+          // Ignore transient Win32 errors during rapid dragging
+        }
+      }
+    } finally {
+      handState.moving = false;
+      if (handState.pendingMove && handState.grab) {
+        flushMoveQueue(handIndex);
+      }
+    }
+  })();
 }
 
 async function moveGrab(handIndex, point) {
@@ -2147,34 +2326,35 @@ async function moveGrab(handIndex, point) {
     await beginGrab(handIndex, point);
     return;
   }
-  // One move in flight. The next call applies the whole delta since the last real position.
-  if (handState.moving) return;
   const grab = handState.grab;
-  handState.moving = true;
-  const x = Math.round(grab.winX + (point.sx - grab.startSx));
-  const y = Math.round(grab.winY + (point.sy - grab.startSy));
-  try {
-    const moved = await invoke("move_window", { hwnd: grab.hwnd, x, y });
-    if (handState.grab !== grab) return;
-    const live = moved && moved.hwnd ? moved : null;
-    const shown = clientOf(live) || grab.shown || { x, y, width: grab.width, height: grab.height, hwnd: grab.hwnd, title: state.lastHit };
-    if (live) {
-      grab.winX = live.x;
-      grab.winY = live.y;
-      grab.startSx = point.sx;
-      grab.startSy = point.sy;
-      grab.shown = shown;
-    }
-    handState.samples.push({ t: performance.now(), x: point.sx, y: point.sy });
-    if (handState.samples.length > 8) handState.samples.shift();
-    sendTether(handIndex, point, shown);
-    emitTo("overlay", "overlay-target-window", {
-      id: handIndex,
-      window: { ...shown, title: state.lastHit, grabbed: true },
-    });
-  } finally {
-    handState.moving = false;
-  }
+  const x = Math.round(grab.anchorWinX + (point.sx - grab.anchorHandSx));
+  const y = Math.round(grab.anchorWinY + (point.sy - grab.anchorHandSy));
+  grab.winX = x;
+  grab.winY = y;
+  const shown = {
+    ...(grab.shown || {}),
+    x: x + (grab.offsetClientX || 0),
+    y: y + (grab.offsetClientY || 0),
+    width: grab.shown?.width || grab.width,
+    height: grab.shown?.height || grab.height,
+    hwnd: grab.hwnd,
+    title: state.lastHit,
+  };
+  grab.shown = shown;
+
+  handState.samples.push({ t: performance.now(), x: point.sx, y: point.sy });
+  if (handState.samples.length > 8) handState.samples.shift();
+
+  // Zero-latency client-side visual feedback: update tether and focus box immediately before IPC completes
+  sendTether(handIndex, point, shown);
+  emitTo("overlay", "overlay-target-window", {
+    id: handIndex,
+    window: { ...shown, title: state.lastHit, grabbed: true },
+  });
+
+  // Coalesce native Win32 window position updates so only the latest target coordinate is dispatched
+  handState.pendingMove = { hwnd: grab.hwnd, x, y };
+  flushMoveQueue(handIndex);
 }
 
 function sendTether(handIndex, point, win) {
@@ -2193,7 +2373,9 @@ async function releaseGrab(handIndex) {
   const handState = state.hands[handIndex];
   const grab = handState.grab;
   handState.grab = null;
+  handState.pendingMove = null;
   handState.moving = false;
+  handState.releaseStreak = 0;
   emitTo("overlay", "overlay-clear", { id: handIndex });
   // Keep the net on the window until the splash ends; the overlay drops it when the effect is gone.
   if (grab?.hwnd) {
@@ -2264,6 +2446,8 @@ async function releaseGrab(handIndex) {
 function cancelGrab(handIndex, clearWeb) {
   if (handIndex !== undefined && state.hands[handIndex]) {
     state.hands[handIndex].grab = null;
+    state.hands[handIndex].pendingMove = null;
+    state.hands[handIndex].releaseStreak = 0;
     if (clearWeb) {
       emitTo("overlay", "overlay-clear", { id: handIndex });
       emitTo("overlay", "overlay-target-window", { id: handIndex, clear: true });
@@ -2271,6 +2455,8 @@ function cancelGrab(handIndex, clearWeb) {
   } else {
     for (let i = 0; i < state.hands.length; i += 1) {
       state.hands[i].grab = null;
+      state.hands[i].pendingMove = null;
+      state.hands[i].releaseStreak = 0;
     }
     if (clearWeb) {
       emitTo("overlay", "overlay-clear", {});
@@ -2299,18 +2485,30 @@ async function hitAt(x, y, nudge) {
 async function describeCamera() {
   const track = state.stream?.getVideoTracks?.()[0];
   if (!track) return;
-  state.activeDeviceId = track.getSettings().deviceId || "";
+  const settingsDeviceId = track.getSettings?.()?.deviceId || "";
+  state.activeDeviceId = settingsDeviceId;
   await listCameras();
-  const match = state.videoDevices.find((device) => device.deviceId === state.activeDeviceId);
+  let match = state.videoDevices.find((device) => device.deviceId === state.activeDeviceId);
+  if (!match && track.label) {
+    match = state.videoDevices.find((device) => device.label && device.label === track.label);
+    if (match) state.activeDeviceId = match.deviceId;
+  }
+  if (!match && state.videoDevices.length === 1) {
+    match = state.videoDevices[0];
+    state.activeDeviceId = match.deviceId;
+  }
   state.deviceLabel = match?.label || track.label || t("deviceUnknown");
+  renderCameraSelect();
   render();
   await describeHolders();
 }
 
 async function listCameras() {
   try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    state.videoDevices = devices.filter((d) => d.kind === "videoinput" && d.deviceId);
+    const devices = await navigator.mediaDevices?.enumerateDevices?.();
+    state.videoDevices = Array.isArray(devices)
+      ? devices.filter((d) => d.kind === "videoinput")
+      : [];
   } catch {
     state.videoDevices = [];
   }
@@ -2321,14 +2519,22 @@ function renderCameraSelect() {
   const select = document.getElementById("cameraSelect");
   if (!select) return;
   const devices = state.videoDevices || [];
-  select.hidden = devices.length === 0;
-  const current = state.activeDeviceId || state.settings?.cameraDeviceId;
+  select.hidden = false;
+  const current = state.activeDeviceId || state.settings?.cameraDeviceId || "";
   select.replaceChildren();
+  if (devices.length === 0) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = state.deviceLabel || `${t("camera")} (Varsayılan)`;
+    select.append(opt);
+    return;
+  }
   devices.forEach((device, index) => {
     const opt = document.createElement("option");
-    opt.value = device.deviceId;
+    const id = device.deviceId || "";
+    opt.value = id;
     opt.textContent = device.label || `${t("camera")} ${index + 1}`;
-    opt.selected = device.deviceId === current;
+    opt.selected = (id && id === current) || (!current && index === 0);
     select.append(opt);
   });
 }
