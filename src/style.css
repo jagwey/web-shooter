@@ -62,6 +62,18 @@
   --line: rgba(255, 77, 255, 0.35);
 }
 
+[data-theme="gojo"] {
+  --bg: #0c0714;
+  --card: #180f28;
+  --forest: #7c3aed;
+  --deep: #4c1d95;
+  --mint: #c084fc;
+  --mint-strong: #faf5ff;
+  --ink: #fdf4ff;
+  --muted: #d8b4fe;
+  --line: rgba(192, 132, 252, 0.4);
+}
+
 [data-theme="mint"] {
   --bg: #07120e;
   --card: #10261e;

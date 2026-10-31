@@ -58,6 +58,7 @@ test("open palm, fist, and point stay distinct", () => {
   assert.equal(classifyGesture(makeHand({ index: true, middle: true, ring: true, pinky: true })), "palm");
   assert.equal(classifyGesture(makeHand({ index: false, middle: false, ring: false, pinky: false })), "fist");
   assert.equal(classifyGesture(makeHand({ index: true, middle: false, ring: false, pinky: false })), "point");
+  assert.equal(classifyGesture(makeHand({ index: true, middle: true, ring: false, pinky: false })), "flick");
   assert.equal(isWebSign(makeHand({ index: true, middle: true, ring: true, pinky: true })), false);
 });
 

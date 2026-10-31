@@ -97,6 +97,9 @@ function drawTether(line) {
   } else if (preset === "classic") {
     glowColor = "#00d9ff";
     coreColor = "rgba(210, 245, 255, 0.95)";
+  } else if (preset === "gojo") {
+    glowColor = "#a855f7";
+    coreColor = "rgba(235, 215, 255, 0.98)";
   }
 
   ctx.strokeStyle = glowColor;
@@ -145,6 +148,20 @@ listen("overlay-preset", (event) => {
 listen("overlay-shot", (event) => {
   const { x, y } = event.payload;
   shootNormalized(x, y);
+});
+
+listen("overlay-purple", (event) => {
+  fit();
+  const { x, y } = event.payload;
+  fx.triggerPurple(x * canvas.width, y * canvas.height);
+  kick();
+});
+
+listen("overlay-safety-shield", (event) => {
+  fit();
+  const { x, y, title, duration } = event.payload;
+  fx.triggerShield(x * canvas.width, y * canvas.height, title || "Hassas Çalışma", duration || 2400);
+  kick();
 });
 
 listen("overlay-tether", (event) => {

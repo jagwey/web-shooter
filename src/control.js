@@ -1,8 +1,18 @@
 import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, removeBinding, upsertBinding } from "./bindings.js";
+import { autoTileWorkspace, testAiConnection } from "./ai.js";
 import { emitTo, inDesktop, invoke, listen } from "./desktop.js";
 import { classifyGesture } from "./gestures.js";
 import { getLang, initI18n, setLang, t } from "./i18n.js";
-import { isAudioEnabled, playFling, playGrab, playImpact, playThwip, setAudioEnabled } from "./sound.js";
+import {
+  isAudioEnabled,
+  playFling,
+  playGrab,
+  playHollowPurple,
+  playImpact,
+  playInfinityShield,
+  playThwip,
+  setAudioEnabled,
+} from "./sound.js";
 import "./style.css";
 
 const video = document.getElementById("video");
@@ -25,9 +35,10 @@ const state = {
   detectTimer: 0,
   idleTimer: 0,
   hands: [
-    { lastGesture: null, grab: null, samples: [] },
-    { lastGesture: null, grab: null, samples: [] },
+    { lastGesture: null, grab: null, samples: [], smoothed: null },
+    { lastGesture: null, grab: null, samples: [], smoothed: null },
   ],
+  pendingCloses: new Map(),
   lastHit: "",
   holders: [],
   windowCount: 0,
@@ -43,6 +54,7 @@ const ACTION_KEYS = {
   shoot: "actionShoot",
   grab: "actionGrab",
   cancel: "actionCancel",
+  hollow_purple: "hollowPurple",
   overlay_toggle: "actionOverlay",
   show_control: "actionShow",
 };
@@ -51,6 +63,7 @@ const GESTURE_KEYS = {
   web: "gestureWeb",
   fist: "gestureFist",
   palm: "gesturePalm",
+  flick: "gestureFlick",
   point: "gesturePoint",
 };
 
@@ -102,6 +115,77 @@ function wireChrome() {
       state.settings.soundEnabled = !state.settings.soundEnabled;
       setAudioEnabled(state.settings.soundEnabled);
       persist();
+    });
+  }
+
+  const purpleToggle = document.getElementById("purpleToggle");
+  if (purpleToggle) {
+    purpleToggle.addEventListener("click", () => {
+      state.settings.hollowPurpleEnabled = !state.settings.hollowPurpleEnabled;
+      persist();
+    });
+  }
+
+  const safetyToggle = document.getElementById("safetyToggle");
+  if (safetyToggle) {
+    safetyToggle.addEventListener("click", () => {
+      state.settings.safetyGuard = !state.settings.safetyGuard;
+      persist();
+    });
+  }
+
+  const testPurple = document.getElementById("testPurple");
+  if (testPurple) {
+    testPurple.addEventListener("click", async () => {
+      if (!state.overlay?.visible) await toggleOverlay();
+      emitTo("overlay", "overlay-purple", { x: 0.5, y: 0.45 });
+      playHollowPurple();
+    });
+  }
+
+  const aiApiKey = document.getElementById("aiApiKey");
+  if (aiApiKey) {
+    aiApiKey.addEventListener("change", (e) => {
+      state.settings.aiApiKey = e.target.value;
+      persist();
+    });
+  }
+
+  const aiEndpoint = document.getElementById("aiEndpoint");
+  if (aiEndpoint) {
+    aiEndpoint.addEventListener("change", (e) => {
+      state.settings.aiEndpoint = e.target.value;
+      persist();
+    });
+  }
+
+  const aiModel = document.getElementById("aiModel");
+  if (aiModel) {
+    aiModel.addEventListener("change", (e) => {
+      state.settings.aiModel = e.target.value;
+      persist();
+    });
+  }
+
+  const aiTestBtn = document.getElementById("aiTestBtn");
+  if (aiTestBtn) {
+    aiTestBtn.addEventListener("click", async () => {
+      const msg = document.getElementById("aiStatusMessage");
+      if (msg) msg.textContent = "Bağlanıyor / Testing...";
+      const res = await testAiConnection(state.settings);
+      if (msg) msg.textContent = res.message;
+    });
+  }
+
+  const aiTileBtn = document.getElementById("aiTileBtn");
+  if (aiTileBtn) {
+    aiTileBtn.addEventListener("click", async () => {
+      const msg = document.getElementById("aiStatusMessage");
+      if (msg) msg.textContent = "Pencereler taranıyor...";
+      const windows = await invoke("list_windows");
+      const snap = await invoke("desktop_snapshot");
+      const res = await autoTileWorkspace(state.settings, windows, snap?.monitors || state.monitors);
+      if (msg) msg.textContent = res.message;
     });
   }
 
@@ -435,8 +519,22 @@ function onHands(hands, detectMs) {
     document.getElementById("handValue").textContent = hands.length >= 2 ? t("handBoth") : t("handOne");
 
     for (let i = 0; i < Math.min(hands.length, 2); i += 1) {
-      const landmarks = hands[i];
+      const rawLandmarks = hands[i];
       const handState = state.hands[i];
+
+      // Jitter Reduction Filter (EMA smoothing):
+      const SMOOTH = 0.65;
+      const landmarks = rawLandmarks.map((curr, idx) => {
+        const prev = handState.smoothed?.[idx];
+        if (!prev) return { ...curr };
+        return {
+          x: prev.x * (1 - SMOOTH) + curr.x * SMOOTH,
+          y: prev.y * (1 - SMOOTH) + curr.y * SMOOTH,
+          z: (prev.z || 0) * (1 - SMOOTH) + (curr.z || 0) * SMOOTH,
+        };
+      });
+      handState.smoothed = landmarks;
+
       const gesture = classifyGesture(landmarks);
       const action = actionFor(state.settings.bindings, "gesture", gesture);
       const edge = gesture !== handState.lastGesture;
@@ -499,12 +597,23 @@ function runActionForHand(handIndex, action, point, edge) {
     playThwip();
     return;
   }
+  if (action === "hollow_purple" && point) {
+    triggerHollowPurple(point);
+    return;
+  }
   if (action === "grab" && point) {
     beginGrab(handIndex, point);
     return;
   }
   if (action === "cancel") {
     cancelGrab(handIndex, true);
+    if (state.pendingCloses.size > 0) {
+      for (const timer of state.pendingCloses.values()) {
+        clearTimeout(timer);
+      }
+      state.pendingCloses.clear();
+      setMessage("shellBanner", "Kapatma iptal edildi / Cancelled.");
+    }
     return;
   }
   if (action === "overlay_toggle") {
@@ -512,6 +621,62 @@ function runActionForHand(handIndex, action, point, edge) {
     return;
   }
   if (action === "show_control") invoke("show_control");
+}
+
+async function triggerHollowPurple(point) {
+  if (state.settings.hollowPurpleEnabled === false) return;
+
+  emitTo("overlay", "overlay-purple", { x: point.nx, y: point.ny });
+  playHollowPurple();
+
+  let targetWin = await invoke("window_at", { x: point.sx, y: point.sy });
+  if (!targetWin || targetWin.unsupported || !targetWin.hwnd) {
+    targetWin = await invoke("get_foreground_window");
+  }
+
+  if (!targetWin || targetWin.unsupported || !targetWin.hwnd) {
+    if (state.settings.closeMode === "tab") {
+      await invoke("close_active_tab");
+    }
+    return;
+  }
+
+  const sensitiveRegex =
+    /github|gitlab|google docs|google sheets|sheets\.google|docs\.google|notion|figma|visual studio|code|vscode|jira|trello|bank|pay|checkout|save|unsaved|draft|taslak|kaydedilmedi/i;
+
+  if (state.settings.safetyGuard !== false && sensitiveRegex.test(targetWin.title)) {
+    playInfinityShield();
+    emitTo("overlay", "overlay-safety-shield", {
+      x: point.nx,
+      y: point.ny,
+      title: targetWin.title,
+      duration: 2500,
+    });
+    setMessage(
+      "shellBanner",
+      `🛡️ Infinity Shield: "${targetWin.title}" korundu. İptal için elinizi açın.`
+    );
+
+    const timer = window.setTimeout(async () => {
+      if (state.pendingCloses.has(targetWin.hwnd)) {
+        state.pendingCloses.delete(targetWin.hwnd);
+        executeClose(targetWin);
+      }
+    }, 2400);
+
+    state.pendingCloses.set(targetWin.hwnd, timer);
+    return;
+  }
+
+  executeClose(targetWin);
+}
+
+async function executeClose(win) {
+  if (state.settings.closeMode === "window") {
+    await invoke("close_window", { hwnd: win.hwnd });
+  } else {
+    await invoke("close_active_tab");
+  }
 }
 
 async function beginGrab(handIndex, point) {
@@ -710,6 +875,16 @@ function render() {
     soundToggle.setAttribute("aria-pressed", String(state.settings.soundEnabled !== false));
   }
 
+  const purpleToggle = document.getElementById("purpleToggle");
+  if (purpleToggle) {
+    purpleToggle.setAttribute("aria-pressed", String(state.settings.hollowPurpleEnabled !== false));
+  }
+
+  const safetyToggle = document.getElementById("safetyToggle");
+  if (safetyToggle) {
+    safetyToggle.setAttribute("aria-pressed", String(state.settings.safetyGuard !== false));
+  }
+
   document.getElementById("autostartToggle").setAttribute("aria-pressed", String(state.settings.startWithWindows));
   document.getElementById("idleToggle").setAttribute("aria-pressed", String(state.settings.releaseCameraWhenIdle));
   document.getElementById("cameraState").textContent = state.cameraPaused ? t("cameraPaused") : t("cameraHint");
@@ -720,6 +895,8 @@ function render() {
   document.getElementById("fpsValue").textContent = String(state.renderFps);
 
   renderTheme();
+  renderCloseModeChips();
+  renderAiProviderChips();
   renderFpsChips();
   renderMonitors(document.getElementById("monitorList"));
   renderBindings();
@@ -740,6 +917,7 @@ function renderTheme() {
     ["symbiote", "themeSymbiote"],
     ["mint", "themeMint"],
     ["neon", "themeNeon"],
+    ["gojo", "themeGojo"],
   ];
   for (const [id, key] of themes) {
     const button = document.createElement("button");
@@ -757,6 +935,72 @@ function renderTheme() {
     });
     root.append(button);
   }
+}
+
+function renderCloseModeChips() {
+  const root = document.getElementById("closeModeChips");
+  if (!root) return;
+  root.replaceChildren();
+  const modes = [
+    ["tab", "closeModeTab"],
+    ["window", "closeModeWindow"],
+  ];
+  for (const [mode, key] of modes) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip";
+    button.textContent = t(key);
+    const active = (state.settings.closeMode || "tab") === mode;
+    button.setAttribute("aria-pressed", String(active));
+    button.addEventListener("click", async () => {
+      state.settings.closeMode = mode;
+      await persist();
+    });
+    root.append(button);
+  }
+}
+
+function renderAiProviderChips() {
+  const root = document.getElementById("aiProviderChips");
+  if (!root) return;
+  root.replaceChildren();
+  const providers = [
+    ["none", "aiNone"],
+    ["gemini", "aiGemini"],
+    ["ollama", "aiOllama"],
+    ["custom", "aiCustom"],
+  ];
+  const current = state.settings.aiProvider || "none";
+  for (const [prov, key] of providers) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip";
+    button.textContent = t(key);
+    const active = current === prov;
+    button.setAttribute("aria-pressed", String(active));
+    button.addEventListener("click", async () => {
+      state.settings.aiProvider = prov;
+      if (prov === "gemini" && !state.settings.aiModel) state.settings.aiModel = "gemini-2.5-flash";
+      if (prov === "ollama" && !state.settings.aiModel) state.settings.aiModel = "llama3.2";
+      await persist();
+    });
+    root.append(button);
+  }
+
+  const keyRow = document.getElementById("aiKeyRow");
+  const endpointRow = document.getElementById("aiEndpointRow");
+  const modelRow = document.getElementById("aiModelRow");
+
+  if (keyRow) keyRow.hidden = current === "none" || current === "ollama";
+  if (endpointRow) endpointRow.hidden = current === "none" || current === "gemini";
+  if (modelRow) modelRow.hidden = current === "none";
+
+  const keyInput = document.getElementById("aiApiKey");
+  if (keyInput && keyInput !== document.activeElement) keyInput.value = state.settings.aiApiKey || "";
+  const endInput = document.getElementById("aiEndpoint");
+  if (endInput && endInput !== document.activeElement) endInput.value = state.settings.aiEndpoint || "http://localhost:11434";
+  const modInput = document.getElementById("aiModel");
+  if (modInput && modInput !== document.activeElement) modInput.value = state.settings.aiModel || "gemini-2.5-flash";
 }
 
 function renderFpsChips() {

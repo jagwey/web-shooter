@@ -74,9 +74,25 @@ export function isPoint(points) {
   );
 }
 
-/** web, point, fist, palm, or null. Web is tested before point. */
+/**
+ * Satoru Gojo: Kūshiki / Hollow Purple gesture or finger gun / snap:
+ * Index + middle fingers extended together, ring + pinky folded.
+ * Distinct from Web sign (which has middle closed & pinky open).
+ */
+export function isGojoSign(points) {
+  if (!points || points.length < 21) return false;
+  const wrist = points[0];
+  const indexOpen = isFingerExtended(points[8], points[6], wrist);
+  const middleOpen = isFingerExtended(points[12], points[10], wrist);
+  const ringClosed = isFingerClosed(points[16], points[14], wrist);
+  const pinkyClosed = isFingerClosed(points[20], points[18], wrist);
+  return indexOpen && middleOpen && ringClosed && pinkyClosed;
+}
+
+/** web, flick (Gojo purple), point, fist, palm, or null. */
 export function classifyGesture(points) {
   if (isWebSign(points)) return "web";
+  if (isGojoSign(points)) return "flick";
   if (isPoint(points)) return "point";
   if (isFist(points)) return "fist";
   if (isOpenPalm(points)) return "palm";

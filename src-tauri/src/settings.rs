@@ -38,6 +38,20 @@ pub struct Settings {
     pub sound_enabled: bool,
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default = "default_true")]
+    pub hollow_purple_enabled: bool,
+    #[serde(default = "default_close_mode")]
+    pub close_mode: String,
+    #[serde(default = "default_true")]
+    pub safety_guard: bool,
+    #[serde(default = "default_ai_provider")]
+    pub ai_provider: String,
+    #[serde(default)]
+    pub ai_api_key: String,
+    #[serde(default = "default_ai_endpoint")]
+    pub ai_endpoint: String,
+    #[serde(default = "default_ai_model")]
+    pub ai_model: String,
 }
 
 fn default_target_fps() -> u32 {
@@ -46,6 +60,26 @@ fn default_target_fps() -> u32 {
 
 fn default_sound_enabled() -> bool {
     true
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_close_mode() -> String {
+    "tab".into()
+}
+
+fn default_ai_provider() -> String {
+    "none".into()
+}
+
+fn default_ai_endpoint() -> String {
+    "http://localhost:11434".into()
+}
+
+fn default_ai_model() -> String {
+    "gemini-2.5-flash".into()
 }
 
 fn default_theme() -> String {
@@ -68,6 +102,13 @@ impl Default for Settings {
             target_fps: 120,
             sound_enabled: true,
             theme: "spiderman".into(),
+            hollow_purple_enabled: true,
+            close_mode: "tab".into(),
+            safety_guard: true,
+            ai_provider: "none".into(),
+            ai_api_key: String::new(),
+            ai_endpoint: "http://localhost:11434".into(),
+            ai_model: "gemini-2.5-flash".into(),
         }
     }
 }
@@ -77,6 +118,7 @@ fn default_bindings() -> Vec<Binding> {
         binding("b-web", "shoot", "gesture", "web"),
         binding("b-fist", "grab", "gesture", "fist"),
         binding("b-palm", "cancel", "gesture", "palm"),
+        binding("b-purple", "hollow_purple", "gesture", "flick"),
         binding("b-overlay", "overlay_toggle", "hotkey", "CommandOrControl+Alt+J"),
         binding("b-control", "show_control", "hotkey", "CommandOrControl+Alt+K"),
     ]
@@ -101,11 +143,17 @@ impl Settings {
         if !matches!(self.monitor_mode.as_str(), "one" | "all") {
             self.monitor_mode = "one".into();
         }
-        if !matches!(self.fx_preset.as_str(), "classic" | "mint" | "neon" | "low" | "light" | "spiderman" | "miles" | "symbiote") {
+        if !matches!(self.fx_preset.as_str(), "classic" | "mint" | "neon" | "low" | "light" | "spiderman" | "miles" | "symbiote" | "gojo") {
             self.fx_preset = "spiderman".into();
         }
-        if !matches!(self.theme.as_str(), "spiderman" | "miles" | "symbiote" | "mint" | "neon") {
+        if !matches!(self.theme.as_str(), "spiderman" | "miles" | "symbiote" | "mint" | "neon" | "gojo") {
             self.theme = "spiderman".into();
+        }
+        if !matches!(self.close_mode.as_str(), "tab" | "window") {
+            self.close_mode = "tab".into();
+        }
+        if !matches!(self.ai_provider.as_str(), "none" | "gemini" | "ollama" | "custom") {
+            self.ai_provider = "none".into();
         }
         if self.target_fps != 60 && self.target_fps != 120 {
             self.target_fps = 120;

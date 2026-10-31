@@ -88,9 +88,55 @@
         </section>
 
         <section class="card">
+          <h2 data-i18n="hollowPurple">Gojo: Kūshiki 'Murasaki'</h2>
+          <button type="button" class="switch slim" id="purpleToggle" aria-pressed="true">
+            <span class="knob" aria-hidden="true"></span>
+            <span><strong data-i18n="hollowPurple">Mor At (Sekme/Pencere Kapat)</strong><small data-i18n="hollowPurpleHint">İki parmak / fiske hareketiyle kapat.</small></span>
+          </button>
+          <div class="row" style="margin-top: 8px; justify-content: space-between;">
+            <strong style="font-size: 0.9rem;" data-i18n="closeMode">Hedef:</strong>
+            <div class="chips" id="closeModeChips"></div>
+          </div>
+          <button type="button" class="switch slim" id="safetyToggle" aria-pressed="true" style="margin-top: 8px;">
+            <span class="knob" aria-hidden="true"></span>
+            <span><strong data-i18n="safetyGuard">Infinity Shield (Hassas Koruma)</strong><small data-i18n="safetyGuardHint">Kod, döküman ve form sayfalarında kazara kapanmayı engeller.</small></span>
+          </button>
+          <div class="row" style="margin-top: 8px;">
+            <button type="button" class="btn ghost" id="testPurple" data-i18n="testPurple">Prova: Mor At</button>
+          </div>
+        </section>
+
+        <section class="card">
           <h2 data-i18n="displays">Ekran</h2>
           <div class="monitor-list" id="monitorList"></div>
         </section>
+
+        <details class="card">
+          <summary data-i18n="aiTitle">Yapay Zeka Masaüstü Asistanı</summary>
+          <div class="row" style="margin-top: 6px; justify-content: space-between;">
+            <strong style="font-size: 0.9rem;" data-i18n="aiProvider">Sağlayıcı:</strong>
+            <div class="chips" id="aiProviderChips"></div>
+          </div>
+          <div id="aiConfigFields" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+            <div class="device-row" id="aiKeyRow">
+              <span data-i18n="aiApiKey">API Anahtarı</span>
+              <input type="password" id="aiApiKey" class="device-select" style="padding: 6px 10px; border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid var(--line); color: var(--ink); width: 60%;" placeholder="AIzaSy... / Key" />
+            </div>
+            <div class="device-row" id="aiEndpointRow">
+              <span data-i18n="aiEndpoint">Endpoint</span>
+              <input type="text" id="aiEndpoint" class="device-select" style="padding: 6px 10px; border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid var(--line); color: var(--ink); width: 60%;" placeholder="http://localhost:11434" />
+            </div>
+            <div class="device-row" id="aiModelRow">
+              <span data-i18n="aiModel">Model</span>
+              <input type="text" id="aiModel" class="device-select" style="padding: 6px 10px; border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid var(--line); color: var(--ink); width: 60%;" placeholder="gemini-2.5-flash / llama3.2" />
+            </div>
+            <div class="row" style="margin-top: 4px; justify-content: space-between;">
+              <button type="button" class="btn ghost" id="aiTestBtn" data-i18n="aiTest">Bağlantıyı Test Et</button>
+              <button type="button" class="btn" id="aiTileBtn" data-i18n="aiTile">Pencereleri Akıllı Düzenle (AI)</button>
+            </div>
+            <p class="message" id="aiStatusMessage" aria-live="polite" style="margin: 4px 0 0 0;"></p>
+          </div>
+        </details>
 
         <details class="card">
           <summary data-i18n="power">Ayarlar & Güç</summary>

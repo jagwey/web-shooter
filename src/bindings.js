@@ -1,12 +1,13 @@
-export const BUILTIN_ACTIONS = ["shoot", "grab", "cancel", "overlay_toggle", "show_control"];
+export const BUILTIN_ACTIONS = ["shoot", "grab", "cancel", "hollow_purple", "overlay_toggle", "show_control"];
 
-export const GESTURES = ["web", "fist", "palm", "point"];
+export const GESTURES = ["web", "fist", "palm", "flick", "point"];
 
 export function defaultBindings() {
   return [
     { id: "b-web", action: "shoot", input: { kind: "gesture", value: "web" } },
     { id: "b-fist", action: "grab", input: { kind: "gesture", value: "fist" } },
     { id: "b-palm", action: "cancel", input: { kind: "gesture", value: "palm" } },
+    { id: "b-purple", action: "hollow_purple", input: { kind: "gesture", value: "flick" } },
     {
       id: "b-overlay",
       action: "overlay_toggle",

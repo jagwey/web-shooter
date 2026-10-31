@@ -30,3 +30,15 @@ test("a shot animates through impact without throwing", () => {
   fx.shoot(1100, 480);
   fx.draw(4000);
 });
+
+test("hollow purple and infinity shield animate without throwing", () => {
+  const fx = createWebFx(mockCtx(1280, 720));
+  fx.triggerPurple(640, 360);
+  fx.triggerShield(640, 360, "Test Window", 2000);
+  assert.equal(fx.hasWork(), true);
+  assert.doesNotThrow(() => {
+    for (let frame = 1; frame <= 120; frame += 1) {
+      fx.draw(frame * 33);
+    }
+  });
+});

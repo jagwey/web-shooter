@@ -72,6 +72,16 @@ const LOOKS = {
     fine: [255, 80, 220],
     particle: [210, 255, 140],
   },
+  gojo: {
+    quality: "full",
+    trail: [168, 85, 247],
+    glow: "#a855f7",
+    beam: [59, 130, 246],
+    fiber: [239, 68, 68],
+    head: "#c084fc",
+    fine: [192, 132, 252],
+    particle: [243, 232, 255],
+  },
   low: {
     quality: "low",
     trail: [176, 245, 210],
@@ -101,6 +111,8 @@ export function createWebFx(ctx, hooks = {}) {
   let webParticles = [];
   let muzzleFlash = null;
   let shockwave = null;
+  let activePurples = [];
+  let activeShields = [];
   let lastDraw = performance.now();
 
   function setPreset(name) {
@@ -127,6 +139,27 @@ export function createWebFx(ctx, hooks = {}) {
     muzzleFlash = { x: startX, y: startY, life: 1 };
     shockwave = { x: startX, y: startY, radius: 8, life: 1 };
     spawnParticles(startX, startY, full() ? 16 : 4);
+  }
+
+  function triggerPurple(x, y) {
+    activePurples.push({
+      x,
+      y,
+      progress: 0,
+      sparkAngle: 0,
+    });
+    spawnParticles(x, y, full() ? 24 : 8);
+  }
+
+  function triggerShield(x, y, title = "Hassas Pencere", duration = 2400) {
+    activeShields.push({
+      x,
+      y,
+      title,
+      duration,
+      start: performance.now(),
+      pulse: 0,
+    });
   }
 
   function webTarget(x) {
@@ -156,7 +189,15 @@ export function createWebFx(ctx, hooks = {}) {
   }
 
   function hasWork() {
-    return Boolean(activeWeb || webImpact || muzzleFlash || shockwave || webParticles.length);
+    return Boolean(
+      activeWeb ||
+        webImpact ||
+        muzzleFlash ||
+        shockwave ||
+        webParticles.length ||
+        activePurples.length ||
+        activeShields.length,
+    );
   }
 
   function draw(now = performance.now()) {
@@ -168,6 +209,8 @@ export function createWebFx(ctx, hooks = {}) {
     drawParticles(step);
     drawMuzzleFlash(step);
     drawShockwave(step);
+    drawPurples(step);
+    drawShields(now, step);
   }
 
   function drawActiveWeb(step) {
@@ -430,5 +473,180 @@ export function createWebFx(ctx, hooks = {}) {
     ctx.restore();
   }
 
-  return { shoot, draw, setPreset, hasWork };
+  function drawPurples(step) {
+    if (activePurples.length === 0) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    for (let i = activePurples.length - 1; i >= 0; i -= 1) {
+      const p = activePurples[i];
+      p.progress += 0.025 * step;
+      p.sparkAngle += 0.22 * step;
+
+      const { x, y, progress, sparkAngle } = p;
+
+      if (progress < 0.35) {
+        // Phase 1: Blue (Lapse) & Red (Reversal) Convergence swirl
+        const phase1Norm = progress / 0.35;
+        const orbitRadius = Math.max(10, (1 - phase1Norm) * 75 + 12);
+        const blueAngle = sparkAngle * 1.5;
+        const redAngle = blueAngle + Math.PI;
+
+        const bx = x + Math.cos(blueAngle) * orbitRadius;
+        const by = y + Math.sin(blueAngle) * orbitRadius;
+        const rx = x + Math.cos(redAngle) * orbitRadius;
+        const ry = y + Math.sin(redAngle) * orbitRadius;
+
+        // Blue Orb (Ao)
+        ctx.shadowColor = "#3b82f6";
+        ctx.shadowBlur = full() ? 30 : 10;
+        ctx.beginPath();
+        ctx.arc(bx, by, 9 + phase1Norm * 7, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(59, 130, 246, 0.95)";
+        ctx.fill();
+
+        // Red Orb (Aka)
+        ctx.shadowColor = "#ef4444";
+        ctx.beginPath();
+        ctx.arc(rx, ry, 9 + phase1Norm * 7, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(239, 68, 68, 0.95)";
+        ctx.fill();
+
+        // Energy arc between orbs
+        ctx.shadowColor = "#c084fc";
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.quadraticCurveTo(x + (Math.random() - 0.5) * 20, y + (Math.random() - 0.5) * 20, rx, ry);
+        ctx.strokeStyle = "rgba(216, 180, 254, 0.85)";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      } else if (progress < 0.72) {
+        // Phase 2: Singularity Fusion - Hollow Purple Core
+        const phase2Norm = (progress - 0.35) / 0.37;
+        const coreRadius = 18 + Math.sin(phase2Norm * Math.PI) * 42;
+
+        // Concentric distortion rings
+        for (let r = 1; r <= 3; r += 1) {
+          const ringR = coreRadius * (0.8 + r * 0.4);
+          ctx.beginPath();
+          ctx.arc(x, y, ringR, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(168, 85, 247, ${((1 - phase2Norm) * 0.7) / r})`;
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+        }
+
+        // Void core
+        ctx.shadowColor = "#a855f7";
+        ctx.shadowBlur = full() ? 50 : 20;
+        ctx.beginPath();
+        ctx.arc(x, y, coreRadius, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(147, 51, 234, 0.95)";
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(x, y, coreRadius * 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(20, 8, 38, 0.98)";
+        ctx.fill();
+
+        // Electric lightning sparks
+        for (let s = 0; s < 6; s += 1) {
+          const sa = (Math.PI * 2 * s) / 6 + sparkAngle;
+          const sx = x + Math.cos(sa) * (coreRadius * 1.5);
+          const sy = y + Math.sin(sa) * (coreRadius * 1.5);
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(sx, sy);
+          ctx.strokeStyle = "rgba(235, 215, 255, 0.9)";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      } else {
+        // Phase 3: Murasaki Blast Wave & Dissipation
+        const phase3Norm = (progress - 0.72) / 0.28;
+        const blastRadius = 50 + phase3Norm * 280;
+        const fade = 1 - phase3Norm;
+
+        ctx.shadowColor = "#c084fc";
+        ctx.shadowBlur = full() ? 40 : 15;
+        ctx.beginPath();
+        ctx.arc(x, y, blastRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(168, 85, 247, ${fade * 0.85})`;
+        ctx.lineWidth = 5 * fade;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(x, y, blastRadius * 0.6, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(216, 180, 254, ${fade * 0.2})`;
+        ctx.fill();
+      }
+
+      if (p.progress >= 1.0) {
+        activePurples.splice(i, 1);
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawShields(now, step) {
+    if (activeShields.length === 0) return;
+    ctx.save();
+
+    for (let i = activeShields.length - 1; i >= 0; i -= 1) {
+      const s = activeShields[i];
+      const elapsed = now - s.start;
+      const progress = Math.min(elapsed / s.duration, 1);
+      const remainingRatio = 1 - progress;
+      s.pulse += 0.08 * step;
+
+      const { x, y } = s;
+      const hexR = 75 + Math.sin(s.pulse) * 4;
+
+      // Hexagonal Barrier
+      ctx.globalCompositeOperation = "source-over";
+      ctx.shadowColor = "#38bdf8";
+      ctx.shadowBlur = full() ? 25 : 8;
+
+      ctx.beginPath();
+      for (let h = 0; h < 6; h += 1) {
+        const ha = (Math.PI / 3) * h;
+        const hx = x + Math.cos(ha) * hexR;
+        const hy = y + Math.sin(ha) * hexR;
+        if (h === 0) ctx.moveTo(hx, hy);
+        else ctx.lineTo(hx, hy);
+      }
+      ctx.closePath();
+      ctx.fillStyle = "rgba(14, 116, 144, 0.45)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.9)";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Countdown Arc
+      ctx.beginPath();
+      ctx.arc(x, y, hexR + 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * remainingRatio);
+      ctx.strokeStyle = "rgba(245, 158, 11, 0.95)";
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      // Shield Warning Banner & Title
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 13px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("🛡️ INFINITY SHIELD · KORUNDU", x, y - 10);
+
+      ctx.fillStyle = "rgba(224, 242, 254, 0.85)";
+      ctx.font = "11px system-ui, sans-serif";
+      const shortTitle = s.title.length > 28 ? s.title.slice(0, 25) + "…" : s.title;
+      ctx.fillText(shortTitle, x, y + 10);
+      ctx.fillText("İptal: Avuç içi / 3s bekle", x, y + 26);
+
+      if (progress >= 1.0) {
+        activeShields.splice(i, 1);
+      }
+    }
+    ctx.restore();
+  }
+
+  return { shoot, triggerPurple, triggerShield, draw, setPreset, hasWork };
 }

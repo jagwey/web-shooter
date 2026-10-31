@@ -24,14 +24,16 @@ mod platform {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::Duration;
     use windows::core::BOOL;
-    use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT, TRUE};
+    use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT, TRUE, WPARAM};
     use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
     use windows::Win32::System::Threading::GetCurrentProcessId;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{keybd_event, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, VK_CONTROL};
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GA_ROOT, GWL_EXSTYLE, GetAncestor, GetClassNameW, GetWindowLongPtrW,
-        GetWindowRect, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
-        IsWindowVisible, IsZoomed, SetWindowPos, ShowWindow, WindowFromPoint, SW_MAXIMIZE,
-        SW_RESTORE, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, WS_EX_TOOLWINDOW,
+        EnumWindows, GA_ROOT, GWL_EXSTYLE, GetAncestor, GetClassNameW, GetForegroundWindow,
+        GetWindowLongPtrW, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
+        GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, PostMessageW, SetWindowPos,
+        ShowWindow, WindowFromPoint, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SWP_NOACTIVATE,
+        SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE, WS_EX_TOOLWINDOW,
     };
     use windows_registry::CURRENT_USER;
 
@@ -314,10 +316,51 @@ mod platform {
         holders.dedup_by(|a, b| a.name == b.name);
         Ok(holders)
     }
+
+    pub fn close_window(raw: i64) -> Result<(), String> {
+        let hwnd = hwnd_of(raw);
+        unsafe {
+            PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0))
+                .map_err(|err| err.to_string())?;
+        }
+        Ok(())
+    }
+
+    pub fn close_active_tab() -> Result<(), String> {
+        unsafe {
+            const VK_W: u8 = 0x57;
+            keybd_event(VK_CONTROL.0 as u8, 0, KEYBD_EVENT_FLAGS(0), 0);
+            keybd_event(VK_W, 0, KEYBD_EVENT_FLAGS(0), 0);
+            keybd_event(VK_W, 0, KEYEVENTF_KEYUP, 0);
+            keybd_event(VK_CONTROL.0 as u8, 0, KEYEVENTF_KEYUP, 0);
+        }
+        Ok(())
+    }
+
+    pub fn minimize_window(raw: i64) -> Result<(), String> {
+        let hwnd = hwnd_of(raw);
+        unsafe {
+            let _ = ShowWindow(hwnd, SW_MINIMIZE);
+        }
+        Ok(())
+    }
+
+    pub fn get_foreground_window() -> Result<Option<DesktopWindow>, String> {
+        unsafe {
+            let hwnd = GetForegroundWindow();
+            if hwnd.0.is_null() {
+                return Ok(None);
+            }
+            Ok(describe(hwnd))
+        }
+    }
 }
 
 #[cfg(windows)]
-pub use platform::{camera_holders, fling_window, list_windows, move_window, nudge_window, window_at};
+pub use platform::{
+    camera_holders, close_active_tab, close_window, fling_window, get_foreground_window,
+    list_windows, minimize_window, move_window, nudge_window, window_at,
+};
 
 #[cfg(not(windows))]
 pub fn list_windows() -> Result<Vec<DesktopWindow>, String> {
@@ -353,4 +396,24 @@ pub fn fling_window(
 #[cfg(not(windows))]
 pub fn camera_holders() -> Result<Vec<CameraHolder>, String> {
     Ok(Vec::new())
+}
+
+#[cfg(not(windows))]
+pub fn close_window(_raw: i64) -> Result<(), String> {
+    Err("win32-only".into())
+}
+
+#[cfg(not(windows))]
+pub fn close_active_tab() -> Result<(), String> {
+    Err("win32-only".into())
+}
+
+#[cfg(not(windows))]
+pub fn minimize_window(_raw: i64) -> Result<(), String> {
+    Err("win32-only".into())
+}
+
+#[cfg(not(windows))]
+pub fn get_foreground_window() -> Result<Option<DesktopWindow>, String> {
+    Ok(None)
 }

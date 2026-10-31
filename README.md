@@ -1,103 +1,199 @@
-# Jagwey Web Shooter 🕸️
+# Jagwey Web Shooter 🕸️⚡🟣
 
-**Windows Masaüstü Örümcek Ağı Katmanı (Desktop Overlay & Window Fling)**  
-Tauri 2 + MediaPipe Hands (Float16 Web Worker) + Win32 API (`EnumWindows`, `SetWindowPos`)  
-Geliştirici: **Jagwey** (Osman) · Repo: [github.com/jagwey/web-shooter](https://github.com/jagwey/web-shooter)
+<div align="center">
 
----
+![Version](https://img.shields.io/badge/version-0.1.0-emerald?style=for-the-badge)
+![Tauri 2](https://img.shields.io/badge/Tauri_2-Rust_%2B_Vite-blue?style=for-the-badge)
+![MediaPipe](https://img.shields.io/badge/MediaPipe_Hands-120_FPS_Float16-orange?style=for-the-badge)
+![Win32](https://img.shields.io/badge/Win32_Native-Z--Order_Fling-purple?style=for-the-badge)
+![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
-## 🇹🇷 Türkçe Açıklama
+**Windows Masaüstü Örümcek Ağı & Jujutsu Kaisen "Hollow Purple" Katmanı**  
+*Desktop Overlay · Dual-Hand Tracking · Real Window Fling · Tab Closer · AI Workspace Assistant*
 
-**Jagwey Web Shooter**, ekranınızın üzerinde tamamen şeffaf ve fare tıklamalarını geçiren (`WS_EX_TRANSPARENT`) bir katman oluşturarak webcam aracılığıyla ellerinizi takip eder. Klasik Spider-Man ağ atma işaretiyle gerçek pencerelere ağ atıp geri teptirebilir, yumruk yaparak altındaki pencereyi tutup sürükleyebilir ve elinizi açtığınızda pencereyi fiziksel momentumuyla ekran boyunca fırlatabilirsiniz!
+Geliştirici: **Jagwey** (Osman) · GitHub: [github.com/jagwey/web-shooter](https://github.com/jagwey/web-shooter)
 
-### ✨ Öne Çıkan Özellikler
-
-1. **Çift El Desteği (Dual-Hand Tracking):**
-   - MediaPipe ile aynı anda 2 eli birden takip eder.
-   - İki elinizle bağımsız olarak ağ atabilir (`double-web shoot`) veya iki ayrı pencereyi tutup ekranın farklı köşelerine fırlatabilirsiniz.
-
-2. **Örümcek Adam Temaları (Themes & Looks):**
-   - 🕷️ **Spider-Man (Klasik):** Canlı kırmızı ışıma, örümcek mavisi lifler ve saf beyaz örümcek ağı.
-   - ⚡ **Miles Morales:** Karbon siyahı ve altın biyo-elektrik kıvılcımları, neon kırmızı atış hattı.
-   - 🖤 **Symbiote (Venom):** Gece karası ve parlak mor dokunaçlar, mor biyolüminesans parçacıklar.
-   - 🌿 **Jagwey Mint:** Forest Green ve ferahlatıcı nane yeşili ışıma.
-   - 🌈 **Cyber Neon:** Synthwave pembe ve neon kireç yeşili lazer ağı.
-   - *Arayüz, seçilen temanın renk paletine anında bürünür.*
-
-3. **Gerçekçi Ses Efektleri (Synthesized Web Audio FX):**
-   - Harici ses dosyası indirmeden, sıfır gecikmeli Web Audio API ile üretilen efsanevi çizgi roman ağ atış sesi (**THWIP!**), pencere vuruş tokmağı, gerilme ipi çınlaması ve fırlatma rüzgarı.
-   - Ayarlardan tek tıkla açılıp kapatılabilir.
-
-4. **Akıcı 120 FPS / 60 FPS Seçeneği:**
-   - **120 FPS (Ultra Akıcı):** Yüksek tazeleme hızına sahip monitörler için 6-8 ms tespit döngüsü ile e-spor seviyesinde pürüzsüz takip.
-   - **60 FPS (Pil & Eko):** Güç tasarrufu için optimize edilmiş 60 Hz kilitli takip.
-   - **Akıllı Boşta Bekleme (Idle Throttle):** Ekranda el yokken tespit 4 Hz'e iner; ağ yokken boyama tamamen durur (sıfır GPU/CPU tüketimi).
-
-5. **Gerçek Pencereleri Tut & Fırlat (Win32 Mechanics):**
-   - **Yumruk:** Elin altındaki en üst Z-sıralı pencereyi yakalar, gergin ağ ipi (`tether`) ile elinize bağlar.
-   - **Açık Avuç:** Pencereyi elinizin fırlatma hızıyla (`velocity`) ekran boyunca momentumla fırlatır.
-   - **Akıllı Yaslama (Snap):** Ekranın soluna/sağına fırlatılan pencereler yarı ekrana yaslanır; üst kenara fırlatılanlar tam ekran olur.
-   - **Ekran Dışı Koruma:** Sert fırlatmalarda pencerelerin ekran dışına kaybolması engellenir.
-   - **Maksimize Pencere Desteği:** Ekranı kaplayan pencereler tutulduğunda otomatik serbest pencereye dönüştürülür.
-
-6. **Kamera & Güç Yönetimi:**
-   - Çoklu kamera desteği (webcam seçimi arayüzden anında değiştirilebilir).
-   - Windows Registry üzerinden kamerayı o anda kullanan diğer uygulamaların (Chrome, Discord, Zoom vb.) anlık tespiti.
-   - **Temiz Kapatma:** Pencere kapatıldığında veya tepsiye küçültüldüğünde kamera donanımı ve worker derhal serbest bırakılır (kamera ışığı söner).
-   - Arka planda yalnızca ~50 MB RAM tüketir (Electron'a kıyasla 5-10 kat daha hafif).
+</div>
 
 ---
 
-## 🇬🇧 English Summary
+## 🏛️ Mimari Şema / System Architecture
 
-**Jagwey Web Shooter** is a lightweight, ultra-responsive Windows desktop overlay powered by Tauri 2, MediaPipe Hands (float16 WebAssembly Worker), and native Win32 APIs (`EnumWindows`, `SetWindowPos`). 
+```mermaid
+flowchart TD
+    subgraph UI_Katmani["🖥️ Arayüz & Görsel Katman (Web & Canvas)"]
+        Overlay["🕸️ Şeffaf Masaüstü Örtüsü (overlay.html)"]
+        Canvas["🎨 Canvas 2D Efekt Motoru (60/120 FPS)"]
+        Control["⚙️ Jagwey Kontrol Shell (index.html)"]
+        Audio["🔊 Prosedürel Web Audio (THWIP / Murasaki / Shield)"]
+        Overlay --> Canvas
+    end
 
-Point your webcam, flick the iconic Spider-Man web-sign to shoot cinematic webs at real windows, grab them with a fist, and fling them across your monitors with natural physics momentum!
+    subgraph AI_Katmani["🤖 Akıllı Zeka & Asistan Motoru (ai.js)"]
+        Gemini["☁️ Google Gemini API (gemini-2.5-flash)"]
+        Ollama["💻 Yerel LLM (Ollama / LM Studio)"]
+        Tiler["📐 Akıllı Pencere Düzenleyici (Auto-Tiler)"]
+        Gemini --> Tiler
+        Ollama --> Tiler
+    end
 
-### Key Capabilities
-- **Dual-Hand Tracking:** Track both hands simultaneously for double-web shoots or two-window manipulation.
-- **Iconic Spidey Themes:** Classic Spider-Man (Red & Blue), Miles Morales (Bio-Electric Gold & Crimson), Symbiote (Dark Purple Tendrils), Jagwey Mint, and Cyber Neon.
-- **Procedural Audio FX:** Instant synthesized Web Audio API sound effects featuring the iconic **THWIP!** web-shooter sound, impact thuds, and whoosh flings.
-- **60 FPS & 120 FPS Modes:** Choose between Eco 60 FPS or silky-smooth 120 FPS high-refresh tracking.
-- **Native Win32 Integration:** Smooth window drag, fling physics with edge snapping (half-screen / maximize), and Z-order window detection underneath transparent click-through layers.
-- **Ultra-Low Memory:** Built on Rust + WebView2 (uses ~50 MB RAM vs Electron's 400+ MB).
-- **Clean Hardware Release:** Camera hardware turns off completely when minimized or idle.
+    subgraph Vision_Katmani["👁️ Görsel Takip Motoru (Vision Engine)"]
+        Webcam["📷 Web Kamerası (120 FPS Capture)"]
+        Worker["⚡ MediaPipe Hands Web Worker (Float16)"]
+        Filter["🪄 EMA Landmark Yumuşatma (Jitter Reduction)"]
+        Classifier["🎯 Jest Sınıflandırıcı (Web / Fist / Palm / Gojo Flick)"]
+        Webcam --> Worker --> Filter --> Classifier
+    end
+
+    subgraph Native_Katmani["⚙️ Rust & Win32 Arka Plan (src-tauri)"]
+        Core["🦀 Tauri 2 Çekirdeği (lib.rs)"]
+        Win32["🪟 Win32 API (EnumWindows / SetWindowPos / PostMessage)"]
+        Hooks["⌨️ Global Kısayollar & Sistem Tepsisi (Tray)"]
+        Core --> Win32
+        Core --> Hooks
+    end
+
+    Classifier -->|Jest Sinyalleri| Control
+    Control -->|Ağ & Murasaki Efektleri| Canvas
+    Control -->|Ses Tetikleme| Audio
+    Control -->|IPC Invoke| Core
+    Tiler -->|Hizalama Koordinatları| Win32
+    Win32 -->|Pencereleri Taşı / Kapat| OS["🪟 Windows Masaüstü"]
+```
 
 ---
 
-## 🎮 Jestler / Gestures
+## 🌀 Jest & Eylem Akış Şeması / Gesture State Machine
 
-| Hareket / Gesture | Nasıl Yapılır / How-to | Eylem / Action |
-|-------------------|------------------------|----------------|
-| 🤟 **Ağ İşareti (Web Sign)** | İşaret ve serçe açık, orta ve yüzük kapalı | Ağ atar (**THWIP!**), pencereyi geri teptirir |
-| ✊ **Yumruk (Fist)** | Tüm parmaklar kapalı | Altındaki pencereyi tutar ve ağ ipiyle bağlar |
-| 🖐️ **Açık Avuç (Open Palm)** | Tüm parmaklar açık | Pencereyi momentumla fırlatır (**Bırak**) |
-| ☝️ **İşaret (Point)** | Yalnızca işaret parmağı açık | İsteğe bağlı / özel eylem atanabilir |
+```mermaid
+stateDiagram-v2
+    [*] --> Bosta: Kamera Açık
 
-*Tüm jestler ve klavye kısayolları (`Ctrl+Alt+J`, `Ctrl+Alt+K`) arayüzdeki **Tuşlar / Controls** sekmesinden yeniden atanabilir.*
+    state "Spider-Man Ağ & Fırlatma" as Spidey {
+        Bosta --> AgAtisi: 🤟 Web Sign (İşaret + Serçe)
+        AgAtisi --> Bosta: THWIP! + Pencere İtme
+
+        Bosta --> Tutuldu: ✊ Yumruk (Fist)
+        Tutuldu --> Tasiniyor: El Hareketi (Gergin Halat)
+        Tasiniyor --> Firlatildi: 🖐️ Açık Avuç (Open Palm)
+        Firlatildi --> Yaslandi: Kenara / Üste Çarpma (Snap)
+        Yaslandi --> Bosta: Durgunlaşma
+    }
+
+    state "Satoru Gojo: Kūshiki 'Murasaki'" as Gojo {
+        Bosta --> GojoFlick: 🟣 Fiske / İki Parmak (Flick Sign)
+        GojoFlick --> Singularity: Mavi (Lapse) + Kırmızı (Reversal) Çakışması
+        Singularity --> Kontrol: Hedef Pencere Kontrolü
+        
+        state Kontrol <<choice>>
+        Kontrol --> HassasBariyer: Hassas Pencere (Kod / Döküman / Form)
+        Kontrol --> Kapatildi: Güvenli Pencere / Sekme
+
+        HassasBariyer --> Kapatildi: 2.4s Onay
+        HassasBariyer --> Iptal: 🖐️ Açık Avuç (Infinity Cancel)
+        Kapatildi --> Bosta: Sekme (Ctrl+W) / Pencere (WM_CLOSE) Kapandı
+        Iptal --> Bosta: Pencere Korundu
+    }
+```
 
 ---
 
-## 🛠️ Kurulum ve Derleme / Build from Source
+## 🇹🇷 Türkçe Açıklama ve Özellikler
 
-### Gereksinimler
+**Jagwey Web Shooter**, ekranınızın üzerinde tamamen şeffaf ve tıklamaları geçiren (`WS_EX_TRANSPARENT`) bir katman oluşturarak webcam aracılığıyla ellerinizi takip eden fütüristik bir masaüstü aracıdır.
+
+### 🌟 Yeni Eklenen Efsanevi Özellikler
+
+#### 1. 🟣 Satoru Gojo: Kūshiki "Murasaki" (Hollow Purple) & Sekme Kapatıcı
+- **İki Parmak / Fiske Hareketi:** İşaret ve orta parmağınızı birlikte uzattığınızda veya fiske yaptığınızda Gojo Satoru'nun ikonik Kūshiki "Murasaki" tekniği tetiklenir!
+- **Sinematik Görsel Şölen:** Mavi (Lapse) ve Kırmızı (Reversal) küreler elinizin etrafında spiral çizerek döner, ardından merkezde çarpışarak karanlık bir çekirdeğe sahip parlayan **Hollow Purple** küresine dönüşür ve devasa bir enerji dalgası fırlatır!
+- **Gerçekçi Ses Efekti:** Düşük frekanslı sub-bass şok dalgası ve yüksek rezonanslı uzay enerjisi sentezi.
+- **Hedef Kapatma:** İmlecin altındaki açık internet sekmesini (`Ctrl+W`) veya tüm pencereyi (`WM_CLOSE`) anında kapatır.
+- **🛡️ Infinity Shield (Hassas Pencere Koruması):** Kodlama ortamları (VS Code, Visual Studio), dökümanlar (Google Docs, Sheets, Word) veya form sayfalarında kazara sekme kapatmayı önlemek için altın-mavi altıgen **Infinity Bariyeri** devreye girer. Kullanıcı 2.4 saniye içinde açık avuç (`palm`) yaparak kapatmayı iptal edebilir!
+
+#### 2. 🤖 Yapay Zeka Masaüstü Asistanı (AI Workspace Assistant)
+- **Sağlayıcı Desteği:**
+  - ☁️ **Google Gemini API:** `gemini-2.5-flash` veya `gemini-1.5-flash` model desteği (kullanıcı kendi API Key'ini girebilir).
+  - 💻 **Yerel Ollama / LM Studio:** Tamamen yerel, internetsiz ve gizli (`http://localhost:11434`, `llama3.2`, `qwen2.5` vb.).
+  - 🌐 **Özel OpenAI Uyumlu API.**
+- **Akıllı Düzenle (Auto-Tile):** "Pencereleri Akıllı Düzenle" butonuna tıklandığında açık masaüstü pencereleri taranır ve yapay zeka tarafından ana pencere + sağ yığın olarak altın oranda ekrana muntazam şekilde hizalanır.
+
+#### 3. 🎯 Gelişmiş El Takibi & EMA Yumuşatma (Jitter-Free)
+- MediaPipe 21 eklem noktası üzerinde çalışan **Üstel Hareketli Ortalama (EMA)** filtresi sayesinde kamera gürültüsü ve titremeler tamamen filtrelenir.
+- Jest geçişleri daha kararlı, yumruk ve atış hissi kaya gibi stabildir.
+
+#### 4. 🕷️ Temalar & Görsel Efektler
+- 🕷️ **Classic Spider-Man:** Canlı kırmızı & örümcek mavisi lifler.
+- ⚡ **Miles Morales:** Karbon siyahı, altın sarısı biyo-elektrik ve neon kırmızı ağlar.
+- 🖤 **Symbiote (Venom):** Gece karası ve derin mor dokunaçlar.
+- 🟣 **Gojo Satoru (Limitless):** Boşluk moru, mavi/kırmızı enerji lifleri.
+- 🌿 **Jagwey Mint:** Forest Green ve parlak nane yeşili marka teması.
+- 🌈 **Cyber Neon:** Synthwave pembe ve neon lazer ağı.
+
+---
+
+## 🎮 Jest Tablosu / Gesture Control Guide
+
+| Hareket / Gesture | Parmak Durumu | İşlev / Action | Efekt |
+|-------------------|---------------|----------------|-------|
+| 🤟 **Ağ Atışı (Web)** | İşaret + Serçe Açık, Diğerleri Kapalı | Gerçek pencereyi geri teptirir | Sinematik Ağ + **THWIP!** |
+| ✊ **Yumruk (Fist)** | Tüm Parmaklar Kapalı | Pencereyi kavrar ve elinize bağlar | Gergin Halat + Çınlama |
+| 🖐️ **Açık Avuç (Palm)** | Tüm Parmaklar Açık | Tutulan pencereyi fırlatır / İptal eder | Momentum Fırlatma / İptal |
+| 🟣 **Gojo Fiske (Flick)** | İşaret + Orta Parmak Birlikte / Fiske | Aktif sekmeyi veya pencereyi kapatır | **Hollow Purple** + Sub-Bass Patlaması |
+| ☝️ **İşaret (Point)** | Yalnızca İşaret Parmağı Açık | Serbest Atanabilir Özel Kısayol | Özel Atama |
+
+---
+
+## 🇬🇧 English Documentation
+
+**Jagwey Web Shooter** is a zero-latency, transparent desktop overlay built with Tauri 2, MediaPipe Hands (Float16 SIMD Worker), and native Win32 window management APIs.
+
+### 🚀 Highlights
+- **Satoru Gojo's Hollow Purple (Kūshiki: Murasaki):** Use the two-finger flick gesture to obliterate active tabs (`Ctrl+W`) or windows (`WM_CLOSE`) with an authentic Blue (Convergence) + Red (Divergence) fusion animation and explosive sub-bass synth sound.
+- **Infinity Shield Protection:** Prevents accidental closes on IDEs (VS Code), docs (Google Docs/Sheets), or uncommitted work with a 2.4s cancelable hexagonal barrier.
+- **AI Workspace Assistant:** Connect local Ollama (`llama3.2`) or Google Gemini (`gemini-2.5-flash`) to intelligently auto-tile and organize open windows on your desktop.
+- **Dual-Hand Tracking:** Track both hands at up to 120 FPS with real-time exponential smoothing for jitter-free tracking.
+- **Ultra Lightweight:** Uses only **~42 MB RAM** (native Rust + WebView2, not bloated Electron). Camera turns off cleanly when idle or minimized.
+
+---
+
+## 🛠️ Kurulum & Derleme / Development & Build
+
+### Gereksinimler / Prerequisites
 - Windows 10 / 11 (64-bit)
-- WebView2 Runtime (Windows 10/11'de varsayılan olarak yüklüdür)
-- Node.js 18+ & npm
+- [Node.js 18+](https://nodejs.org)
 - [Rust & Cargo](https://rustup.rs)
-- Visual Studio C++ Build Tools (MSVC)
+- Visual Studio C++ Build Tools (MSVC x64)
 
-### Adımlar
+### Komutlar / Commands
 
 ```bash
 # 1. Bağımlılıkları yükle
 npm install
 
-# 2. Testleri çalıştır
+# 2. Birim testlerini çalıştır (10/10 test)
 npm test
 
-# 3. Geliştirme modunda çalıştır
+# 3. Geliştirici modunda çalıştır
 npm run desktop
+
+# 4. Üretim sürümünü derle (.exe & NSIS setup)
+npm run desktop:build
+```
+
+Derlenen kurulum dosyaları `dist-win/` dizininde üretilir:
+- `dist-win/jagwey-web-shooter.exe` (Standalone Taşınabilir Sürüm)
+- `dist-win/Jagwey Web Shooter_0.1.0_x64-setup.exe` (Windows Kurulum Paketi)
+
+---
+
+## ⚖️ Lisans & Teşekkür / License & Credits
+
+- Geliştirici: **Jagwey** (Osman)
+- Lisans: **MIT License**
+- Gesture & Web draw mechanics adapted from **SpiderSense** (© 2026 Rittika Das, MIT License).
+- Satoru Gojo & Hollow Purple concepts inspired by *Jujutsu Kaisen* (Gege Akutami / MAPPA).
+- Ses efektleri 100% prosedürel HTML5 Web Audio API ile sıfırdan sentezlenmiştir (harici MP3/WAV gerektirmez).
 
 # 4. Bağımsız Release Exe ve NSIS Kurucusunu derle
 npm run desktop:build

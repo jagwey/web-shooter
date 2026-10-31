@@ -8,6 +8,7 @@ test("default bindings cover shoot, grab, cancel, and overlay", () => {
   assert.equal(actionFor(bindings, "gesture", "web"), "shoot");
   assert.equal(actionFor(bindings, "gesture", "fist"), "grab");
   assert.equal(actionFor(bindings, "gesture", "palm"), "cancel");
+  assert.equal(actionFor(bindings, "gesture", "flick"), "hollow_purple");
   assert.equal(actionFor(bindings, "hotkey", "CommandOrControl+Alt+J"), "overlay_toggle");
   assert.equal(actionFor(bindings, "gesture", "point"), null);
 });

@@ -489,6 +489,26 @@ fn camera_holders() -> Result<Vec<win32::CameraHolder>, String> {
     win32::camera_holders()
 }
 
+#[tauri::command]
+fn close_window(hwnd: i64) -> Result<(), String> {
+    win32::close_window(hwnd)
+}
+
+#[tauri::command]
+fn close_active_tab() -> Result<(), String> {
+    win32::close_active_tab()
+}
+
+#[tauri::command]
+fn minimize_window(hwnd: i64) -> Result<(), String> {
+    win32::minimize_window(hwnd)
+}
+
+#[tauri::command]
+fn get_foreground_window() -> Result<Option<win32::DesktopWindow>, String> {
+    win32::get_foreground_window()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -521,7 +541,11 @@ pub fn run() {
             nudge_window,
             fling_window,
             cancel_fling,
-            camera_holders
+            camera_holders,
+            close_window,
+            close_active_tab,
+            minimize_window,
+            get_foreground_window
         ])
         .setup(|app| {
             build_tray(app)?;

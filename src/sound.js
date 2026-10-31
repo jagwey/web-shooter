@@ -165,3 +165,105 @@ export function playFling(speed = 30) {
   noise.start(now);
   noise.stop(now + duration + 0.01);
 }
+
+/** Satoru Gojo: Hollow Purple (Kūshiki: Murasaki) sound effect */
+export function playHollowPurple() {
+  if (!enabled) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+
+  // 1. Blue & Red Clash - Dissonant FM Swept Tone
+  const clashOsc = ctx.createOscillator();
+  const clashGain = ctx.createGain();
+  clashOsc.type = "sawtooth";
+  clashOsc.frequency.setValueAtTime(440, now);
+  clashOsc.frequency.exponentialRampToValueAtTime(1400, now + 0.15);
+  clashOsc.frequency.exponentialRampToValueAtTime(180, now + 0.35);
+
+  clashGain.gain.setValueAtTime(0.01, now);
+  clashGain.gain.linearRampToValueAtTime(0.3, now + 0.12);
+  clashGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+
+  clashOsc.connect(clashGain);
+  clashGain.connect(ctx.destination);
+  clashOsc.start(now);
+  clashOsc.stop(now + 0.42);
+
+  // 2. Sub-bass implosion & gravity shock
+  const subOsc = ctx.createOscillator();
+  const subGain = ctx.createGain();
+  subOsc.type = "sine";
+  subOsc.frequency.setValueAtTime(120, now + 0.12);
+  subOsc.frequency.exponentialRampToValueAtTime(35, now + 0.45);
+
+  subGain.gain.setValueAtTime(0.01, now);
+  subGain.gain.setValueAtTime(0.55, now + 0.14);
+  subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+
+  subOsc.connect(subGain);
+  subGain.connect(ctx.destination);
+  subOsc.start(now + 0.12);
+  subOsc.stop(now + 0.5);
+
+  // 3. Purple Blast Energy Wave (High-resonance noise sweep)
+  const duration = 0.4;
+  const bufferSize = Math.floor(ctx.sampleRate * duration);
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i += 1) {
+    data[i] = Math.random() * 2 - 1;
+  }
+
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.Q.value = 6.0;
+  filter.frequency.setValueAtTime(600, now + 0.1);
+  filter.frequency.exponentialRampToValueAtTime(3200, now + 0.2);
+  filter.frequency.exponentialRampToValueAtTime(250, now + 0.45);
+
+  const noiseGain = ctx.createGain();
+  noiseGain.gain.setValueAtTime(0.01, now + 0.1);
+  noiseGain.gain.linearRampToValueAtTime(0.4, now + 0.2);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+
+  noise.connect(filter);
+  filter.connect(noiseGain);
+  noiseGain.connect(ctx.destination);
+
+  noise.start(now + 0.1);
+  noise.stop(now + 0.5);
+}
+
+/** Infinity Shield / Barrier chime */
+export function playInfinityShield() {
+  if (!enabled) return;
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  const osc1 = ctx.createOscillator();
+  const osc2 = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc1.type = "sine";
+  osc2.type = "triangle";
+  osc1.frequency.setValueAtTime(528, now);
+  osc2.frequency.setValueAtTime(792, now);
+
+  gain.gain.setValueAtTime(0.25, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+  osc1.connect(gain);
+  osc2.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc1.start(now);
+  osc2.start(now);
+  osc1.stop(now + 0.38);
+  osc2.stop(now + 0.38);
+}
