@@ -66,3 +66,13 @@ test("short landmark lists are ignored", () => {
   assert.equal(isWebSign([{ x: 0, y: 0, z: 0 }]), false);
   assert.equal(classifyGesture(null), null);
 });
+
+test("a collapsed or half-open hand does not fire a web", () => {
+  const collapsed = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.5, z: 0 }));
+  assert.equal(classifyGesture(collapsed), null);
+  assert.equal(isWebSign(collapsed), false);
+  const pinched = makeHand(webSign);
+  pinched[20] = { ...pinched[8] };
+  pinched[18] = { ...pinched[6] };
+  assert.equal(isWebSign(pinched), false);
+});

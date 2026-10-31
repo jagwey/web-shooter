@@ -6,6 +6,10 @@
 **Teknoloji Yığını:** Tauri 2 (Rust) + Vite + MediaPipe Tasks Vision + Win32 API + Web Audio API  
 **Depo (GitHub):** [https://github.com/jagwey/web-shooter](https://github.com/jagwey/web-shooter)  
 
+## Son tur (2026-10-31)
+- İzleme: sekme client rect + `window_client` her vsync (tek uçuş). Taşıma/resize yapışkan ofset bırakmaz.
+- Örtü rAF vsync, boşta durur (FPS 0). Kamera 120 ister, olmazsa 60/30; tuval DPR ≤ 1.25. Gojo: iki el işaret+orta, biri ~1.5× önde, ~420 ms → vurulan pencereye WM_CLOSE.
+
 ---
 
 ## 🏛️ 1. Mimari Şema (Mermaid / Architecture)

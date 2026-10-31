@@ -2,9 +2,10 @@ import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
 import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, removeBinding, upsertBinding } from "./bindings.js";
 import { DEFAULT_MODELS, OPENAI_PRESETS, autoTileWorkspace, chatWithAi, fetchOllamaModels, optimizeSettingsWithAi, sendAiGreeting, testAiConnection } from "./ai.js";
 import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen } from "./desktop.js";
-import { classifyGesture, purpleFrontHand } from "./gestures.js";
+import { classifyGesture, hollowPurpleReady, isFingerExtended } from "./gestures.js";
 import { createHandFilter, filterLandmarks, predict } from "./filter.js";
 import { registerCustomLook } from "./effects.js";
+import { clientOf } from "./target.js";
 import { getLang, initI18n, setLang, t } from "./i18n.js";
 import { activeProfile, createProfile, loadProfiles, recordMs, recordShot, removeProfile, saveProfiles } from "./profiles.js";
 import {
@@ -80,7 +81,7 @@ const MISS_GRACE_MS = 300;
 // Pointer lead along hand velocity; roughly one camera frame of hidden latency.
 const PREDICT_MS = 12;
 // Hollow Purple: the two-hand stance must hold this long, and the webbed tab stays a target this long after release.
-const PURPLE_HOLD_MS = 250;
+const PURPLE_HOLD_MS = 420;
 const PURPLE_TARGET_MS = 3000;
 
 let profiles = null;
@@ -815,17 +816,31 @@ async function ensureLandmarker() {
 
 async function openStream(deviceId) {
   const targetFps = state.settings?.targetFps || 120;
-  const videoConstraints = {
-    width: { ideal: 640 },
-    height: { ideal: 480 },
-    frameRate: { ideal: targetFps >= 60 ? 60 : 30, max: 60 },
-  };
-  if (deviceId) {
-    videoConstraints.deviceId = { exact: deviceId };
-  } else {
-    videoConstraints.facingMode = "user";
+  // Ask for the display target, then step down. Cap the buffer: MediaPipe does not need 1080p,
+  // and a 1080p camera frame is the bulky part of the tracking footprint.
+  const rates = targetFps >= 120 ? [120, 60, 30] : targetFps >= 60 ? [60, 30] : [30];
+  const sizes = [
+    { width: { ideal: 640, max: 960 }, height: { ideal: 480, max: 540 } },
+    { width: { ideal: 640 }, height: { ideal: 480 } },
+  ];
+  let lastError;
+  for (const size of sizes) {
+    for (const fps of rates) {
+      const videoConstraints = {
+        ...size,
+        frameRate: { ideal: fps, max: fps },
+      };
+      if (deviceId) videoConstraints.deviceId = { exact: deviceId };
+      else videoConstraints.facingMode = "user";
+      try {
+        return await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
+      } catch (error) {
+        lastError = error;
+        if (error?.name !== "OverconstrainedError") throw error;
+      }
+    }
   }
-  return navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
+  throw lastError;
 }
 
 const VIRTUAL_CAMERA = /droidcam|obs|virtual|manycam|xsplit|snap camera|iriun|epoccam|camo/i;
@@ -1071,10 +1086,11 @@ function onHands(hands, detectMs) {
 // Fires once per stance, and only at a webbed tab (held by the back hand, or released moments ago).
 function checkPurpleStance(handCount) {
   const hands = state.hands.slice(0, handCount);
-  const front = handCount === 2 ? purpleFrontHand(hands.map((h) => h.landmarks), hands.map((h) => h.lastGesture)) : -1;
+  const front = handCount === 2 ? hollowPurpleReady(hands.map((h) => h.landmarks), hands.map((h) => h.lastGesture)) : -1;
   const now = performance.now();
-  // Dragging a grabbed window toward the camera is not a stance.
-  if (front < 0 || state.hands[front].grab) {
+  const grabbing = state.hands.some((h) => h.grab);
+  // Both hands must hold the Gojo sign, one closer to the lens. A grab is not the combo.
+  if (front < 0 || grabbing) {
     state.purpleSince = 0;
     state.purpleFired = false;
     return;
@@ -1083,15 +1099,13 @@ function checkPurpleStance(handCount) {
   if (state.purpleFired || now - state.purpleSince < PURPLE_HOLD_MS) return;
   state.purpleFired = true;
 
-  const back = state.hands[1 - front];
-  let webbed = back.grab ? { hwnd: back.grab.hwnd, title: state.lastHit } : null;
+  let webbed = null;
   for (const h of state.hands) {
-    if (!webbed && h.lastWebbed && now - h.lastWebbed.at < PURPLE_TARGET_MS) webbed = h.lastWebbed;
+    if (h.lastWebbed && now - h.lastWebbed.at < PURPLE_TARGET_MS) webbed = h.lastWebbed;
   }
-  if (!webbed) return;
   for (const h of state.hands) h.lastWebbed = null;
   cancelGrab(undefined, true);
-  triggerHollowPurple(screenPoint(state.hands[front].landmarks[9]), webbed);
+  triggerHollowPurple(screenPoint(state.hands[front].landmarks[9]), webbed, { closeWindow: true });
 }
 
 function drawCameraLandmarks(hands) {
@@ -1179,7 +1193,10 @@ function updateGestureHud(hands) {
     point: { icon: "👆", title: "HEDEFLEME (İşaret)" },
   };
 
-  const info = ICONS[gesture] || { icon: "👋", title: "El Algılandı" };
+  let info = ICONS[gesture] || { icon: "👋", title: "El Algılandı" };
+  if (hands.length >= 2 && hollowPurpleReady(hands, hands.map((hand) => classifyGesture(hand))) >= 0) {
+    info = { icon: "🟣", title: "HOLLOW PURPLE" };
+  }
   if (icon) icon.textContent = info.icon;
   if (name) name.textContent = info.title;
 
@@ -1195,12 +1212,13 @@ function updateFingerPills(landmarks) {
     return;
   }
 
+  const wrist = landmarks[0];
   const extended = [
-    Math.hypot(landmarks[4].x - landmarks[2].x, landmarks[4].y - landmarks[2].y) > 0.08,
-    landmarks[8].y < landmarks[6].y,
-    landmarks[12].y < landmarks[10].y,
-    landmarks[16].y < landmarks[14].y,
-    landmarks[20].y < landmarks[18].y,
+    isFingerExtended(landmarks[4], landmarks[2], wrist),
+    isFingerExtended(landmarks[8], landmarks[6], wrist),
+    isFingerExtended(landmarks[12], landmarks[10], wrist),
+    isFingerExtended(landmarks[16], landmarks[14], wrist),
+    isFingerExtended(landmarks[20], landmarks[18], wrist),
   ];
 
   pills.forEach((pill, idx) => {
@@ -1252,10 +1270,14 @@ function runActionForHand(handIndex, action, point, edge) {
     invoke("window_at", { x: point.sx, y: point.sy })
       .catch(() => null)
       .then((found) => {
-        const win = found && !found.unsupported && found.hwnd
-          ? { x: found.x, y: found.y, width: found.width, height: found.height }
-          : null;
+        const win = found && !found.unsupported && found.hwnd ? clientOf(found) : null;
         emitTo("overlay", "overlay-shot", { x: point.nx, y: point.ny, win });
+        if (win) {
+          emitTo("overlay", "overlay-target-window", {
+            id: handIndex,
+            window: { ...win, title: found.title, grabbed: false },
+          });
+        }
       });
     return;
   }
@@ -1285,18 +1307,25 @@ function runActionForHand(handIndex, action, point, edge) {
   if (action === "show_control") invoke("show_control_cmd").catch(() => {});
 }
 
-async function triggerHollowPurple(point, knownWin) {
+async function triggerHollowPurple(point, knownWin, opts = {}) {
   if (state.settings.hollowPurpleEnabled === false) return;
 
   emitTo("overlay", "overlay-purple", { x: point.nx, y: point.ny });
   playHollowPurple();
 
-  let targetWin = knownWin || (await invoke("window_at", { x: point.sx, y: point.sy }));
-  if (!targetWin || targetWin.unsupported || !targetWin.hwnd) {
+  let targetWin = knownWin || null;
+  if (!targetWin?.hwnd && point) {
+    targetWin = await invoke("window_at", { x: point.sx, y: point.sy });
+  }
+  // The combo closes the hit window only. No foreground fallback, so a miss does not close whatever is in front.
+  if (!opts.closeWindow && (!targetWin || targetWin.unsupported || !targetWin.hwnd)) {
     targetWin = await invoke("get_foreground_window");
   }
 
-  if (!targetWin || targetWin.unsupported || !targetWin.hwnd) return;
+  if (!targetWin || targetWin.unsupported || !targetWin.hwnd) {
+    if (opts.closeWindow) setMessage("shellBanner", "Mor at hedef pencere bulamadı.");
+    return;
+  }
 
   const sensitiveRegex =
     /github|gitlab|google docs|google sheets|sheets\.google|docs\.google|notion|figma|visual studio|code|vscode|jira|trello|bank|pay|checkout|save|unsaved|draft|taslak|kaydedilmedi/i;
@@ -1314,10 +1343,11 @@ async function triggerHollowPurple(point, knownWin) {
       `🛡️ Infinity Shield: "${targetWin.title}" korundu. İptal için elinizi açın.`
     );
 
+    const forceWindow = Boolean(opts.closeWindow);
     const timer = window.setTimeout(async () => {
       if (state.pendingCloses.has(targetWin.hwnd)) {
         state.pendingCloses.delete(targetWin.hwnd);
-        executeClose(targetWin);
+        executeClose(targetWin, { forceWindow });
       }
     }, 2400);
 
@@ -1325,11 +1355,12 @@ async function triggerHollowPurple(point, knownWin) {
     return;
   }
 
-  executeClose(targetWin);
+  executeClose(targetWin, { forceWindow: Boolean(opts.closeWindow) });
 }
 
-async function executeClose(win) {
-  const command = state.settings.closeMode === "window" ? "close_window" : "close_active_tab";
+async function executeClose(win, { forceWindow = false } = {}) {
+  const useWindow = forceWindow || state.settings.closeMode === "window";
+  const command = useWindow ? "close_window" : "close_active_tab";
   try {
     await invoke(command, { hwnd: win.hwnd });
   } catch (err) {
@@ -1348,6 +1379,7 @@ async function beginGrab(handIndex, point) {
     state.hands[handIndex].grabbing = false;
   }
   if (!found || found.unsupported || !found.hwnd) return;
+  const box = clientOf(found);
   state.hands[handIndex].grab = {
     hwnd: found.hwnd,
     winX: found.x,
@@ -1356,20 +1388,14 @@ async function beginGrab(handIndex, point) {
     height: found.height,
     startSx: point.sx,
     startSy: point.sy,
+    shown: box,
   };
   state.hands[handIndex].samples = [{ t: performance.now(), x: point.sx, y: point.sy }];
   state.lastHit = found.title;
-  sendTether(handIndex, point, found);
+  sendTether(handIndex, point, box || found);
   emitTo("overlay", "overlay-target-window", {
     id: handIndex,
-    window: {
-      x: found.x,
-      y: found.y,
-      width: found.width,
-      height: found.height,
-      title: found.title,
-      grabbed: true,
-    },
+    window: { ...(box || found), title: found.title, grabbed: true },
   });
   playGrab();
   render();
@@ -1381,33 +1407,45 @@ async function moveGrab(handIndex, point) {
     await beginGrab(handIndex, point);
     return;
   }
-  const x = Math.round(handState.grab.winX + (point.sx - handState.grab.startSx));
-  const y = Math.round(handState.grab.winY + (point.sy - handState.grab.startSy));
-  const moved = await invoke("move_window", { hwnd: handState.grab.hwnd, x, y });
-  handState.samples.push({ t: performance.now(), x: point.sx, y: point.sy });
-  if (handState.samples.length > 8) handState.samples.shift();
-  sendTether(handIndex, point, moved && moved.hwnd ? moved : { ...handState.grab, x, y });
-  emitTo("overlay", "overlay-target-window", {
-    id: handIndex,
-    window: {
-      x,
-      y,
-      width: handState.grab.width,
-      height: handState.grab.height,
-      title: state.lastHit,
-      grabbed: true,
-    },
-  });
+  // One move in flight. The next call applies the whole delta since the last real position.
+  if (handState.moving) return;
+  const grab = handState.grab;
+  handState.moving = true;
+  const x = Math.round(grab.winX + (point.sx - grab.startSx));
+  const y = Math.round(grab.winY + (point.sy - grab.startSy));
+  try {
+    const moved = await invoke("move_window", { hwnd: grab.hwnd, x, y });
+    if (handState.grab !== grab) return;
+    const live = moved && moved.hwnd ? moved : null;
+    const shown = clientOf(live) || grab.shown || { x, y, width: grab.width, height: grab.height, hwnd: grab.hwnd, title: state.lastHit };
+    if (live) {
+      grab.winX = live.x;
+      grab.winY = live.y;
+      grab.startSx = point.sx;
+      grab.startSy = point.sy;
+      grab.shown = shown;
+    }
+    handState.samples.push({ t: performance.now(), x: point.sx, y: point.sy });
+    if (handState.samples.length > 8) handState.samples.shift();
+    sendTether(handIndex, point, shown);
+    emitTo("overlay", "overlay-target-window", {
+      id: handIndex,
+      window: { ...shown, title: state.lastHit, grabbed: true },
+    });
+  } finally {
+    handState.moving = false;
+  }
 }
 
 function sendTether(handIndex, point, win) {
   const frame = state.overlay || { x: 0, y: 0, width: 1, height: 1 };
+  const box = clientOf(win) || win;
   emitTo("overlay", "overlay-tether", {
     id: handIndex,
     x0: point.nx,
     y0: point.ny,
-    x1: (win.x + win.width / 2 - frame.x) / frame.width,
-    y1: (win.y + win.height / 2 - frame.y) / frame.height,
+    x1: (box.x + box.width / 2 - frame.x) / frame.width,
+    y1: (box.y + box.height / 2 - frame.y) / frame.height,
   });
 }
 
@@ -1415,8 +1453,28 @@ async function releaseGrab(handIndex) {
   const handState = state.hands[handIndex];
   const grab = handState.grab;
   handState.grab = null;
+  handState.moving = false;
   emitTo("overlay", "overlay-clear", { id: handIndex });
-  emitTo("overlay", "overlay-target-window", { id: handIndex, clear: true });
+  // Keep the net on the window until the splash ends; the overlay drops it when the effect is gone.
+  if (grab?.hwnd) {
+    emitTo("overlay", "overlay-target-window", {
+      id: handIndex,
+      window: {
+        ...(grab.shown || {
+          x: grab.winX,
+          y: grab.winY,
+          width: grab.width,
+          height: grab.height,
+          hwnd: grab.hwnd,
+        }),
+        hwnd: grab.hwnd,
+        title: state.lastHit,
+        grabbed: false,
+      },
+    });
+  } else {
+    emitTo("overlay", "overlay-target-window", { id: handIndex, clear: true });
+  }
   if (!grab) return;
   handState.lastWebbed = { hwnd: grab.hwnd, title: state.lastHit, at: performance.now() };
 

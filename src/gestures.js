@@ -4,8 +4,9 @@
  * hand is rotated. Adapted from SpiderSense gesture checks (MIT, Rittika Das).
  */
 
-const EXTEND_RATIO = 1.12;
-const CLOSED_RATIO = 1.02;
+const EXTEND_RATIO = 1.2;
+const CLOSED_RATIO = 0.95;
+const MIN_SPAN = 0.08;
 
 const FINGERS = [
   { tip: 8, pip: 6 },
@@ -18,16 +19,41 @@ function span(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+/**
+ * How far the fingertip sits along the wrist→PIP bone, in PIP-lengths.
+ * MediaPipe Hands has no elbow; this bone is the orientation we actually have.
+ * A folded finger falls short even when the hand is rotated.
+ */
+export function boneReach(tip, pip, wrist) {
+  const ax = pip.x - wrist.x;
+  const ay = pip.y - wrist.y;
+  const pipLen2 = ax * ax + ay * ay;
+  if (pipLen2 < 1e-8) return 0;
+  const tx = tip.x - wrist.x;
+  const ty = tip.y - wrist.y;
+  return (tx * ax + ty * ay) / pipLen2;
+}
+
 export function isFingerExtended(tip, pip, wrist) {
-  const pipSpan = span(pip, wrist);
-  if (pipSpan === 0) return false;
-  return span(tip, wrist) > pipSpan * EXTEND_RATIO;
+  return boneReach(tip, pip, wrist) > EXTEND_RATIO;
 }
 
 export function isFingerClosed(tip, pip, wrist) {
-  const pipSpan = span(pip, wrist);
-  if (pipSpan === 0) return false;
-  return span(tip, wrist) <= pipSpan * CLOSED_RATIO;
+  return boneReach(tip, pip, wrist) <= CLOSED_RATIO;
+}
+
+/** Wrist → middle knuckle. Stand-in for the forearm, since the hand model stops at the wrist. */
+export function handAxis(points) {
+  const wrist = points[0];
+  const middle = points[9];
+  return { x: middle.x - wrist.x, y: middle.y - wrist.y };
+}
+
+function aheadOfPip(tip, pip, wrist, axis) {
+  const len = Math.hypot(axis.x, axis.y);
+  if (len < 1e-4) return false;
+  const project = (point) => ((point.x - wrist.x) * axis.x + (point.y - wrist.y) * axis.y) / len;
+  return project(tip) > project(pip) * EXTEND_RATIO;
 }
 
 export function countExtendedFingers(points) {
@@ -43,28 +69,34 @@ export function countExtendedFingers(points) {
 
 export function isWebSign(points) {
   if (!points || points.length < 21) return false;
+  if (handSpan(points) < MIN_SPAN) return false;
   const wrist = points[0];
-  const indexOpen = isFingerExtended(points[8], points[6], wrist);
+  const axis = handAxis(points);
+  const indexOpen = isFingerExtended(points[8], points[6], wrist) && aheadOfPip(points[8], points[6], wrist, axis);
   const middleClosed = isFingerClosed(points[12], points[10], wrist);
   const ringClosed = isFingerClosed(points[16], points[14], wrist);
-  const pinkyOpen = isFingerExtended(points[20], points[18], wrist);
-  return indexOpen && pinkyOpen && middleClosed && ringClosed;
+  const pinkyOpen = isFingerExtended(points[20], points[18], wrist) && aheadOfPip(points[20], points[18], wrist, axis);
+  if (!indexOpen || !pinkyOpen || !middleClosed || !ringClosed) return false;
+  // Index and pinky have to spread. A half-open point must not read as a web.
+  const palm = span(points[5], points[17]);
+  const tips = span(points[8], points[20]);
+  return tips > palm * 0.72;
 }
 
 export function isFist(points) {
-  if (!points || points.length < 21) return false;
+  if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
   const wrist = points[0];
   return FINGERS.every((finger) => isFingerClosed(points[finger.tip], points[finger.pip], wrist));
 }
 
 export function isOpenPalm(points) {
-  if (!points || points.length < 21) return false;
+  if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
   const wrist = points[0];
   return FINGERS.every((finger) => isFingerExtended(points[finger.tip], points[finger.pip], wrist));
 }
 
 export function isPoint(points) {
-  if (!points || points.length < 21) return false;
+  if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
   const wrist = points[0];
   return (
     isFingerExtended(points[8], points[6], wrist) &&
@@ -80,7 +112,7 @@ export function isPoint(points) {
  * Distinct from Web sign (which has middle closed & pinky open).
  */
 export function isGojoSign(points) {
-  if (!points || points.length < 21) return false;
+  if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
   const wrist = points[0];
   const indexOpen = isFingerExtended(points[8], points[6], wrist);
   const middleOpen = isFingerExtended(points[12], points[10], wrist);
@@ -96,8 +128,8 @@ export function handSpan(points) {
   return Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
 }
 
-// Front hand must look this much bigger than the back hand (thrust at the camera vs. held at the chest).
-export const PURPLE_SPAN_RATIO = 1.4;
+// Front hand must look this much bigger (thrust at the camera vs. held back).
+export const PURPLE_SPAN_RATIO = 1.45;
 
 /**
  * Gojo's Hollow Purple stance: two hands, one pushed toward the camera, the other pulled back.
@@ -110,6 +142,23 @@ export function purpleFrontHand(hands, gestures) {
   const ratio = Math.max(a, b) / (Math.min(a, b) || 1e-6);
   if (ratio < PURPLE_SPAN_RATIO) return -1;
   if (gestures[front] === "web") return -1;
+  return front;
+}
+
+/**
+ * Hollow Purple combo: both hands in the Gojo sign (index + middle out, ring + pinky in),
+ * one hand clearly closer to the camera. Easy to miss on purpose.
+ * Returns the front hand index, or -1.
+ */
+export function hollowPurpleReady(hands, gestures) {
+  if (!hands || hands.length < 2 || !gestures || gestures.length < 2) return -1;
+  if (gestures[0] !== "flick" || gestures[1] !== "flick") return -1;
+  if (handSpan(hands[0]) < MIN_SPAN || handSpan(hands[1]) < MIN_SPAN) return -1;
+  const a = handSpan(hands[0]);
+  const b = handSpan(hands[1]);
+  const front = a >= b ? 0 : 1;
+  const ratio = Math.max(a, b) / (Math.min(a, b) || 1e-6);
+  if (ratio < PURPLE_SPAN_RATIO) return -1;
   return front;
 }
 

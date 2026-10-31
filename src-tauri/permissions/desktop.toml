@@ -12,6 +12,7 @@ commands.allow = [
   "win32_status",
   "list_windows",
   "window_at",
+  "window_client",
   "move_window",
   "nudge_window",
   "fling_window",

@@ -463,6 +463,11 @@ fn window_at(x: i32, y: i32) -> Result<Option<win32::DesktopWindow>, String> {
 }
 
 #[tauri::command]
+fn window_client(hwnd: i64) -> Result<win32::DesktopWindow, String> {
+    win32::window_client(hwnd)
+}
+
+#[tauri::command]
 fn move_window(app: AppHandle, hwnd: i64, x: i32, y: i32) -> Result<win32::DesktopWindow, String> {
     app.state::<Shared>().fling_gen.fetch_add(1, Ordering::Relaxed);
     win32::move_window(hwnd, x, y)
@@ -549,6 +554,7 @@ pub fn run() {
             win32_status,
             list_windows,
             window_at,
+            window_client,
             move_window,
             nudge_window,
             fling_window,

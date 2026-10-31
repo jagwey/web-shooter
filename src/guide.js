@@ -26,12 +26,14 @@ Görünmüyorsa: "Özellikler" kartında "Ağ efektleri" açık mı, overlay aç
   },
   {
     keys: ["sekme kapat", "kapat", "gojo", "purple", "mor", "flick", "close tab", "hollow"],
-    text: `🟣 Gojo "Hollow Purple" ile kapatma:
+    text: `🟣 Gojo "Hollow Purple" ile pencere kapatma (bilgisayarı KAPATMAZ):
 1. "Gojo" kartında "Mor kapatma" açık olsun.
-2. Önce sekmeyi ağla (🕸️). Sonra iki el: bir eli kameraya doğru ileri uzat, diğerini göğsüne çek, ~¼ sn tut. Ağlı hedef yoksa mor atılmaz.
-3. Kapatma modu çiplerinden seç: sekme kapat (Ctrl+W) veya pencere kapat.
-"Test et" butonu efekti gerçek kapatma yapmadan dener.
-Yanlışlıkla kapatmayı "Infinity Shield" engeller (bkz. "kalkan nedir").`,
+2. İki eli de Gojo işaretine al: işaret + orta parmak açık, yüzük + serçe kapalı.
+3. Bir eli kameraya yaklaştır (ekranda diğerinden belirgin büyük, ~1.5 kat), diğerini geride tut.
+4. Duruşu ~0.4 saniye bozmadan tut. Tek atış. Yumrukla pencere tutarken mor atılmaz.
+5. Kapanan hedef: son 3 saniyede ağladığın pencere; o yoksa öndeki elin gösterdiği pencere. Windows'a WM_CLOSE gider (sekme Ctrl+W değil).
+6. Hedef yoksa hiçbir şey kapanmaz. "Test et" yalnız efekti dener.
+Yanlışlıkla kapatmayı "Infinity Shield" engeller (bkz. "kalkan nedir"). İptal: açık avuç.`,
   },
   {
     keys: ["kalkan", "shield", "infinity", "guvenlik", "yanlislikla", "safety"],
@@ -44,7 +46,7 @@ Yanlışlıkla kapatmayı "Infinity Shield" engeller (bkz. "kalkan nedir").`,
 • ☝️ Yalnız işaret → nişan al (hedef pencere seçilir)
 • ✊ Yumruk → pencereyi tut
 • 🖐️ Açık avuç → bırak / fırlat (kenara yapışır)
-• 🟣 İşaret + orta fiske → sekme/pencere kapat (Gojo)
+• 🟣 İki el Gojo işareti (işaret+orta), biri önde ~0.4 sn → vurulan pencereyi kapat (Hollow Purple)
 Her jest ~0.1 sn sabit tutulunca algılanır, aynı aksiyon 0.6 sn bekleme ile tekrar eder.
 "Ayarlar & Güç > Komutlar" kısmından aksiyonlara kendi jest veya klavye kısayolunu bağlayabilirsin.`,
   },

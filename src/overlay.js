@@ -1,5 +1,6 @@
 import { createWebFx, registerCustomLook } from "./effects.js";
-import { emitTo, listen } from "./desktop.js";
+import { emitTo, invoke, listen } from "./desktop.js";
+import { canvasRect, clientOf } from "./target.js";
 
 const canvas = document.getElementById("overlayCanvas");
 const ctx = canvas.getContext("2d", { alpha: true, desynchronized: true });
@@ -23,7 +24,10 @@ let preset = "sakura";
 let running = false;
 let frames = 0;
 let fpsStamp = performance.now();
-const dprCap = { full: 1.5, low: 1 };
+let trackFlight = null;
+let trackEpoch = 0;
+// 1.25 keeps the overlay texture smaller than 1.5 so a 120Hz vsync can still draw the net.
+const dprCap = { full: 1.25, low: 1 };
 
 function fit() {
   const cap = preset === "low" || preset === "light" ? dprCap.low : dprCap.full;
@@ -41,6 +45,12 @@ function kick() {
 }
 
 function loop(now) {
+  // Drop a finished shot's window once the splash is gone. A held window stays until release.
+  if (!fx.pin()) {
+    for (const [id, win] of targetWindows) {
+      if (!win.grabbed) targetWindows.delete(id);
+    }
+  }
   const busy = fx.hasWork() || tethers.size > 0 || targetWindows.size > 0;
   if (!busy) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -49,6 +59,7 @@ function loop(now) {
     return;
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  pumpTracks();
 
   // Draw target window focus frames (Clean bounding boxes with contrast corner reticles)
   if (showFocusFrame || focusFrameOnly) {
@@ -91,11 +102,63 @@ function getThemeColor() {
 }
 
 function windowRect(win) {
-  if (!frame) return null;
-  const scaleX = canvas.width / (frame.width || window.innerWidth);
-  const scaleY = canvas.height / (frame.height || window.innerHeight);
-  const r = { x: (win.x - frame.x) * scaleX, y: (win.y - frame.y) * scaleY, w: win.width * scaleX, h: win.height * scaleY };
-  return r.w > 0 && r.h > 0 ? r : null;
+  return canvasRect(win, frame, canvas.width, canvas.height);
+}
+
+function rememberWindow(id, win, grabbed) {
+  const box = clientOf(win);
+  if (!box) return;
+  const prev = targetWindows.get(id);
+  targetWindows.set(id, {
+    ...box,
+    title: win.title || prev?.title || "",
+    grabbed: grabbed ?? prev?.grabbed ?? false,
+    born: prev?.born ?? performance.now(),
+  });
+  const rect = windowRect(box);
+  if (rect) fx.follow(rect, box.hwnd);
+  kick();
+}
+
+// One in-flight bounds read per frame. A local move bumps trackEpoch so a stale sample cannot stick.
+function pumpTracks() {
+  if (trackFlight) return;
+  const pending = [];
+  for (const [id, win] of targetWindows) {
+    if (win.hwnd) pending.push([id, win.hwnd]);
+  }
+  if (!pending.length) return;
+  const epoch = trackEpoch;
+  trackFlight = Promise.all(
+    pending.map(async ([id, hwnd]) => {
+      try {
+        const fresh = await invoke("window_client", { hwnd });
+        return [id, fresh, null];
+      } catch (err) {
+        return [id, null, err];
+      }
+    }),
+  )
+    .then((rows) => {
+      if (epoch !== trackEpoch) return;
+      for (const [id, fresh, err] of rows) {
+        const prev = targetWindows.get(id);
+        if (!prev) continue;
+        if (err) {
+          if (String(err).includes("gone")) targetWindows.delete(id);
+          continue;
+        }
+        if (!fresh || fresh.unsupported) continue;
+        if (!fresh.hwnd) {
+          targetWindows.delete(id);
+          continue;
+        }
+        rememberWindow(id, { ...fresh, title: fresh.title || prev.title }, prev.grabbed);
+      }
+    })
+    .finally(() => {
+      trackFlight = null;
+    });
 }
 
 // Dim everything except the caught windows so the target pops.
@@ -132,11 +195,11 @@ function drawNet(win, { x, y, w, h }, now) {
   ctx.rect(x, y, w, h);
   ctx.clip();
   ctx.lineCap = "round";
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.55)";
-  ctx.lineWidth = isLow ? 2.5 : 3.5;
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.6)";
+  ctx.lineWidth = isLow ? 3.2 : 5.5;
   tracePass();
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
-  ctx.lineWidth = isLow ? 1 : 1.4;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.94)";
+  ctx.lineWidth = isLow ? 1.4 : 2.35;
   tracePass();
   ctx.restore();
 
@@ -159,8 +222,9 @@ function drawNet(win, { x, y, w, h }, now) {
         }
         const [qx, qy] = ends[(i - 1) % spokes];
         // Silk sags toward the hub between two spokes.
-        const mx = cx + ((qx + ex) / 2) * f * 0.88;
-        const my = cy + ((qy + ey) / 2) * f * 0.88;
+        const droop = f * Math.min(w, h) * 0.04;
+        const mx = cx + ((qx + ex) / 2) * f * 0.78;
+        const my = cy + ((qy + ey) / 2) * f * 0.78 + droop;
         ctx.quadraticCurveTo(mx, my, px, py);
       }
     }
@@ -259,11 +323,11 @@ function drawTether(line) {
   ctx.beginPath();
   ctx.moveTo(x0, y0);
   ctx.quadraticCurveTo(cx, cy, x1, y1);
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.6)";
-  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.65)";
+  ctx.lineWidth = 6;
   ctx.stroke();
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.96)";
+  ctx.lineWidth = 2.4;
   ctx.stroke();
 
   ctx.fillStyle = "#ffffff";
@@ -277,13 +341,9 @@ function drawTether(line) {
 function shootNormalized(nx, ny, win) {
   fit();
   fx.setPreset(preset);
-  let rect = null;
-  if (win && frame?.width) {
-    const sx = canvas.width / frame.width;
-    const sy = canvas.height / frame.height;
-    rect = { x: (win.x - frame.x) * sx, y: (win.y - frame.y) * sy, w: win.width * sx, h: win.height * sy };
-  }
-  fx.shoot(nx * canvas.width, ny * canvas.height, rect);
+  const box = win ? clientOf(win) : null;
+  const rect = box ? windowRect(box) : null;
+  fx.shoot(nx * canvas.width, ny * canvas.height, rect, box?.hwnd ?? null);
   kick();
 }
 
@@ -332,13 +392,12 @@ listen("overlay-clear", (event) => {
 
 listen("overlay-target-window", (event) => {
   const { id, window: win, clear } = event.payload;
+  trackEpoch += 1;
   if (clear) {
     if (id !== undefined) targetWindows.delete(id);
     else targetWindows.clear();
   } else if (win) {
-    const key = id ?? 0;
-    targetWindows.set(key, { ...win, born: targetWindows.get(key)?.born ?? performance.now() });
-    kick();
+    rememberWindow(id ?? 0, win, win.grabbed);
   }
 });
 

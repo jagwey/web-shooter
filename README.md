@@ -11,7 +11,7 @@
 ![MediaPipe](https://img.shields.io/badge/MediaPipe_Hands-120_FPS_Float16-orange?style=for-the-badge)
 ![Filter](https://img.shields.io/badge/Filter-1_Euro_%2B_12ms_Prediction-cyan?style=for-the-badge)
 ![Win32](https://img.shields.io/badge/Win32_Native-Z--Order_Fling-purple?style=for-the-badge)
-![Tests](https://img.shields.io/badge/Tests-18%2F18_Passing-brightgreen?style=for-the-badge)
+![Tests](https://img.shields.io/badge/Tests-25%2F25_Passing-brightgreen?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
 **Windows Masaüstü Örümcek Ağı ve Jujutsu Kaisen "Hollow Purple" Katmanı**  
@@ -97,10 +97,10 @@ flowchart TD
     end
 
     subgraph GojoFlow["🟣 Satoru Gojo - Kūshiki Murasaki Modu"]
-        Flick["🤌 Dinamik Fiske - Başparmak Açma"]
+        Flick["🟣 İki el Gojo işareti, biri önde, ~0.4s"]
         Singularity["Mavi + Kırmızı Enerji Spiral Çarpışması"]
         Check{"Pencere Güvenli mi?"}
-        Close["🟣 Sekme Ctrl+W veya Pencere Kapandı"]
+        Close["🟣 WM_CLOSE — vurulan pencere (shutdown değil)"]
         Shield["🛡️ Infinity Shield - 2.4s Koruma Bariyeri"]
         Cancel["🖐️ Açık Avuç - Kapatmayı İptal Et"]
 
@@ -166,17 +166,23 @@ flowchart TD
 - **Canlı Hareket Rozeti:** `🕸️ AĞ ATIŞI`, `✊ PENCERE TUTMA`, `🤌 GOJO MORU`, `🖐️ SERBEST` durumları doğrudan kamera üstünde yazılır.
 - **Ayna Modu (🪞):** Fiziksel el hareketiniz ekrandaki yönle birebir doğal eşleşir.
 
-### 4. 🟣 Satoru Gojo: Kūshiki "Murasaki" & Infinity Shield
-- **Dinamik Fiske Hareketi:** Başparmağınız ile işaret parmağınızı kıstırıp hızla açtığınızda Gojo Satoru'nun ikonik Kūshiki "Murasaki" tekniği patlar!
-- **Mavi + Kırmızı Füzyonu:** Mavi (Lapse) ve Kırmızı (Reversal) spiral küreler elinizin etrafında dönerek çarpışır ve mor enerji dalgası fırlatır.
-- **Akıllı Sekme / Pencere Kapatma:** Hedeflenen pencereye Win32 üzerinden odaklanılır ve güvenli `SendInput` ile aktif sekme (`Ctrl+W`) veya pencere (`WM_CLOSE`) kapatılır.
-- **🛡️ Infinity Shield Koruma Bariyeri:** VS Code, Word, Google Docs gibi kritik pencerelerde kazara kapanmayı önlemek için altın-mavi altıgen bariyer açılır; 2.4 saniye içinde açık avuç yapılarak iptal edilebilir.
+### 4. 🟣 Satoru Gojo: Hollow Purple (pencere kapat, shutdown değil)
+Kasıtlı combo — tek el veya kısa bir jest yetmez:
 
-### 5. 👤 Yerel Kullanıcı Profilleri & Skor Tablosu (`src/profiles.js`)
+1. İki eli de **Gojo işaretine** al: işaret + orta açık, yüzük + serçe kapalı.
+2. Bir eli kameraya yaklaştır (diğerinden yaklaşık **1.5 kat** büyük görünsün).
+3. Duruşu **~0.4 saniye** bozma. Yumrukla pencere tutarken ateşlenmez. Duruş başına bir kez.
+4. Kapanan hedef: son 3 saniyede **ağın vurduğu pencere**; o yoksa öndeki elin gösterdiği pencere. Windows'a `WM_CLOSE` gider. Hedef yoksa hiçbir şey kapanmaz.
+5. Açık avuç, Infinity Shield süresinde kapatmayı iptal eder. VS Code / doküman başlıkları kalkan yer.
+
+### 5. 🪟 Sekme client alanı
+Ağ, tarayıcıda sekmenin sayfa yüzeyine (`Chrome_RenderWidgetHostHWND` / Firefox compositor) yapışır; başlık çubuğu ve araç çubuğu dışarıda kalır. Pencere taşınınca veya boyutu değişince örtü bir sonraki vsync'te yeni client dikdörtgenini okur — eski konuma ofset birikmez. Tam ekran ↔ pencereli geçiş aynı yol.
+
+### 6. 👤 Yerel Kullanıcı Profilleri & Skor Tablosu (`src/profiles.js`)
 - Kişisel profil kartları: Kendi adınızla profil oluşturup ayarlarınızı snapshot olarak kaydedebilirsiniz.
 - Atış istatistikleri ve en iyi tepki süresi (ms) ölçülerek yerel skor tablosunda saklanır (`localStorage`).
 
-### 6. 🤖 Yapay Zeka Danışmanlığı & Çevrimdışı Rehber
+### 7. 🤖 Yapay Zeka Danışmanlığı & Çevrimdışı Rehber
 - **Model Danışmanı (`src/modelAdvisor.js`):** Bilgisayarınızın GPU, VRAM ve RAM kapasitesini sorgulayarak en verimli yerel Ollama modelini (`llama3.2:1b`, `llama3.2:3b`, `mistral`, `qwen2.5`) önerir.
 - **Çevrimdışı Bilgi Bankası (`src/guide.js`):** Uygulama hakkındaki tüm soruları yapay zekaya veya internete ihtiyaç duymadan anında yanıtlar.
 - **Geniş Sağlayıcı Desteği:** Google Gemini API (`gemini-2.5-flash`, `gemini-3.5-flash-lite`), Yerel Ollama, Groq, OpenRouter, Pollinations ve LM Studio.
@@ -191,8 +197,8 @@ flowchart TD
 | 🕸️ **Ağı Tutma (Hold)** | Ağ Pozunu Koru | Sekmeyi ele bağlar, monitörler arası taşır | Gergin İpler + Dinamik Takip |
 | ✊ **Yumruk (Fist)** | Tüm Parmaklar Kapalı | Pencereyi kavrar ve serbestçe hareket ettirir | Çelik Halat + Gerilim Sesi |
 | 🖐️ **Açık Avuç (Palm)** | Tüm Parmaklar Açık | Tutulan pencereyi fırlatır / Kapatmayı iptal eder | Momentum Fırlatma / İptal Sesi |
-| 🤌 **Gojo Fiske (Flick)** | Başparmak Kıstır → Hızla Aç | Aktif sekmeyi (`Ctrl+W`) veya pencereyi kapatır | **Hollow Purple** + Sub-Bass Patlaması |
-| 🤺 **Spider Stance** | Bir El Önde Büyük, Bir El Arkada Küçük | İki el derinlik perspektifi modu | Çift El Senkronizasyonu |
+| 🤌 **Gojo işareti** | İşaret + Orta açık, yüzük + serçe kapalı | Tek başına kapatmaz | Mavi/kırmızı kıvılcım hazırlığı |
+| 🟣 **Hollow Purple** | **İki el** aynı işaret, biri kameraya ~1.5× yakın, **~0.4 sn** | Vurulan pencereye `WM_CLOSE` (shutdown değil) | **Hollow Purple** + Sub-Bass |
 
 ---
 
@@ -202,7 +208,7 @@ flowchart TD
 |---|---|---|
 | **Bellek Tüketimi (RAM)** | ~450 MB – 850 MB | **~42 MB – 65 MB** (Rust + WebView2) |
 | **Kamera & Takip Gecikmesi** | ~80 ms – 140 ms | **~12 ms – 24 ms** (RVFC + 1 Euro Filtresi) |
-| **Kare Hızı (FPS)** | 30 – 60 FPS | **60 FPS / 120 FPS Pürüzsüz Mod** |
+| **Kare Hızı (FPS)** | 30 – 60 FPS | **Vsync (panel 120 Hz ise 120). Boşta döngü durur.** |
 | **İşlem Başlatma Çakışması** | Çift tıklamada bellek sızıntısı | **Tek Süreç Kilidi (Single Instance)** |
 | **Pencere Çizim Katmanı** | Opak veya donan donuk pencereler | **100% Saydam Click-Through (`WS_EX_TRANSPARENT`)** |
 | **Birim Testleri** | Sınırlı | **18 / 18 Başarılı Test** |
@@ -216,7 +222,7 @@ flowchart TD
 ### 🚀 Highlights
 - **1 Euro Filter & 12ms Prediction (`src/filter.js`):** Adaptive jitter damping during rest, zero latency during fast gestures, and a 12ms predictive lead for snapping to targets.
 - **Realistic Spider-Man Web Simulation:** Procedurally generated radial spokes with gravity-curved droop rings (260ms weave animation, dual black/white contrast outlines, and background spotlight isolation).
-- **Satoru Gojo's Hollow Purple (Kūshiki: Murasaki):** Dynamic thumb-flick gesture trigger with Blue + Red spiral energy fusion, devastating sub-bass synth acoustics, and safe tab/window closing.
+- **Satoru Gojo's Hollow Purple:** Both hands in the Gojo sign (index + middle), one clearly closer to the camera, held ~0.4s. Sends `WM_CLOSE` to the webbed or aimed window. It does not shut the PC down. Palm cancels during Infinity Shield.
 - **Infinity Shield Protection:** Prevents accidental closes on IDEs (VS Code), documents, and terminals with a 2.4s cancelable hexagonal barrier.
 - **Local User Profiles (`src/profiles.js`):** Create named profiles, store settings snapshots, track reaction times, and log top speeds.
 - **AI Hardware Advisor & Offline Knowledge Base:** Automatically detects machine specs to recommend ideal Ollama models, backed by an offline chatbot knowledge base.
@@ -238,7 +244,8 @@ flowchart TD
 # 1. Bağımlılıkları yükle
 npm install
 
-# 2. 18 birim testini çalıştır
+# 2. Birim testleri (25)
+
 npm test
 
 # 3. Geliştirici modunda çalıştır
