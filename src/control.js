@@ -1,8 +1,8 @@
-import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
+import { FilesetResolver, HandLandmarker, PoseLandmarker } from "@mediapipe/tasks-vision";
 import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, migrateBindings, removeBinding, upsertBinding } from "./bindings.js";
 import { DEFAULT_MODELS, OPENAI_PRESETS, autoTileWorkspace, chatWithAi, fetchOllamaModels, optimizeSettingsWithAi, sendAiGreeting, testAiConnection } from "./ai.js";
 import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen } from "./desktop.js";
-import { classifyGesture, hollowPurpleReady, isFingerExtended } from "./gestures.js";
+import { classifyGesture, hollowPurpleReady, isFingerExtended, wristDepths } from "./gestures.js";
 import { createHandFilter, filterLandmarks, predict } from "./filter.js";
 import { registerCustomLook } from "./effects.js";
 import { clientOf } from "./target.js";
@@ -229,6 +229,15 @@ function wireChrome() {
   if (dualHandsToggle) {
     dualHandsToggle.addEventListener("click", () => {
       state.settings.dualHands = !state.settings.dualHands;
+      persist();
+      render();
+    });
+  }
+
+  const bodyTrackingToggle = document.getElementById("bodyTrackingToggle");
+  if (bodyTrackingToggle) {
+    bodyTrackingToggle.addEventListener("click", () => {
+      state.settings.bodyTracking = !state.settings.bodyTracking;
       persist();
       render();
     });
@@ -586,11 +595,15 @@ async function boot() {
   listen("monitors-changed", (event) => {
     state.monitors = event.payload.monitors || [];
     if (event.payload.fallback) setMessage("monitorBanner", t("monitorGone"));
-    if (event.payload.frame) state.overlay = { ...state.overlay, ...event.payload.frame };
+    if (event.payload.frame) {
+      state.overlay = { ...state.overlay, ...event.payload.frame };
+      emitTo("overlay", "overlay-frame", state.overlay);
+    }
     render();
   });
   listen("overlay-visibility", (event) => {
     state.overlay = { ...(state.overlay || {}), visible: event.payload.visible, ...event.payload.frame };
+    if (event.payload.frame) emitTo("overlay", "overlay-frame", state.overlay);
     if (event.payload.visible && state.cameraWanted) startCamera();
     considerCold();
     render();
@@ -647,6 +660,7 @@ function fallbackSettings() {
     showWebs: true,
     showFocusFrame: true,
     dualHands: true,
+    bodyTracking: false,
     customFx: null,
     theme: "sakura",
   };
@@ -742,6 +756,38 @@ async function persist() {
 
 let landmarker = null;
 let landmarkerLoading = false;
+
+// Optional body tracking (settings.bodyTracking): pose lite model, used only for arm depth.
+let poseLandmarker = null;
+let poseLoading = false;
+const POSE_GAP_MS = 80;
+const POSE_FRESH_MS = 300;
+
+async function ensurePose() {
+  if (poseLandmarker || poseLoading) return;
+  poseLoading = true;
+  // shortcut: CDN only (no bundled pose model), offline means span-ratio fallback; bundle the .task if offline use matters.
+  const wasm = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21/wasm";
+  const model = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+  try {
+    const vision = await FilesetResolver.forVisionTasks(wasm);
+    for (const delegate of ["GPU", "CPU"]) {
+      try {
+        poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: model, delegate },
+          runningMode: "VIDEO",
+          numPoses: 1,
+        });
+        break;
+      } catch (err) {
+        console.warn(`[MediaPipe] Pose ${delegate} failed`, err);
+      }
+    }
+  } catch (err) {
+    console.warn("[MediaPipe] Pose load failed", err);
+  }
+  poseLoading = false;
+}
 
 async function ensureLandmarker() {
   if (landmarker) return landmarker;
@@ -999,6 +1045,13 @@ async function detectTick() {
     const detectMs = performance.now() - now;
 
     const hands = result.landmarks || [];
+    if (state.settings?.bodyTracking) {
+      if (!poseLandmarker) ensurePose();
+      else if (now - (state.pose?.at || 0) >= POSE_GAP_MS) {
+        const pose = poseLandmarker.detectForVideo(video, now + 1).landmarks?.[0];
+        state.pose = pose ? { landmarks: pose, at: now } : state.pose;
+      }
+    }
     state.inFlight = false;
     // onHands schedules the next tick via nextGap().
     onHands(hands, detectMs);
@@ -1096,8 +1149,10 @@ function onHands(hands, detectMs) {
 // Fires once per stance, and only at a webbed tab (held by the back hand, or released moments ago).
 function checkPurpleStance(handCount) {
   const hands = state.hands.slice(0, handCount);
-  const front = handCount === 2 ? hollowPurpleReady(hands.map((h) => h.landmarks), hands.map((h) => h.lastGesture)) : -1;
   const now = performance.now();
+  const points = hands.map((h) => h.landmarks);
+  const pose = state.settings?.bodyTracking && now - (state.pose?.at || 0) < POSE_FRESH_MS ? state.pose.landmarks : null;
+  const front = handCount === 2 ? hollowPurpleReady(points, hands.map((h) => h.lastGesture), wristDepths(points, pose)) : -1;
   const grabbing = state.hands.some((h) => h.grab);
   // Both hands must hold the Gojo sign, one closer to the lens. A grab is not the combo.
   if (front < 0 || grabbing) {
@@ -1718,6 +1773,10 @@ function render() {
   const dualHandsToggle = document.getElementById("dualHandsToggle");
   if (dualHandsToggle) {
     dualHandsToggle.setAttribute("aria-pressed", String(state.settings.dualHands !== false));
+  }
+  const bodyTrackingToggle = document.getElementById("bodyTrackingToggle");
+  if (bodyTrackingToggle) {
+    bodyTrackingToggle.setAttribute("aria-pressed", String(!!state.settings.bodyTracking));
   }
 
   if (state._syncCustomFxUI) state._syncCustomFxUI();

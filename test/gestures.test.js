@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyGesture, countExtendedFingers, isFlickPose, isWebSign } from "../src/gestures.js";
+import { classifyGesture, countExtendedFingers, isFlickPose, isWebSign, jointAngle } from "../src/gestures.js";
 
 function makeHand({ index, middle, ring, pinky }) {
   const points = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.82, z: 0 }));
@@ -60,6 +60,15 @@ test("open palm, fist, and point stay distinct", () => {
   assert.equal(classifyGesture(makeHand({ index: true, middle: false, ring: false, pinky: false })), "point");
   assert.equal(classifyGesture(makeHand({ index: true, middle: true, ring: false, pinky: false })), "gojo");
   assert.equal(isWebSign(makeHand({ index: true, middle: true, ring: true, pinky: true })), false);
+});
+
+test("half-bent finger is neither extended nor closed", () => {
+  // Index tip pushed sideways at the PIP: still far from the wrist, but the joint bends ~90°.
+  const hand = makeHand({ index: true, middle: true, ring: true, pinky: true });
+  hand[7] = { x: 0.3, y: 0.55, z: 0 };
+  hand[8] = { x: 0.2, y: 0.55, z: 0 };
+  assert.ok(jointAngle(hand[5], hand[6], hand[8]) < 100);
+  assert.equal(classifyGesture(hand), null);
 });
 
 test("short landmark lists are ignored", () => {

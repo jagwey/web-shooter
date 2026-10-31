@@ -15,6 +15,11 @@ const FINGERS = [
   { tip: 20, pip: 18 },
 ];
 
+// PIP joint bend (MCP-PIP-TIP angle): a straight finger is ~180°, a curled one well under 120°.
+// A half-bent finger passes neither check, so a loose hand reads as no gesture instead of a wrong one.
+const EXTEND_ANGLE = 150;
+const CLOSED_ANGLE = 135;
+
 function span(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
@@ -34,11 +39,13 @@ export function boneReach(tip, pip, wrist) {
   return (tx * ax + ty * ay) / pipLen2;
 }
 
-export function isFingerExtended(tip, pip, wrist) {
+export function isFingerExtended(tip, pip, wrist, mcp) {
+  if (mcp && jointAngle(mcp, pip, tip) < EXTEND_ANGLE) return false;
   return boneReach(tip, pip, wrist) > EXTEND_RATIO;
 }
 
-export function isFingerClosed(tip, pip, wrist) {
+export function isFingerClosed(tip, pip, wrist, mcp) {
+  if (mcp && jointAngle(mcp, pip, tip) > CLOSED_ANGLE) return false;
   return boneReach(tip, pip, wrist) <= CLOSED_RATIO;
 }
 
@@ -56,11 +63,20 @@ function aheadOfPip(tip, pip, wrist, axis) {
   return project(tip) > project(pip) * EXTEND_RATIO;
 }
 
+export function jointAngle(a, b, c) {
+  const u = [a.x - b.x, a.y - b.y, (a.z || 0) - (b.z || 0)];
+  const v = [c.x - b.x, c.y - b.y, (c.z || 0) - (b.z || 0)];
+  const len = Math.hypot(...u) * Math.hypot(...v);
+  if (len === 0) return 0;
+  const cos = (u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / len;
+  return (Math.acos(Math.max(-1, Math.min(1, cos))) * 180) / Math.PI;
+}
+
 export function countExtendedFingers(points) {
   const wrist = points[0];
   let count = 0;
   for (const finger of FINGERS) {
-    if (isFingerExtended(points[finger.tip], points[finger.pip], wrist)) {
+    if (isFingerExtended(points[finger.tip], points[finger.pip], wrist, points[finger.pip - 1])) {
       count += 1;
     }
   }
@@ -72,10 +88,10 @@ export function isWebSign(points) {
   if (handSpan(points) < MIN_SPAN) return false;
   const wrist = points[0];
   const axis = handAxis(points);
-  const indexOpen = isFingerExtended(points[8], points[6], wrist) && aheadOfPip(points[8], points[6], wrist, axis);
-  const middleClosed = isFingerClosed(points[12], points[10], wrist);
-  const ringClosed = isFingerClosed(points[16], points[14], wrist);
-  const pinkyOpen = isFingerExtended(points[20], points[18], wrist) && aheadOfPip(points[20], points[18], wrist, axis);
+  const indexOpen = isFingerExtended(points[8], points[6], wrist, points[5]) && aheadOfPip(points[8], points[6], wrist, axis);
+  const middleClosed = isFingerClosed(points[12], points[10], wrist, points[9]);
+  const ringClosed = isFingerClosed(points[16], points[14], wrist, points[13]);
+  const pinkyOpen = isFingerExtended(points[20], points[18], wrist, points[17]) && aheadOfPip(points[20], points[18], wrist, axis);
   if (!indexOpen || !pinkyOpen || !middleClosed || !ringClosed) return false;
   // Index and pinky have to spread. A half-open point must not read as a web.
   const palm = span(points[5], points[17]);
@@ -86,23 +102,23 @@ export function isWebSign(points) {
 export function isFist(points) {
   if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
   const wrist = points[0];
-  return FINGERS.every((finger) => isFingerClosed(points[finger.tip], points[finger.pip], wrist));
+  return FINGERS.every((finger) => isFingerClosed(points[finger.tip], points[finger.pip], wrist, points[finger.pip - 1]));
 }
 
 export function isOpenPalm(points) {
   if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
   const wrist = points[0];
-  return FINGERS.every((finger) => isFingerExtended(points[finger.tip], points[finger.pip], wrist));
+  return FINGERS.every((finger) => isFingerExtended(points[finger.tip], points[finger.pip], wrist, points[finger.pip - 1]));
 }
 
 export function isPoint(points) {
   if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
   const wrist = points[0];
   return (
-    isFingerExtended(points[8], points[6], wrist) &&
-    isFingerClosed(points[12], points[10], wrist) &&
-    isFingerClosed(points[16], points[14], wrist) &&
-    isFingerClosed(points[20], points[18], wrist)
+    isFingerExtended(points[8], points[6], wrist, points[5]) &&
+    isFingerClosed(points[12], points[10], wrist, points[9]) &&
+    isFingerClosed(points[16], points[14], wrist, points[13]) &&
+    isFingerClosed(points[20], points[18], wrist, points[17])
   );
 }
 
@@ -114,10 +130,10 @@ export function isPoint(points) {
 export function isGojoSign(points) {
   if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
   const wrist = points[0];
-  const indexOpen = isFingerExtended(points[8], points[6], wrist);
-  const middleOpen = isFingerExtended(points[12], points[10], wrist);
-  const ringClosed = isFingerClosed(points[16], points[14], wrist);
-  const pinkyClosed = isFingerClosed(points[20], points[18], wrist);
+  const indexOpen = isFingerExtended(points[8], points[6], wrist, points[5]);
+  const middleOpen = isFingerExtended(points[12], points[10], wrist, points[9]);
+  const ringClosed = isFingerClosed(points[16], points[14], wrist, points[13]);
+  const pinkyClosed = isFingerClosed(points[20], points[18], wrist, points[17]);
   return indexOpen && middleOpen && ringClosed && pinkyClosed;
 }
 
@@ -135,12 +151,19 @@ export const PURPLE_SPAN_RATIO = 1.45;
  * Gojo's Hollow Purple stance: two hands, one pushed toward the camera, the other pulled back.
  * Returns the front hand's index, or -1. Any front pose works (claw, finger gun) except the web sign.
  */
-export function purpleFrontHand(hands, gestures) {
+export function purpleFrontHand(hands, gestures, depths = null) {
   if (hands.length < 2) return -1;
-  const [a, b] = [handSpan(hands[0]), handSpan(hands[1])];
-  const front = a >= b ? 0 : 1;
-  const ratio = Math.max(a, b) / (Math.min(a, b) || 1e-6);
-  if (ratio < PURPLE_SPAN_RATIO) return -1;
+  let front;
+  if (depths) {
+    // Body tracking: wrist depth from the pose model (smaller z = closer to the camera).
+    front = depths[0] <= depths[1] ? 0 : 1;
+    if (Math.abs(depths[0] - depths[1]) < PURPLE_DEPTH_GAP) return -1;
+  } else {
+    const [a, b] = [handSpan(hands[0]), handSpan(hands[1])];
+    front = a >= b ? 0 : 1;
+    const ratio = Math.max(a, b) / (Math.min(a, b) || 1e-6);
+    if (ratio < PURPLE_SPAN_RATIO) return -1;
+  }
   if (gestures[front] === "web") return -1;
   return front;
 }
@@ -150,16 +173,11 @@ export function purpleFrontHand(hands, gestures) {
  * one hand clearly closer to the camera. Easy to miss on purpose.
  * Returns the front hand index, or -1.
  */
-export function hollowPurpleReady(hands, gestures) {
+export function hollowPurpleReady(hands, gestures, depths = null) {
   if (!hands || hands.length < 2 || !gestures || gestures.length < 2) return -1;
   if (gestures[0] !== "gojo" || gestures[1] !== "gojo") return -1;
   if (handSpan(hands[0]) < MIN_SPAN || handSpan(hands[1]) < MIN_SPAN) return -1;
-  const a = handSpan(hands[0]);
-  const b = handSpan(hands[1]);
-  const front = a >= b ? 0 : 1;
-  const ratio = Math.max(a, b) / (Math.min(a, b) || 1e-6);
-  if (ratio < PURPLE_SPAN_RATIO) return -1;
-  return front;
+  return purpleFrontHand(hands, gestures, depths);
 }
 
 /**
@@ -193,6 +211,25 @@ function pinchOffAxis(points, palm) {
   const my = (points[4].y + points[8].y) / 2 - points[0].y;
   const side = Math.abs(mx * uy - my * ux);
   return side > palm * 0.15;
+}
+
+// Pose-model wrist depth gap (hip-centred units, ~image width) between thrust and chest hand.
+export const PURPLE_DEPTH_GAP = 0.15;
+
+/**
+ * Pose wrists (landmarks 15/16) matched to hands by nearest hand wrist (landmark 0).
+ * Returns [zHand0, zHand1], or null when the pose is missing or ambiguous.
+ */
+export function wristDepths(hands, pose) {
+  if (!pose || hands.length < 2) return null;
+  const wrists = [pose[15], pose[16]];
+  const d = (h, w) => Math.hypot(h[0].x - w.x, h[0].y - w.y);
+  const straight = d(hands[0], wrists[0]) + d(hands[1], wrists[1]);
+  const crossed = d(hands[0], wrists[1]) + d(hands[1], wrists[0]);
+  const [w0, w1] = straight <= crossed ? wrists : [wrists[1], wrists[0]];
+  // Both pose wrists must sit on a tracked hand, or the pairing is a guess.
+  if (Math.min(straight, crossed) > 0.2) return null;
+  return [w0.z, w1.z];
 }
 
 /** web, flick (OK circle), gojo, point, fist, palm, or null. */

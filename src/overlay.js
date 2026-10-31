@@ -28,9 +28,15 @@ let trackFlight = null;
 let trackEpoch = 0;
 // 1.25 keeps the overlay texture smaller than 1.5 so a 120Hz vsync can still draw the net.
 const dprCap = { full: 1.25, low: 1 };
+// Tether events arrive at camera rate (~30Hz); ease toward them every display frame instead.
+const EASE_MS = 40;
+const NET_GROW_MS = 160;
+let lastNow = 0;
+let slowStreak = 0;
+let dprDowngraded = false;
 
 function fit() {
-  const cap = preset === "low" || preset === "light" ? dprCap.low : dprCap.full;
+  const cap = preset === "low" || preset === "light" || dprDowngraded ? dprCap.low : dprCap.full;
   const ratio = Math.min(window.devicePixelRatio || 1, cap);
   const width = Math.max(2, Math.floor(window.innerWidth * ratio));
   const height = Math.max(2, Math.floor(window.innerHeight * ratio));
@@ -55,11 +61,16 @@ function loop(now) {
   if (!busy) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     running = false;
+    lastNow = 0;
     emitTo("control", "render-fps", { fps: 0, mode: "idle" });
     return;
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   pumpTracks();
+  // Windows snap to their vsync-tracked bounds; only tethers ease.
+  const k = lastNow ? 1 - Math.exp(-Math.min(100, now - lastNow) / EASE_MS) : 1;
+  lastNow = now;
+  for (const line of tethers.values()) ease(line.cur, line, k, ["x0", "y0", "x1", "y1"]);
 
   // Draw target window focus frames (Clean bounding boxes with contrast corner reticles)
   if (showFocusFrame || focusFrameOnly) {
@@ -75,7 +86,7 @@ function loop(now) {
   if (!focusFrameOnly || showWebs) {
     fx.draw(now);
     for (const line of tethers.values()) {
-      drawTether(line);
+      drawTether(line.cur);
     }
   }
   frames += 1;
@@ -84,8 +95,18 @@ function loop(now) {
     frames = 0;
     fpsStamp = now;
     emitTo("control", "render-fps", { fps, mode: "active" });
+    // Weak GPU: two slow half-seconds in a row drop the canvas to 1x DPR for the rest of the session.
+    slowStreak = fps < 50 ? slowStreak + 1 : 0;
+    if (slowStreak >= 2 && !dprDowngraded) {
+      dprDowngraded = true;
+      fit();
+    }
   }
   requestAnimationFrame(loop);
+}
+
+function ease(cur, target, k, keys) {
+  for (const key of keys) cur[key] += (target[key] - cur[key]) * k;
 }
 
 function getThemeColor() {
@@ -114,6 +135,8 @@ function rememberWindow(id, win, grabbed) {
     title: win.title || prev?.title || "",
     grabbed: grabbed ?? prev?.grabbed ?? false,
     born: prev?.born ?? performance.now(),
+    netCanvas: prev?.netCanvas,
+    netKey: prev?.netKey,
   });
   const rect = windowRect(box);
   if (rect) fx.follow(rect, box.hwnd);
@@ -174,11 +197,33 @@ function drawSpotlight(rects) {
 }
 
 // Orb-weaver net: spokes from the tether anchor (window center) to the edges, sagging rings between them.
+// Once grown, the net is drawn once into an offscreen canvas and blitted, so dragging costs one drawImage.
 function drawNet(win, { x, y, w, h }, now) {
-  const grow = Math.min(1, (now - (win.born || now)) / 260);
-  const cx = x + w / 2;
-  const cy = y + h / 2;
+  const grow = Math.min(1, (now - (win.born || now)) / NET_GROW_MS);
   const isLow = preset === "low" || preset === "light";
+  if (grow < 1) {
+    ctx.save();
+    ctx.translate(x, y);
+    traceNet(ctx, w, h, grow, isLow);
+    ctx.restore();
+    return;
+  }
+  const key = `${Math.round(w)}x${Math.round(h)}:${isLow}`;
+  if (win.netKey !== key) {
+    win.netCanvas ??= document.createElement("canvas");
+    win.netCanvas.width = Math.max(1, Math.round(w));
+    win.netCanvas.height = Math.max(1, Math.round(h));
+    traceNet(win.netCanvas.getContext("2d"), win.netCanvas.width, win.netCanvas.height, 1, isLow);
+    win.netKey = key;
+  }
+  ctx.drawImage(win.netCanvas, x, y, w, h);
+}
+
+function traceNet(ctx, w, h, grow, isLow) {
+  const x = 0;
+  const y = 0;
+  const cx = w / 2;
+  const cy = h / 2;
   const spokes = isLow ? 10 : 16;
   const rings = isLow ? 5 : 8;
   const ends = [];
@@ -378,7 +423,7 @@ listen("overlay-safety-shield", (event) => {
 
 listen("overlay-tether", (event) => {
   const key = event.payload?.id ?? 0;
-  tethers.set(key, event.payload);
+  tethers.set(key, { ...event.payload, cur: tethers.get(key)?.cur ?? { ...event.payload } });
   kick();
 });
 

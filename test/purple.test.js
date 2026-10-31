@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hollowPurpleReady, purpleFrontHand } from "../src/gestures.js";
+import { hollowPurpleReady, purpleFrontHand, wristDepths } from "../src/gestures.js";
 
 // 21 landmarks spread over a square of side `size` at (x, y).
 function hand(x, y, size) {
@@ -53,4 +53,17 @@ test("same-size hands, one hand, or a web-aiming front hand are not", () => {
   assert.equal(purpleFrontHand([hand(0.2, 0.4, 0.2), hand(0.6, 0.4, 0.18)], [null, null]), -1);
   assert.equal(purpleFrontHand([hand(0.2, 0.4, 0.3)], [null]), -1);
   assert.equal(purpleFrontHand([hand(0.2, 0.4, 0.3), hand(0.6, 0.5, 0.15)], ["web", null]), -1);
+});
+
+test("pose wrist depth overrides hand size", () => {
+  const hands = [hand(0.2, 0.4, 0.2), hand(0.6, 0.4, 0.2)];
+  const pose = [];
+  pose[15] = { x: 0.61, y: 0.41, z: -0.5 }; // sits on hand 1, close to the camera
+  pose[16] = { x: 0.21, y: 0.41, z: -0.1 };
+  const depths = wristDepths(hands, pose);
+  assert.deepEqual(depths, [-0.1, -0.5]);
+  assert.equal(purpleFrontHand(hands, [null, null], depths), 1);
+  assert.equal(purpleFrontHand(hands, [null, null], [-0.1, -0.15]), -1);
+  pose[15] = { x: 0.9, y: 0.9, z: 0 }; // wrist far from any hand: no pairing
+  assert.equal(wristDepths(hands, pose), null);
 });
