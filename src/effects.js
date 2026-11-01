@@ -219,6 +219,27 @@ function rgba(rgb, alpha) {
   return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
 }
 
+// One sag shape for the flying strand and the held tether, so the handoff between them is seamless.
+export function strandControl(x0, y0, x1, y1) {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const dist = Math.hypot(dx, dy) || 1;
+  const sag = Math.min(dist * 0.04, 25);
+  return {
+    cx: (x0 + x1) / 2 + (-dy / dist) * (sag * 0.4),
+    cy: (y0 + y1) / 2 + Math.abs((dx / dist) * sag) + 4,
+  };
+}
+
+// Quadratic bezier cut at t (de Casteljau): the drawn prefix lies exactly on the full curve.
+export function curvePrefix(x0, y0, cx, cy, x1, y1, t) {
+  const ax = x0 + (cx - x0) * t;
+  const ay = y0 + (cy - y0) * t;
+  const bx = cx + (x1 - cx) * t;
+  const by = cy + (y1 - cy) * t;
+  return { cx: ax, cy: ay, x: ax + (bx - ax) * t, y: ay + (by - ay) * t };
+}
+
 export function createWebFx(ctx, hooks = {}) {
   const canvas = ctx.canvas;
   let look = LOOKS.mint;
@@ -230,6 +251,7 @@ export function createWebFx(ctx, hooks = {}) {
   let activePurples = [];
   let activeShields = [];
   let lastDraw = performance.now();
+  let tethered = false;
 
   function setPreset(name) {
     const key = name === "light" ? "low" : name;
@@ -386,17 +408,31 @@ export function createWebFx(ctx, hooks = {}) {
     web.progress += 0.075 * step;
     web.age += step * FRAME_MS;
     const progress = Math.min(web.progress, 1);
+    if (progress >= 1 && !web.landed) {
+      web.landed = true;
+      landWeb(web);
+    }
+    if (web.age > 1150) {
+      web.opacity -= 0.025 * step;
+    }
+    if (web.opacity <= 0) {
+      activeWeb = null;
+      return;
+    }
+    // A held web is drawn by the overlay tether from here on; drawing both shows two strands.
+    if (web.landed && tethered) return;
 
-    const currentX = web.startX + (web.targetX - web.startX) * progress;
-    const currentY = web.startY + (web.targetY - web.startY) * progress;
     const dx = web.targetX - web.startX;
     const dy = web.targetY - web.startY;
     const distance = Math.hypot(dx, dy) || 1;
     const perpX = -dy / distance;
     const perpY = dx / distance;
-    const curveAmount = Math.min(distance * 0.24, 180);
-    const controlX = (web.startX + web.targetX) / 2 + perpX * curveAmount;
-    const controlY = (web.startY + web.targetY) / 2 + perpY * curveAmount;
+    const whole = strandControl(web.startX, web.startY, web.targetX, web.targetY);
+    const head = curvePrefix(web.startX, web.startY, whole.cx, whole.cy, web.targetX, web.targetY, progress);
+    const controlX = head.cx;
+    const controlY = head.cy;
+    const currentX = head.x;
+    const currentY = head.y;
 
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
@@ -404,15 +440,8 @@ export function createWebFx(ctx, hooks = {}) {
 
     if (full()) {
       for (let trail = 5; trail >= 1; trail -= 1) {
-        const trailProgress = Math.max(0, progress - trail * 0.025);
-        const trailX = web.startX + (web.targetX - web.startX) * trailProgress;
-        const trailY = web.startY + (web.targetY - web.startY) * trailProgress;
-        ctx.beginPath();
-        ctx.moveTo(web.startX, web.startY);
-        ctx.lineTo(trailX, trailY);
-        ctx.strokeStyle = rgba(look.trail, 0.05 * trail);
-        ctx.lineWidth = 2 + trail;
-        ctx.stroke();
+        const cut = curvePrefix(web.startX, web.startY, whole.cx, whole.cy, web.targetX, web.targetY, Math.max(0, progress - trail * 0.025));
+        strokeCurve(web.startX, web.startY, cut.cx, cut.cy, cut.x, cut.y, rgba(look.trail, 0.05 * trail), 2 + trail);
       }
     }
 
@@ -456,16 +485,19 @@ export function createWebFx(ctx, hooks = {}) {
     ctx.shadowBlur = full() ? 25 : 0;
     ctx.fill();
     ctx.restore();
+  }
 
-    if (progress >= 1 && !web.landed) {
-      web.landed = true;
-      landWeb(web);
+  // Live hand point for the strand's root, so a flying web leaves from where the hand is now.
+  function anchor(x, y, held) {
+    tethered = held;
+    if (activeWeb && held) {
+      activeWeb.startX = x;
+      activeWeb.startY = y;
     }
+  }
 
-    if (web.age > 1150) {
-      web.opacity -= 0.025 * step;
-    }
-    if (web.opacity <= 0) activeWeb = null;
+  function flying() {
+    return Boolean(activeWeb && !activeWeb.landed);
   }
 
   function strokeCurve(x0, y0, cx, cy, x1, y1, style, width) {
@@ -845,5 +877,5 @@ export function createWebFx(ctx, hooks = {}) {
     ctx.restore();
   }
 
-  return { shoot, follow, pin, triggerPurple, triggerShield, draw, setPreset, hasWork };
+  return { shoot, follow, pin, anchor, flying, triggerPurple, triggerShield, draw, setPreset, hasWork };
 }

@@ -228,3 +228,7 @@ scripts\build.bat
 - Gesture overhaul: histerezis, pinch etiketi, flick bırakmada, dwell halkaları, el slotları handedness'e göre; history kopyası (hız tabanlı hareketler tekrar çalışıyor).
 - Yeni: Ctrl+Alt+P duraklat/sürdür + durum çipi, deneme (dry-run) modu. i18n/guide senkron. 99/99 test.
 - Gerçek kamerayla doğrulama bekliyor.
+
+## v0.4.5 — İp senkronu (2026-11-01)
+- Sorun: atış ipi (effects.js, atış anındaki el noktasında donuk, 180px kavis, düz trail) ile tutma ipi (overlay tether) aynı anda çiziliyordu → çift/kayık çizgiler.
+- Fix: ortak `strandControl` eğrisi + de Casteljau `curvePrefix`; uçan ip canlı el noktasından çıkıyor, inince yalnız tether çiziliyor. 100/100 test.

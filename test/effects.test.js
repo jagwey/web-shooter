@@ -65,3 +65,16 @@ test("hollow purple and infinity shield animate without throwing", () => {
     }
   });
 });
+
+test("flying strand prefix lies on the same curve the held tether draws", async () => {
+  const { strandControl, curvePrefix } = await import("../src/effects.js");
+  const [x0, y0, x1, y1] = [740, 978, 940, 470];
+  const c = strandControl(x0, y0, x1, y1);
+  const end = curvePrefix(x0, y0, c.cx, c.cy, x1, y1, 1);
+  assert.deepEqual([end.x, end.y, end.cx, end.cy], [x1, y1, c.cx, c.cy]);
+  const t = 0.4;
+  const mid = curvePrefix(x0, y0, c.cx, c.cy, x1, y1, t);
+  const bx = (1 - t) ** 2 * x0 + 2 * (1 - t) * t * c.cx + t * t * x1;
+  const by = (1 - t) ** 2 * y0 + 2 * (1 - t) * t * c.cy + t * t * y1;
+  assert.ok(Math.abs(mid.x - bx) < 1e-9 && Math.abs(mid.y - by) < 1e-9);
+});

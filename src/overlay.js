@@ -1,4 +1,4 @@
-import { createWebFx, registerCustomLook } from "./effects.js";
+import { createWebFx, registerCustomLook, strandControl } from "./effects.js";
 import { emitTo, invoke, listen } from "./desktop.js";
 import { canvasRect, clientOf } from "./target.js";
 
@@ -96,9 +96,14 @@ function loop(now) {
 
   // Draw web FX and tethers if enabled
   if (!focusFrameOnly || showWebs) {
+    const held = tethers.values().next().value?.cur;
+    fx.anchor(held ? held.x0 * canvas.width : 0, held ? held.y0 * canvas.height : 0, Boolean(held));
     fx.draw(now);
-    for (const line of tethers.values()) {
-      drawTether(line.cur);
+    // While the shot is still flying it is the strand; the tether takes over once it lands.
+    if (!fx.flying()) {
+      for (const line of tethers.values()) {
+        drawTether(line.cur);
+      }
     }
   }
   drawRings(now);
@@ -413,15 +418,7 @@ function drawTether(line) {
   const x1 = line.x1 * canvas.width;
   const y1 = line.y1 * canvas.height;
 
-  const dx = x1 - x0;
-  const dy = y1 - y0;
-  const dist = Math.hypot(dx, dy) || 1;
-  const perpX = -dy / dist;
-  const perpY = dx / dist;
-
-  const sag = Math.min(dist * 0.04, 25);
-  const cx = (x0 + x1) / 2 + perpX * (sag * 0.4);
-  const cy = (y0 + y1) / 2 + Math.abs(perpY * sag) + 4;
+  const { cx, cy } = strandControl(x0, y0, x1, y1);
   const color = getThemeColor();
   const scaleW = Math.max(0.5, (preset === "custom" ? customThickness : 3) / 3);
 
