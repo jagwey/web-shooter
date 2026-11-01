@@ -432,21 +432,89 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 input[type="checkbox"] { accent-color: var(--accent); }
 
-/* Switches */
+/* Switches & Interactive Toggle Cards */
 .switch {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel-sunken);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-sm);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
   position: relative;
-  flex: none;
+  box-sizing: border-box;
+  font-family: inherit;
+  transition: background-color var(--transition-smooth), border-color var(--transition-smooth), box-shadow var(--transition-smooth), transform var(--transition-fast);
+}
+
+.switch:hover {
+  background: var(--panel-elevated);
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+.switch:active {
+  transform: translateY(0);
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.switch[aria-pressed="true"] {
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.4);
+  box-shadow: 0 4px 16px rgba(56, 189, 248, 0.12);
+}
+
+.switch > span:not(.knob) {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.switch strong {
+  display: block;
+  font-size: 0.90rem;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.switch small {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--muted);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+/* The toggle switch pill (knob track) */
+.switch .knob {
+  position: relative;
+  flex: 0 0 44px;
   width: 44px;
   height: 24px;
-  padding: 0;
-  border: 1px solid var(--line-strong);
   border-radius: 999px;
-  background: var(--panel-sunken);
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   box-shadow: var(--shadow-inner);
-  cursor: pointer;
-  transition: background-color var(--transition-smooth), border-color var(--transition-smooth), box-shadow var(--transition-smooth);
+  box-sizing: border-box;
+  transition: background var(--transition-smooth), border-color var(--transition-smooth), box-shadow var(--transition-smooth);
 }
-.switch .knob {
+
+.switch .knob::after {
+  content: "";
   position: absolute;
   top: 2px;
   left: 2px;
@@ -457,20 +525,65 @@ input[type="checkbox"] { accent-color: var(--accent); }
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
   transition: transform var(--transition-smooth), background-color var(--transition-smooth);
 }
-.switch[aria-pressed="true"] {
+
+.switch[aria-pressed="true"] .knob {
   background: var(--accent-gradient);
-  border-color: rgba(56, 189, 248, 0.5);
+  border-color: rgba(56, 189, 248, 0.6);
   box-shadow: 0 0 12px rgba(56, 189, 248, 0.35);
 }
-.switch[aria-pressed="true"] .knob {
+
+.switch[aria-pressed="true"] .knob::after {
   transform: translateX(20px);
   background: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
-.switch.slim { width: 38px; height: 20px; }
-.switch.slim .knob { width: 14px; height: 14px; top: 2px; left: 2px; }
-.switch.slim[aria-pressed="true"] .knob { transform: translateX(18px); }
-.switch-pair { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+/* Slim switches for feature grids */
+.switch.slim {
+  padding: 10px 12px;
+  gap: 12px;
+  border-radius: var(--radius);
+}
+
+.switch.slim strong {
+  font-size: 0.85rem;
+}
+
+.switch.slim small {
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.switch.slim .knob {
+  flex: 0 0 38px;
+  width: 38px;
+  height: 20px;
+}
+
+.switch.slim .knob::after {
+  width: 14px;
+  height: 14px;
+  top: 2px;
+  left: 2px;
+}
+
+.switch.slim[aria-pressed="true"] .knob::after {
+  transform: translateX(18px);
+}
+
+/* Switch Pair (Top Bar: Örtü & Kamera) */
+.switch-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.switch-pair .switch {
+  padding: 12px 14px;
+}
 
 /* Chips */
 .chips, .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
