@@ -11,11 +11,11 @@
 ![MediaPipe](https://img.shields.io/badge/MediaPipe_Hands-120_FPS_Float16-orange?style=for-the-badge)
 ![Filter](https://img.shields.io/badge/Filter-1_Euro_%2B_14--42ms_Adaptive_Lead-cyan?style=for-the-badge)
 ![Win32](https://img.shields.io/badge/Win32_Native-SWP__ASYNCWINDOWPOS_Zero_Lag-purple?style=for-the-badge)
-![Tests](https://img.shields.io/badge/Tests-103%2F103_Unit_%2B_Challenger-brightgreen?style=for-the-badge)
+![Tests](https://img.shields.io/badge/Tests-126%2F126_Passed-brightgreen?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
-**Windows Masaüstü Örümcek Ağı ve Jujutsu Kaisen "Hollow Purple" Katmanı**  
-*Desktop Overlay · Dual-Hand Tracking · Real Window Fling · Tab Closer · AI Workspace Assistant*
+**Windows Masaüstü El Takibi ve Akıllı Pencere Yönetim Katmanı**  
+*Desktop Overlay · Real-Time Hand Tracking · Window Fling & Drag · Quick Tab Closer · Soft Modern Glass UI*
 
 Geliştirici: **Jagwey** (Osman) · GitHub: [github.com/jagwey/web-shooter](https://github.com/jagwey/web-shooter)
 
@@ -79,43 +79,37 @@ flowchart TD
 
 ---
 
-## 🌀 Jest ve Eylem Akış Şeması / Gesture & Action Workflow
+## 🎮 Jest ve Eylem Akış Şeması / Gesture & Action Workflow
 
 ```mermaid
 flowchart TD
     Start["📷 Kamera Açık - Boşta"]
 
-    subgraph SpideyFlow["🕷️ Spider-Man Ağ ve Fırlatma Modu"]
-        Web["🤟 Web Sign - İşaret + Serçe"]
-        Shoot["THWIP! Ağ Atışı ve Pencere Geri Tepmesi"]
-        Hold["🕸️ Ağı Tutma - Sekme Ele Yapışır"]
-        Drag["El Hareketi - Sekmeyi / Pencereyi Ekranda Taşı"]
-        Release["🖐️ Açık Avuç - Fırlat ve Kenara Yasla"]
+    subgraph CoreGestures["🖐️ Çekirdek El Hareketleri"]
+        Fist["✊ Yumruk (Fist)"]
+        Palm["🖐️ Açık Avuç (Palm)"]
+        Peace["✌️ Zafer İşareti (Peace)"]
+        Web["🤟 Web İşareti (Spider-Man)"]
+        Custom["📸 Özel Hareket (Custom)"]
 
-        Web --> Shoot
-        Shoot --> Hold --> Drag --> Release
+        Grab["Pencereyi Yakala & Taşı"]
+        Throw{"Hızlı Fırlatma Var mı?"}
+        OtherMon["🚀 Diğer Monitöre Fırlat"]
+        Release["Bırak & İptal Et"]
+        Minimize["⬇️ Görev Çubuğuna Küçült (Minimize)"]
+        Close["❌ Sekmeyi / Pencereyi Kapat (Close)"]
+        CustomAct["⚡ Atanmış Özel Eylem"]
+
+        Fist --> Grab --> Throw
+        Throw -- "Evet" --> OtherMon
+        Throw -- "Hayır" --> Release
+        Palm --> Release
+        Peace --> Minimize
+        Web --> Close
+        Custom --> CustomAct
     end
 
-    subgraph GojoFlow["🟣 Satoru Gojo - Kūshiki Murasaki Modu"]
-        Flick["🟣 İki el Gojo işareti, biri önde, ~0.4s"]
-        Singularity["Mavi + Kırmızı Enerji Spiral Çarpışması"]
-        Check{"Pencere Güvenli mi?"}
-        Close["🟣 WM_CLOSE — vurulan pencere (shutdown değil)"]
-        Shield["🛡️ Infinity Shield - 2.4s Koruma Bariyeri"]
-        Cancel["🖐️ Açık Avuç - Kapatmayı İptal Et"]
-
-        Flick --> Singularity --> Check
-        Check -- "Standart Web Sekmesi" --> Close
-        Check -- "Kod veya Döküman" --> Shield
-        Shield -- "Onay Beklendi" --> Close
-        Shield -- "Açık Avuç" --> Cancel
-    end
-
-    Start --> SpideyFlow
-    Start --> GojoFlow
-    Release --> Start
-    Close --> Start
-    Cancel --> Start
+    Start --> CoreGestures
 ```
 
 ---
@@ -182,17 +176,13 @@ flowchart TD
 - **Canlı Hareket Rozeti:** `🕸️ AĞ ATIŞI`, `✊ PENCERE TUTMA`, `🤌 GOJO MORU`, `🖐️ SERBEST` durumları doğrudan kamera üstünde yazılır.
 - **Ayna Modu (🪞):** Fiziksel el hareketiniz ekrandaki yönle birebir doğal eşleşir.
 
-### 4. 🟣 Satoru Gojo: Hollow Purple (pencere kapat, shutdown değil)
-Kasıtlı combo — tek el veya kısa bir jest yetmez:
+### 4. 🪟 Akıllı Pencere Client Alanı & Win32 Yönetimi
+Ağ veya yumrukla pencere tutulduğunda, tarayıcı veya uygulamanın sayfa yüzeyine (`Chrome_RenderWidgetHostHWND` / native HWND) doğrudan bağlanır; başlık çubuğu veya ofset kayması oluşmaz. `SWP_ASYNCWINDOWPOS | SWP_NOSENDCHANGING` ile asenkron taşınır ve CPU/GPU kilitlenmesi yaşanmaz.
 
-1. İki eli de **Gojo işaretine** al: işaret + orta açık, yüzük + serçe kapalı.
-2. Bir eli kameraya yaklaştır (diğerinden yaklaşık **1.5 kat** büyük görünsün).
-3. Duruşu **~0.4 saniye** bozma. Yumrukla pencere tutarken ateşlenmez. Duruş başına bir kez.
-4. Kapanan hedef: son 3 saniyede **ağın vurduğu pencere**; o yoksa öndeki elin gösterdiği pencere. Windows'a `WM_CLOSE` gider. Hedef yoksa hiçbir şey kapanmaz.
-5. Açık avuç, Infinity Shield süresinde kapatmayı iptal eder. VS Code / doküman başlıkları kalkan yer.
-
-### 5. 🪟 Sekme client alanı
-Ağ, tarayıcıda sekmenin sayfa yüzeyine (`Chrome_RenderWidgetHostHWND` / Firefox compositor) yapışır; başlık çubuğu ve araç çubuğu dışarıda kalır. Pencere taşınınca veya boyutu değişince örtü bir sonraki vsync'te yeni client dikdörtgenini okur — eski konuma ofset birikmez. Tam ekran ↔ pencereli geçiş aynı yol.
+### 5. 🎨 Soft Modern (Glassmorphism) Tasarım & Temalar
+- **Buzlu Cam Efekti:** Paneller `backdrop-filter: blur(16px)` ve yumuşak kenar ışıması ile masaüstünüze şık bir hava katar.
+- **Tema & Efekt Seçici:** Minimal (Koyu) ve Anime temaları arasında anında geçiş imkanı, isteğe bağlı kapatılabilen parçacık efektleri.
+- **Yenilenen Butonlar:** Metin ve toggle mandalları (`knob`) ayrıştırılmış, asla çakışmayan ferah kart tasarımı.
 
 ### 6. 👤 Yerel Kullanıcı Profilleri & Skor Tablosu (`src/profiles.js`)
 - Kişisel profil kartları: Kendi adınızla profil oluşturup ayarlarınızı snapshot olarak kaydedebilirsiniz.
@@ -201,38 +191,45 @@ Ağ, tarayıcıda sekmenin sayfa yüzeyine (`Chrome_RenderWidgetHostHWND` / Fire
 ### 7. 🤖 Yapay Zeka Danışmanlığı & Çevrimdışı Rehber
 - **Model Danışmanı (`src/modelAdvisor.js`):** Bilgisayarınızın GPU, VRAM ve RAM kapasitesini sorgulayarak en verimli yerel Ollama modelini (`llama3.2:1b`, `llama3.2:3b`, `mistral`, `qwen2.5`) önerir.
 - **Çevrimdışı Bilgi Bankası (`src/guide.js`):** Uygulama hakkındaki tüm soruları yapay zekaya veya internete ihtiyaç duymadan anında yanıtlar.
-- **Geniş Sağlayıcı Desteği:** Google Gemini API (`gemini-2.5-flash`, `gemini-3.5-flash-lite`), Yerel Ollama, Groq, OpenRouter, Pollinations ve LM Studio.
+- **Geniş Sağlayıcı Desteği:** Google Gemini API, Yerel Ollama, Groq, OpenRouter, Pollinations ve LM Studio.
 
 ---
 
-## 🎮 Jest ve Parmak Kontrol Kılavuzu
+## 🎮 Jest ve El Komutları Kılavuzu (Gestures & Commands)
 
-| Hareket / Jest | Parmak Durumu | Gerçekleşen Eylem | Görsel & Ses Efekti |
+| Hareket / Jest | Parmak Duruşu | Eylem | Açıklama |
 |---|---|---|---|
-| 🤟 **Ağ Atışı (Web)** | İşaret + Serçe Açık | Pencereyi tutar. Diğer ekrana savurursan site o monitöre gider | Dinamik Spoke Ağ + **THWIP!** |
-| 🕸️ **Ağı Tutma (Hold)** | Ağ Pozunu Koru | Sekmeyi ele bağlar. Hızlı savurma, yön diğer ekrana bakıyorsa pencereyi oraya oturtur | Gergin İpler + Dinamik Takip |
-| ✊ **Yumruk (Fist)** | Tüm Parmaklar Kapalı | Pencereyi kavrar ve serbestçe hareket ettirir | Çelik Halat + Gerilim Sesi |
-| 🖐️ **Açık Avuç (Palm)** | Tüm Parmaklar Açık | Tutulan pencereyi fırlatır / Kapatmayı iptal eder | Momentum Fırlatma / İptal Sesi |
-| 👌 **Fiske (OK)** | Başparmak + işaret halka, diğer üç parmak açık, **hedefe doğru savur** | Görev çubuğuna indir (`SW_MINIMIZE`). Kapatmaz. Duran OK eli tetiklemez | Kısa savurma |
-| 🤌 **Gojo işareti** | İşaret + Orta açık, yüzük + serçe kapalı | Tek başına kapatmaz | Mavi/kırmızı kıvılcım hazırlığı |
-| 🟣 **Hollow Purple** | **İki el** aynı işaret, biri kameraya ~1.5× yakın, **~0.4 sn** | Vurulan pencereye `WM_CLOSE` (shutdown değil) | **Hollow Purple** + Sub-Bass |
+| ✊ **Yumruk (Fist)** | Tüm parmaklar kapalı | **Pencereyi Tut & Taşı** (`grab`) | Pencereyi yakalar, elinizle serbestçe taşır. Diğer monitöre doğru hızlı bırakırsanız pencereyi oraya fırlatır. |
+| 🖐️ **Açık Avuç (Palm)** | Tüm parmaklar açık ve rahat | **Bırak / İptal Et** (`cancel`) | Tutulan pencereyi hemen serbest bırakır, sürüklemeyi veya eylemi iptal eder. |
+| ✌️ **Zafer İşareti (Peace)** | İşaret ve orta parmak açık, diğerleri kapalı | **Pencereyi Küçült** (`minimize`) | Hedef pencereyi görev çubuğuna simge durumuna küçültür. |
+| 🤟 **Örümcek Ağı (Web)** | İşaret ve serçe parmak açık | **Sekmeyi / Pencereyi Kapat** (`close`) | Klasik Spider-Man el pozu; aktif pencere veya sekmeyi (`Ctrl+W` / `WM_CLOSE`) güvenle kapatır. |
+| 📸 **Özel Hareket (Custom)** | Kullanıcı tanımlı poz | **Özel Eylem** | Stüdyoda kameraya bir poz tanıtıp ad vererek istediğiniz eyleme bağlayabilirsiniz. |
 
-**İkinci ekran / second screen:** ağ ile pencereyi tut, eli diğer monitöre doğru savur. Pencere oraya oturur. Tek ekranda savurma kenara yaslar.
+### ⌨️ Klavye Kısayolları (Global Hotkeys)
+- **`Ctrl + Alt + J`** : Masaüstü şeffaf örtüsünü açar veya kapatır (`overlay_toggle`).
+- **`Ctrl + Alt + K`** : Jagwey Kontrol Panelini ekrana getirir (`show_control`).
+- **`Ctrl + Alt + P`** : El hareketlerini duraklatır veya tekrar başlatır (`gestures_pause`).
 
-**English:** web-hold and fling toward the other display throws that window onto it. OK flick (thumb+index circle, other fingers out, fast stroke at the tab) minimizes to the taskbar — it does not close. Hollow Purple still sends `WM_CLOSE`.
+### 🗑️ Kaldırılan / Temizlenen Eski Özellikler (Removed Features)
+Sıfır gecikme sağlamak ve yanlış algılamaları önlemek amacıyla aşağıdaki karmaşık/kararsız jestler kaldırılmıştır:
+- ❌ **`flick` (OK Fiske Hareketi)**: Yanlış tetiklemeler nedeniyle kaldırıldı.
+- ❌ **`gojo` (İki El Hollow Purple)**: Aşırı CPU yükü ve çift el derinlik karmaşası nedeniyle kaldırıldı.
+- ❌ **`finger_gun` (Parmak Tabancası)** & **`point`**: İstem dışı tetiklenmeleri önlemek için kaldırıldı.
+- ❌ **`pinch` & `air_scroll`**: Kararsız eksen okumaları nedeniyle temizlendi.
+- ❌ **`maximize_restore`**: Ekran ölçeklendirmesini bozduğu için kaldırıldı.
 
 ---
 
 ## 📊 Performans ve Sistem Karşılaştırması
 
-| Kriter | Geleneksel Electron Çözümleri | Jagwey Web Shooter (v0.1.5) |
+| Kriter | Geleneksel Electron Çözümleri | Jagwey Web Shooter (v0.6.0) |
 |---|---|---|
-| **Bellek Tüketimi (RAM)** | ~450 MB – 850 MB | **~42 MB – 65 MB** (Rust + WebView2) |
-| **Kamera & Takip Gecikmesi** | ~80 ms – 140 ms | **~12 ms – 24 ms** (RVFC + 1 Euro Filtresi) |
-| **Kare Hızı (FPS)** | 30 – 60 FPS | **Vsync (panel 120 Hz ise 120). Boşta döngü durur.** |
-| **İşlem Başlatma Çakışması** | Çift tıklamada bellek sızıntısı | **Tek Süreç Kilidi (Single Instance)** |
-| **Pencere Çizim Katmanı** | Opak veya donan donuk pencereler | **100% Saydam Click-Through (`WS_EX_TRANSPARENT`)** |
-| **Birim Testleri** | Sınırlı | **40 / 40 Başarılı Test** |
+| **Bellek Tüketimi (RAM)** | ~450 MB – 850 MB | **~35 MB – 55 MB** (Rust + WebView2) |
+| **Kamera & Takip Gecikmesi** | ~80 ms – 140 ms | **< 1 ms – 12 ms** (60 FPS + Kinematik Filtre) |
+| **Kare Hızı (FPS)** | 30 – 60 FPS | **60 / 120 FPS Donanım Vsync** |
+| **İşlem Başlatma Çakışması** | Çift tıklamada çökme riski | **Tek Süreç Kilidi (Single Instance)** |
+| **Pencere Çizim Katmanı** | Opak / gecikmeli örtüler | **100% Saydam Click-Through (`WS_EX_TRANSPARENT`)** |
+| **Otomasyon & Testler** | Sınırlı | **126 / 126 Başarılı Test (100% Geçiş)** |
 
 ---
 
