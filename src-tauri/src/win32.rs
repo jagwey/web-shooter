@@ -297,24 +297,33 @@ mod platform {
     /// Ultra-low-latency window move for live hand dragging and fling loops.
     /// Avoids `describe(hwnd)` / `EnumChildWindows` and uses `SWP_ASYNCWINDOWPOS` so the
     /// caller never blocks on the target application's message loop.
+    /// Last hwnd that passed the class/root/pid checks; same window skips them (no heap alloc per move).
+    static LAST_VALID_HWND: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
     pub fn move_window_fast(raw: i64, x: i32, y: i32) -> Result<(), String> {
         let hwnd = hwnd_of(raw);
         if raw == 0 || unsafe { !IsWindow(Some(hwnd)).as_bool() } {
+            LAST_VALID_HWND.store(0, Ordering::Relaxed);
             return Err("window gone".into());
         }
-        let class = class_name(hwnd);
-        if root_of(hwnd) != hwnd || class == "TaskManagerWindow" || skipped_class(&class) {
-            return Err("window protected".into());
-        }
-        let mut pid = 0u32;
-        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
-        if pid == unsafe { GetCurrentProcessId() } {
-            return Err("window protected".into());
+        if LAST_VALID_HWND.load(Ordering::Relaxed) != raw {
+            let class = class_name(hwnd);
+            if root_of(hwnd) != hwnd || class == "TaskManagerWindow" || skipped_class(&class) {
+                return Err("window protected".into());
+            }
+            let mut pid = 0u32;
+            unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+            if pid == unsafe { GetCurrentProcessId() } {
+                return Err("window protected".into());
+            }
+            unsafe {
+                if IsZoomed(hwnd).as_bool() {
+                    let _ = ShowWindow(hwnd, SW_RESTORE);
+                }
+            }
+            LAST_VALID_HWND.store(raw, Ordering::Relaxed);
         }
         unsafe {
-            if IsZoomed(hwnd).as_bool() {
-                let _ = ShowWindow(hwnd, SW_RESTORE);
-            }
             SetWindowPos(
                 hwnd,
                 None,

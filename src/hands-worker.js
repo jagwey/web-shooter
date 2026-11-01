@@ -20,6 +20,8 @@ let landmarker = null;
 let pose = null;
 let poseLoading = false;
 let poseAt = 0;
+let currentNumHands = 2;
+let lastTimestampMs = 0;
 
 async function createHands(vision, model, delegate) {
   const options = {
@@ -77,6 +79,7 @@ self.onmessage = async (event) => {
           for (const delegate of ["GPU", "CPU"]) {
             try {
               landmarker = await createHands(vision, src.model, delegate);
+              currentNumHands = 2;
               if (landmarker) {
                 console.log(`[hands-worker] HandLandmarker initialized successfully (${delegate}, ${src.tag})`);
                 self.postMessage({ type: "ready", delegate, tag: src.tag });
@@ -105,13 +108,21 @@ self.onmessage = async (event) => {
     const { bitmap, time } = message;
     const started = performance.now();
     try {
-      const result = landmarker.detectForVideo(bitmap, time);
+      const numHands = message.numHands === 1 ? 1 : 2;
+      if (numHands !== currentNumHands) {
+        await landmarker.setOptions({ numHands });
+        currentNumHands = numHands;
+      }
+      // detectForVideo throws on non-increasing timestamps (two frames inside the same ms).
+      const safeTime = Math.max(lastTimestampMs + 1, Math.floor(time ?? performance.now()));
+      lastTimestampMs = safeTime;
+      const result = landmarker.detectForVideo(bitmap, safeTime);
       let body = null;
       if (message.body) {
         if (!pose) ensurePose();
-        else if (time - poseAt >= POSE_GAP_MS) {
-          body = pose.detectForVideo(bitmap, time + 1).landmarks?.[0] || null;
-          poseAt = time;
+        else if (safeTime - poseAt >= POSE_GAP_MS) {
+          body = pose.detectForVideo(bitmap, safeTime + 1).landmarks?.[0] || null;
+          poseAt = safeTime;
         }
       }
       self.postMessage({

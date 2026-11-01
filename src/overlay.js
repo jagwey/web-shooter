@@ -32,7 +32,7 @@ let trackEpoch = 0;
 // 1.25 keeps the overlay texture smaller than 1.5 so a 120Hz vsync can still draw the net.
 const dprCap = { full: 1.25, low: 1 };
 // Tether events arrive at camera rate (~30Hz); ease toward them every display frame instead.
-const EASE_MS = 40;
+const EASE_MS = 6;
 const NET_GROW_MS = 160;
 let lastNow = 0;
 let slowStreak = 0;
@@ -214,7 +214,8 @@ function pumpTracks() {
   if (trackFlight) return;
   const pending = [];
   for (const [id, win] of targetWindows) {
-    if (win.hwnd) pending.push([id, win.hwnd]);
+    // Actively grabbed windows receive 120Hz coordinates directly from control.js; do not poll stale Win32 rects.
+    if (win.hwnd && !win.grabbed) pending.push([id, win.hwnd]);
   }
   if (!pending.length) return;
   const epoch = trackEpoch;

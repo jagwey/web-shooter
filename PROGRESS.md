@@ -232,3 +232,8 @@ scripts\build.bat
 ## v0.4.5 — İp senkronu (2026-11-01)
 - Sorun: atış ipi (effects.js, atış anındaki el noktasında donuk, 180px kavis, düz trail) ile tutma ipi (overlay tether) aynı anda çiziliyordu → çift/kayık çizgiler.
 - Fix: ortak `strandControl` eğrisi + de Casteljau `curvePrefix`; uçan ip canlı el noktasından çıkıyor, inince yalnız tether çiziliyor. 100/100 test.
+
+## v0.5.0 — Gecikme/senkron mimarisi (2026-11-01)
+- filter.js 2. derece kinematik One Euro + `predictPalmAnchor`; control.js rAF grab döngüsü (kamera kareleri arası interpolasyon), HUD yalnız görünürken.
+- desktop.js BroadcastChannel hızlı IPC (Tauri event fallback + 15ms dedupe); overlay EASE_MS 6, tutulan pencere poll edilmiyor.
+- Worker: dinamik numHands + monoton timestamp; win32 `LAST_VALID_HWND` önbelleği. 100/100 test, challenger 21/21, build + cargo check OK.

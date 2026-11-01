@@ -3,7 +3,7 @@ import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, migrateBindings,
 import { DEFAULT_MODELS, OPENAI_PRESETS, autoTileWorkspace, chatWithAi, fetchOllamaModels, optimizeSettingsWithAi, sendAiGreeting, testAiConnection } from "./ai.js";
 import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen, adjustVolume, mediaPlayPause, mediaNextTrack, showDesktop, zoomDesktop, scrollWheel } from "./desktop.js";
 import { FLICK_RELEASE_WINDOW_MS, classifyGesture, worldShape, fingerStates, isFlickRelease, hollowPurpleReady, isFingerGun, isPowerFist, isInFaceDeadzone, voteGesture, wristDepths, isAirKnobGrip, isAirMediaHold, isAirMediaFlick, isNinjaShield, isPinchZoom, isAirScroll } from "./gestures.js";
-import { cloneLandmarks, createHandFilter, filterLandmarks, handSpeed, predict } from "./filter.js";
+import { cloneLandmarks, createHandFilter, filterLandmarks, handSpeed, predict, predictPalmAnchor } from "./filter.js";
 import { createAirModeLock, createDwell, alignHandSlots, resolvePinchIntent, trimHistory } from "./gesture-runtime.js";
 import { registerCustomLook } from "./effects.js";
 import { clientOf } from "./target.js";
@@ -1480,8 +1480,8 @@ async function detectTick() {
     // One frame in flight; the worker's reply runs onHands, which schedules the next tick.
     state.inFlight = true;
     try {
-      // Downscale frame to 480x270 for zero-copy transmission to worker
-      const bitmap = await createImageBitmap(video, { resizeWidth: 480, resizeHeight: 270 });
+      // Full-resolution bitmap is transferred (not copied); the GPU path rescales it for the model.
+      const bitmap = await createImageBitmap(video);
       if (!state.worker) {
         bitmap.close();
         state.inFlight = false;
@@ -1489,7 +1489,7 @@ async function detectTick() {
       }
       state.sentAt = performance.now();
       state.worker.postMessage(
-        { type: "frame", bitmap, time: state.sentAt, body: Boolean(state.settings?.bodyTracking) },
+        { type: "frame", bitmap, time: state.sentAt, body: Boolean(state.settings?.bodyTracking), numHands: state.settings?.dualHands === false ? 1 : 2 },
         [bitmap]
       );
     } catch {
@@ -1712,8 +1712,6 @@ function onHands(hands, detectMs, handedness, frameTime) {
   const msEl = document.getElementById("msValue");
   if (msEl) msEl.textContent = `${Math.round(detectMs)}ms`;
 
-  drawCameraLandmarks(hands);
-  updateGestureHud(hands);
   const badge = document.getElementById("gestureBadge");
 
   if (!hands || hands.length === 0) {
@@ -1842,12 +1840,9 @@ function onHands(hands, detectMs, handedness, frameTime) {
       // Adaptive velocity lead: scales from 14ms at rest up to 42ms during rapid hand sweeps to cancel camera pipeline lag.
       const speed = handSpeed(handState.filter, 9);
       const leadMs = Math.min(42, Math.max(14, Math.round(14 + speed * 22)));
-      const palmAnchor = {
-        x: (landmarks[0].x + landmarks[9].x) * 0.5,
-        y: (landmarks[0].y + landmarks[9].y) * 0.5,
-        z: ((landmarks[0].z || 0) + (landmarks[9].z || 0)) * 0.5,
-      };
-      const grabPoint = screenPoint(predict(handState.filter, 9, palmAnchor, leadMs));
+      handState.lastSampleAt = performance.now();
+      handState.leadMs = leadMs;
+      const grabPoint = screenPoint(predictPalmAnchor(handState.filter, landmarks, leadMs));
       const aimPoint = screenPoint(predict(handState.filter, 8, landmarks[8], leadMs));
 
       // Dwell gestures (peace, finger gun) arm with a visible ring before firing.
@@ -1921,6 +1916,10 @@ function onHands(hands, detectMs, handedness, frameTime) {
   }
 
   const gap = nextGap(hands.length > 0, detectMs);
+  if (state.controlVisible && !document.hidden) {
+    drawCameraLandmarks(hands);
+    updateGestureHud(hands);
+  }
   scheduleDetect(gap);
 }
 
@@ -2570,6 +2569,37 @@ async function beginGrab(handIndex, point) {
   });
   playGrab();
   render();
+  startGrabLoop();
+}
+
+let grabLoopId = 0;
+
+// Interpolates grabbed windows at display rate between ~33ms camera frames.
+function startGrabLoop() {
+  if (grabLoopId) return;
+  const step = () => {
+    let anyGrab = false;
+    const now = performance.now();
+    for (let i = 0; i < state.hands.length; i += 1) {
+      const hs = state.hands[i];
+      if (hs.grab && hs.filter && hs.landmarks) {
+        anyGrab = true;
+        const elapsed = Math.min(36, Math.max(0, now - (hs.lastSampleAt || now)));
+        if (elapsed > 4) {
+          const totalLead = Math.min(60, (hs.leadMs || 18) + elapsed * 0.85);
+          const interpPoint = screenPoint(predictPalmAnchor(hs.filter, hs.landmarks, totalLead));
+          hs.lastPoint = interpPoint;
+          moveGrab(i, interpPoint);
+        }
+      }
+    }
+    if (anyGrab && state.stream) {
+      grabLoopId = requestAnimationFrame(step);
+    } else {
+      grabLoopId = 0;
+    }
+  };
+  grabLoopId = requestAnimationFrame(step);
 }
 
 function flushMoveQueue(handIndex) {
