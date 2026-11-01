@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cloneLandmarks, createHandFilter, filterLandmarks, predict } from "../src/filter.js";
+import { cloneLandmarks, createHandFilter, filterLandmarks, leadMs, predict, ropeDeadzone } from "../src/filter.js";
 
 test("cloneLandmarks detaches from the pooled output", () => {
   const f = createHandFilter();
@@ -44,4 +44,21 @@ test("long gap resets instead of sliding from a stale point", () => {
   filterLandmarks(f, hand(0.1, 0.1), 0);
   const out = filterLandmarks(f, hand(0.9, 0.9), 2000);
   assert.equal(out[0].x, 0.9);
+});
+
+test("leadMs stays within 8..20ms and grows with speed", () => {
+  assert.equal(leadMs(0), 8);
+  assert.equal(leadMs(0.5), 14);
+  assert.equal(leadMs(10), 20);
+  assert.equal(leadMs(undefined), 8);
+});
+
+test("ropeDeadzone holds jitter and passes real motion", () => {
+  const rope = {};
+  assert.deepEqual(ropeDeadzone(rope, 100, 100), { x: 100, y: 100, moved: true });
+  assert.equal(ropeDeadzone(rope, 105, 103).moved, false);
+  assert.deepEqual(ropeDeadzone(rope, 140, 100), { x: 140, y: 100, moved: true });
+  for (let i = 0; i < 40; i += 1) ropeDeadzone(rope, 140, 100);
+  assert.equal(rope.r, 3);
+  assert.equal(ropeDeadzone(rope, 144, 100).moved, true);
 });

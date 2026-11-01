@@ -1,5 +1,12 @@
 // Pure runtime helpers for control.js (no DOM / Tauri) so they can run under node --test.
 
+// v0.6 timing. Grab/release must feel instant; destructive dwell poses wait longer on purpose.
+export const GRAB_CONFIRM_FRAMES = 2;
+export const RELEASE_CONFIRM_FRAMES = 2;
+export const MINIMIZE_DWELL_MS = 600;
+export const CLOSE_DWELL_MS = 800;
+export const ACTION_COOLDOWN_MS = 1000;
+
 const MODES = ["scroll", "knob", "zoom", "media"];
 
 export function createAirModeLock({ releaseMs = 400 } = {}) {

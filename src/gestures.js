@@ -4,6 +4,8 @@
  * hand is rotated. Adapted from SpiderSense gesture checks (MIT, Rittika Das).
  */
 
+import { GRAB_CONFIRM_FRAMES, RELEASE_CONFIRM_FRAMES } from "./gesture-runtime.js";
+
 const EXTEND_RATIO = 1.2;
 const CLOSED_RATIO = 0.95;
 const MIN_SPAN = 0.08;
@@ -208,10 +210,24 @@ export function isWebSign(points, options = {}) {
   return normTips > normPalm * spreadThresh;
 }
 
-export function isFist(points) {
+// Mean fingertip-to-wrist distance in palm lengths (wrist→middle MCP): a curled fist sits near 1, an open hand near 2.
+export const FIST_ENTER_REACH = 1.25;
+export const FIST_STAY_REACH = 1.45;
+
+/**
+ * Tolerant fist: no finger extended, and either 3+ fingers clearly closed or the tips pulled in toward the wrist.
+ * Scale-, rotation- and handedness-free, so a loose or back-facing fist still grabs.
+ */
+export function isFist(points, { ar = 1.0, stay = false } = {}) {
   if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
   const wrist = points[0];
-  return FINGERS.every((finger) => isFingerClosed(points[finger.tip], points[finger.pip], wrist, points[finger.pip - 1]));
+  if (FINGERS.some((f) => isFingerExtended(points[f.tip], points[f.pip], wrist, points[f.pip - 1], { ar }))) return false;
+  const closed = FINGERS.filter((f) => isFingerClosed(points[f.tip], points[f.pip], wrist, points[f.pip - 1], { ar })).length;
+  if (closed >= 3) return true;
+  const palm = palmReferenceScale(points, ar);
+  if (palm < 1e-4) return false;
+  const reach = FINGERS.reduce((sum, f) => sum + spanMetric(points[f.tip], wrist, ar), 0) / (FINGERS.length * palm);
+  return reach < (stay ? FIST_STAY_REACH : FIST_ENTER_REACH);
 }
 
 export function isOpenPalm(points, { stay = false } = {}) {
@@ -259,11 +275,10 @@ export function isGojoSign(points, { ar = 1.0, stay = false } = {}) {
   return twoFingerGap(points, ar) < (stay ? GOJO_STAY_GAP_RATIO : GOJO_ENTER_GAP_RATIO);
 }
 
-/** ✌️ Peace / Scissors sign: index + middle extended in a clear V shape, ring + pinky folded. */
-export function isPeaceSign(points, { ar = 1.0, stay = false } = {}) {
+/** ✌️ Peace: index + middle extended, ring + pinky folded, thumb ignored. No V-gap rule since gojo is gone. */
+export function isPeaceSign(points, { ar = 1.0 } = {}) {
   if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
-  if (!twoFingerUp(points, ar)) return false;
-  return twoFingerGap(points, ar) > (stay ? PEACE_SIGN_STAY_GAP_RATIO : PEACE_SIGN_MIN_GAP_RATIO);
+  return twoFingerUp(points, ar);
 }
 
 // Thumb tip to index MCP over palm breadth (span 5-17): thumb out vs tucked.
@@ -515,7 +530,7 @@ export function worldShape(world) {
 }
 
 /**
- * web, flick (OK circle), gojo, point, fist, palm, or null.
+ * web, peace, fist, palm, a custom template name, or null.
  * With world landmarks the finger shape is judged in true 3D; the image hand still gates size.
  */
 export function classifyGesture(points, world = null, customTemplates = [], options = {}) {
@@ -537,17 +552,7 @@ export function classifyGesture(points, world = null, customTemplates = [], opti
   const webOptions = { ...opts, aspectRatio: ar, wasActive: last === "web", world: shape ? null : (opts.world || world) };
   if (isWebSign(evalPoints, webOptions)) return "web";
   if (isPeaceSign(evalPoints, o("peace"))) return "peace";
-  if (isGojoSign(evalPoints, o("gojo"))) return "gojo";
-  // Gap between gojo and peace: keep the held one, otherwise say nothing instead of guessing.
-  if (twoFingerUp(evalPoints, ar)) return null;
-  // Touching thumb+index is more specific than a finger gun with the thumb "out".
-  if (isPinchPose(evalPoints, o("pinch"))) return "pinch";
-  if (isFingerGun(evalPoints, o("finger_gun"))) return "finger_gun";
-  if (isPoint(evalPoints, o("point"))) return "point";
-  // Index-only hand in the thumb hysteresis band: undecided, so no trigger.
-  if (indexOnly(evalPoints, ar)) return null;
-  if (isFlickPose(evalPoints, { ar })) return "flick";
-  if (isFist(evalPoints)) return "fist";
+  if (isFist(evalPoints, o("fist"))) return "fist";
   if (isOpenPalm(evalPoints, { stay: last === "palm" })) return "palm";
 
   // 2. Custom templates are only a fallback so they cannot shadow built-ins.
@@ -565,10 +570,17 @@ export const VOTE_MIN = 3;
 /**
  * Majority vote over the last VOTE_WINDOW raw frames. A pose wins with VOTE_MIN votes;
  * otherwise the previous gesture holds, so one bad frame never fires or drops anything.
+ * Fast path: fist (grab) and palm (release) confirm on N consecutive frames so grabbing feels instant.
  */
 export function voteGesture(votes, raw, last) {
   votes.push(raw);
   if (votes.length > VOTE_WINDOW) votes.shift();
+  const need = raw === "fist" ? GRAB_CONFIRM_FRAMES : raw === "palm" ? RELEASE_CONFIRM_FRAMES : 0;
+  if (need > 0 && votes.length >= need && votes.slice(-need).every((v) => v === raw)) {
+    // Drop older frames so a stale majority cannot flip the gesture back next frame.
+    votes.splice(0, votes.length - need);
+    return raw;
+  }
   const counts = new Map();
   for (const v of votes) counts.set(v, (counts.get(v) || 0) + 1);
   for (const [gesture, count] of counts) if (count >= VOTE_MIN) return gesture;

@@ -38,7 +38,7 @@ pub struct Settings {
     pub sound_enabled: bool,
     #[serde(default)]
     pub focus_frame_only: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub show_webs: bool,
     #[serde(default = "default_true")]
     pub show_focus_frame: bool,
@@ -48,7 +48,7 @@ pub struct Settings {
     pub custom_fx: Option<serde_json::Value>,
     #[serde(default = "default_theme")]
     pub theme: String,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub hollow_purple_enabled: bool,
     #[serde(default = "default_close_mode")]
     pub close_mode: String,
@@ -62,17 +62,17 @@ pub struct Settings {
     pub ai_endpoint: String,
     #[serde(default = "default_ai_model")]
     pub ai_model: String,
-    #[serde(default = "default_true", alias = "airVolumeToggle")]
+    #[serde(default, alias = "airVolumeToggle")]
     pub air_volume_enabled: bool,
-    #[serde(default = "default_true", alias = "airMediaToggle")]
+    #[serde(default, alias = "airMediaToggle")]
     pub air_media_enabled: bool,
-    #[serde(default = "default_true", alias = "ninjaShieldToggle")]
+    #[serde(default, alias = "ninjaShieldToggle")]
     pub ninja_shield_enabled: bool,
-    #[serde(default = "default_true", alias = "airZoomToggle")]
+    #[serde(default, alias = "airZoomToggle")]
     pub air_zoom_enabled: bool,
-    #[serde(default = "default_true", alias = "airScrollToggle")]
+    #[serde(default, alias = "airScrollToggle")]
     pub air_scroll_enabled: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub body_tracking: bool,
     #[serde(default = "default_sniper_target")]
     pub sniper_target: String,
@@ -82,6 +82,8 @@ pub struct Settings {
     pub smoothing: f32,
     #[serde(default)]
     pub migrated_pause: bool,
+    #[serde(default)]
+    pub migrated_v060: bool,
 }
 
 fn default_smoothing() -> f32 {
@@ -105,7 +107,7 @@ fn default_true() -> bool {
 }
 
 fn default_close_mode() -> String {
-    "tab".into()
+    "window".into()
 }
 
 fn default_ai_provider() -> String {
@@ -121,7 +123,7 @@ fn default_ai_model() -> String {
 }
 
 fn default_theme() -> String {
-    "spiderman".into()
+    "minimal".into()
 }
 
 impl Default for Settings {
@@ -134,47 +136,48 @@ impl Default for Settings {
             idle_release_secs: 20,
             monitor_mode: "one".into(),
             monitor_id: String::new(),
-            fx_preset: "spiderman".into(),
+            fx_preset: "off".into(),
             bindings: default_bindings(),
             camera_device_id: String::new(),
             target_fps: 120,
             sound_enabled: true,
             focus_frame_only: false,
-            show_webs: true,
+            show_webs: false,
             show_focus_frame: true,
             dual_hands: true,
             custom_fx: None,
-            theme: "sakura".into(),
-            hollow_purple_enabled: true,
-            close_mode: "tab".into(),
+            theme: "minimal".into(),
+            hollow_purple_enabled: false,
+            close_mode: "window".into(),
             safety_guard: true,
             ai_provider: "none".into(),
             ai_api_key: String::new(),
             ai_endpoint: "http://localhost:11434".into(),
             ai_model: "gemini-2.5-flash".into(),
-            air_volume_enabled: true,
-            air_media_enabled: true,
-            ninja_shield_enabled: true,
-            air_zoom_enabled: true,
-            air_scroll_enabled: true,
-            body_tracking: false,
+            air_volume_enabled: false,
+            air_media_enabled: false,
+            ninja_shield_enabled: false,
+            air_zoom_enabled: false,
+            air_scroll_enabled: false,
+            body_tracking: true,
             sniper_target: "gemini_web".into(),
             custom_gestures: None,
             smoothing: 0.75,
             migrated_pause: false,
+            migrated_v060: true,
         }
     }
 }
 
 fn default_bindings() -> Vec<Binding> {
     vec![
-        binding("b-web", "shoot", "gesture", "web"),
         binding("b-fist", "grab", "gesture", "fist"),
         binding("b-palm", "cancel", "gesture", "palm"),
-        binding("b-flick", "minimize", "gesture", "flick"),
-        binding("b-purple", "hollow_purple", "gesture", "gojo"),
+        binding("b-peace", "minimize", "gesture", "peace"),
+        binding("b-web", "close", "gesture", "web"),
         binding("b-overlay", "overlay_toggle", "hotkey", "CommandOrControl+Alt+J"),
         binding("b-control", "show_control", "hotkey", "CommandOrControl+Alt+K"),
+        binding("b-pause", "gestures_pause", "hotkey", "CommandOrControl+Alt+P"),
     ]
 }
 
@@ -197,14 +200,14 @@ impl Settings {
         if !matches!(self.monitor_mode.as_str(), "one" | "all") {
             self.monitor_mode = "one".into();
         }
-        if !matches!(self.fx_preset.as_str(), "classic" | "mint" | "neon" | "low" | "light" | "spiderman" | "miles" | "symbiote" | "gojo" | "custom") {
-            self.fx_preset = "spiderman".into();
+        if !matches!(self.fx_preset.as_str(), "classic" | "mint" | "neon" | "low" | "light" | "spiderman" | "miles" | "symbiote" | "gojo" | "custom" | "off") {
+            self.fx_preset = "off".into();
         }
-        if !matches!(self.theme.as_str(), "sakura" | "clean" | "midnight" | "sage" | "mint" | "spiderman" | "miles" | "symbiote" | "neon" | "gojo" | "custom") {
-            self.theme = "sakura".into();
+        if !matches!(self.theme.as_str(), "minimal" | "anime") {
+            self.theme = "minimal".into();
         }
         if !matches!(self.close_mode.as_str(), "tab" | "window") {
-            self.close_mode = "tab".into();
+            self.close_mode = "window".into();
         }
         if !matches!(self.ai_provider.as_str(), "none" | "gemini" | "ollama" | "groq" | "openrouter" | "pollinations" | "lmstudio" | "custom"
         ) {
@@ -225,25 +228,24 @@ impl Settings {
         });
         if self.bindings.is_empty() {
             self.bindings = default_bindings();
-        } else {
-            let mut renamed = false;
-            for item in &mut self.bindings {
-                if item.action == "hollow_purple"
-                    && item.input.kind == "gesture"
-                    && item.input.value == "flick"
-                {
-                    item.input.value = "gojo".into();
-                    renamed = true;
-                }
-            }
-            let has_flick = self.bindings.iter().any(|item| {
-                item.input.kind == "gesture" && item.input.value == "flick"
-            });
-            if renamed && !has_flick {
-                self.bindings
-                    .push(binding("b-flick", "minimize", "gesture", "flick"));
-            }
         }
+        self
+    }
+
+    /// v0.6.0 minimal defaults for existing users; personal fields (lang, camera, monitor, ai, ...) are kept.
+    fn migrate_v060(mut self) -> Self {
+        self.close_mode = "window".into();
+        self.show_webs = false;
+        self.fx_preset = "off".into();
+        self.hollow_purple_enabled = false;
+        self.air_volume_enabled = false;
+        self.air_media_enabled = false;
+        self.air_zoom_enabled = false;
+        self.air_scroll_enabled = false;
+        self.ninja_shield_enabled = false;
+        self.body_tracking = true;
+        self.theme = "minimal".into();
+        self.migrated_v060 = true;
         self
     }
 }
@@ -261,9 +263,15 @@ pub fn load_settings(app: &AppHandle) -> Settings {
     let Ok(text) = fs::read_to_string(path) else {
         return Settings::default();
     };
-    serde_json::from_str::<Settings>(&text)
-        .map(Settings::normalize)
-        .unwrap_or_else(|_| Settings::default())
+    let Ok(settings) = serde_json::from_str::<Settings>(&text).map(Settings::normalize) else {
+        return Settings::default();
+    };
+    if settings.migrated_v060 {
+        return settings;
+    }
+    let settings = settings.migrate_v060();
+    let _ = store_settings(app, &settings);
+    settings
 }
 
 pub fn store_settings(app: &AppHandle, settings: &Settings) -> Result<(), String> {

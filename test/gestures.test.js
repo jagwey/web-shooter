@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { GRAB_CONFIRM_FRAMES, RELEASE_CONFIRM_FRAMES } from "../src/gesture-runtime.js";
 import { normalizeHandShape, fingerStates, isPinchPose, isFlickRelease, classifyGesture, countExtendedFingers, isFlickPose, isWebSign, isPeaceSign, isFingerGun, isPowerFist, isInFaceDeadzone, matchCustomGesture, jointAngle, voteGesture } from "../src/gestures.js";
 
 function makeHand({ index, middle, ring, pinky }) {
@@ -24,6 +25,10 @@ function makeHand({ index, middle, ring, pinky }) {
     }
   }
   return points;
+}
+
+function mirror(points) {
+  return points.map((point) => ({ ...point, x: 1 - point.x }));
 }
 
 function rotate(points, degrees) {
@@ -66,19 +71,15 @@ function stopHand() {
   return hand;
 }
 
-test("open palm, fist, and point stay distinct", () => {
+test("open palm, fist, and index-only hands stay distinct", () => {
   assert.equal(classifyGesture(stopHand()), "palm");
   // Fingers open but parallel, thumb tucked: a relaxed hand, not a cancel.
   assert.equal(classifyGesture(makeHand({ index: true, middle: true, ring: true, pinky: true })), null);
   assert.equal(classifyGesture(makeHand({ index: false, middle: false, ring: false, pinky: false })), "fist");
-  // Thumb must be clearly tucked to count as point (thumb/palm < 0.60); the fixture's default thumb sits in the finger_gun hysteresis band.
+  // v0.6 has no point gesture: an index-only hand is no gesture at all.
   const pointHand = makeHand({ index: true, middle: false, ring: false, pinky: false });
   pointHand[4] = { x: 0.42, y: 0.72, z: 0 };
-  assert.equal(classifyGesture(pointHand), "point");
-  // Gojo needs index/middle tips together (gap/palm < 0.30); the default fixture gap (0.33) is now in the peace/gojo dead band.
-  const gojoHand = makeHand({ index: true, middle: true, ring: false, pinky: false });
-  gojoHand[12] = { x: 0.42, y: 0.28, z: 0 };
-  assert.equal(classifyGesture(gojoHand), "gojo");
+  assert.equal(classifyGesture(pointHand), null);
   assert.equal(isWebSign(makeHand({ index: true, middle: true, ring: true, pinky: true })), false);
 });
 
@@ -124,7 +125,8 @@ function okFlick() {
 test("OK flick is a circle plus three fingers, not a web or a close", () => {
   const hand = okFlick();
   assert.equal(isFlickPose(hand), true);
-  assert.equal(classifyGesture(hand), "flick");
+  // Flick is no longer a classified gesture (v0.6): the OK hand is neither web, fist nor palm.
+  assert.equal(classifyGesture(hand), null);
   assert.equal(isWebSign(hand), false);
   const palm = makeHand({ index: true, middle: true, ring: true, pinky: true });
   assert.equal(isFlickPose(palm), false);
@@ -175,7 +177,8 @@ test("finger gun is index forward and thumb up", () => {
   // Extend thumb away from palm (upward/outward)
   hand[4] = { x: 0.15, y: 0.65, z: 0 };
   assert.equal(isFingerGun(hand), true);
-  assert.equal(classifyGesture(hand), "finger_gun");
+  // finger_gun stays as a helper but is not a v0.6 gesture.
+  assert.equal(classifyGesture(hand), null);
 });
 
 test("power fist distinguishes grip from resting hand", () => {
@@ -216,41 +219,68 @@ function twoUp(gapX) {
   return h;
 }
 
-test("peace/gojo hysteresis: ambiguous gap holds the last gesture, else null", () => {
-  // breadth (5-17) = 0.24; gap 0.108 -> ratio 0.45: between gojo stay 0.38 and peace enter 0.50
-  const mid = twoUp(0.108);
-  assert.equal(classifyGesture(mid), null);
-  assert.equal(classifyGesture(mid, null, [], { lastGesture: "peace" }), "peace");
-  // ratio 0.45 is above gojo stay (0.38): gojo does not hold
-  assert.equal(classifyGesture(mid, null, [], { lastGesture: "gojo" }), null);
-  assert.equal(classifyGesture(twoUp(0.14)), "peace");
-  assert.equal(classifyGesture(twoUp(0.05)), "gojo");
-  // ratio 0.35: gojo stay passes, enter fails
-  assert.equal(classifyGesture(twoUp(0.084)), null);
-  assert.equal(classifyGesture(twoUp(0.084), null, [], { lastGesture: "gojo" }), "gojo");
+test("peace is any two-finger-up hand, fingers together or spread, thumb ignored", () => {
+  for (const gap of [0.02, 0.05, 0.084, 0.108, 0.14]) assert.equal(classifyGesture(twoUp(gap)), "peace");
+  const thumbOut = twoUp(0.1);
+  thumbOut[4] = { x: 0.15, y: 0.65, z: 0 };
+  assert.equal(classifyGesture(thumbOut), "peace");
+  // Mirrored (other hand, or back of the hand to the camera) reads the same.
+  assert.equal(classifyGesture(mirror(twoUp(0.1))), "peace");
 });
 
-test("finger_gun vs point thumb hysteresis", () => {
-  const h = makeHand({ index: true, middle: false, ring: false, pinky: false });
-  h[4] = { x: 0.12, y: 0.7, z: 0 }; // far out: ratio > 0.80
-  assert.equal(classifyGesture(h), "finger_gun");
-  h[4] = { x: 0.2, y: 0.7, z: 0 }; // ratio 0.75: band
-  assert.equal(classifyGesture(h), null);
-  assert.equal(classifyGesture(h, null, [], { lastGesture: "finger_gun" }), "finger_gun");
-  assert.equal(classifyGesture(h, null, [], { lastGesture: "point" }), null);
-  h[4] = { x: 0.42, y: 0.72, z: 0 };
-  assert.equal(classifyGesture(h), "point");
-});
-
-test("pinch pose is its own label and disjoint from flick/fist", () => {
+test("a pinch-like hand never returns the removed pinch label", () => {
   const h = makeHand({ index: false, middle: false, ring: false, pinky: false });
   h[6] = { x: 0.38, y: 0.58, z: 0 };
   h[7] = { x: 0.4, y: 0.5, z: 0 };
   h[8] = { x: 0.42, y: 0.46, z: 0 };
   h[4] = { x: 0.43, y: 0.47, z: 0 };
   assert.equal(isPinchPose(h), true);
-  assert.equal(classifyGesture(h), "pinch");
-  assert.equal(isPinchPose(makeHand({ index: false, middle: false, ring: false, pinky: false })), false);
+  assert.notEqual(classifyGesture(h), "pinch");
+});
+
+// Realistic proportions, knuckles toward the camera: fingers collapse to short straight stubs.
+function knuckles(tipY) {
+  const p = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.8, z: 0 }));
+  for (const [m, x] of [[5, 0.42], [9, 0.48], [13, 0.54], [17, 0.6]]) {
+    p[m] = { x, y: 0.62, z: 0 };
+    p[m + 1] = { x, y: 0.59, z: 0 };
+    p[m + 2] = { x, y: (0.59 + tipY) / 2, z: 0 };
+    p[m + 3] = { x, y: tipY, z: 0 };
+  }
+  return p;
+}
+
+test("tolerant fist: a loose finger or foreshortened knuckles still grab", () => {
+  const loose = makeHand({ index: false, middle: false, ring: false, pinky: false });
+  loose[19] = { x: 0.66, y: 0.6, z: 0 };
+  loose[20] = { x: 0.7, y: 0.6, z: 0 };
+  assert.equal(classifyGesture(loose), "fist");
+  assert.equal(classifyGesture(mirror(loose)), "fist");
+  assert.equal(classifyGesture(rotate(loose, 180)), "fist");
+  // No finger reads as closed here; tips pulled in toward the wrist decide it.
+  assert.equal(classifyGesture(knuckles(0.585)), "fist");
+  // Looser claw: not a fresh grab, but a held fist does not drop.
+  assert.equal(classifyGesture(knuckles(0.56)), null);
+  assert.equal(classifyGesture(knuckles(0.56), null, [], { lastGesture: "fist" }), "fist");
+  // An extended finger always vetoes the fist.
+  assert.equal(classifyGesture(knuckles(0.5), null, [], { lastGesture: "fist" }), null);
+});
+
+test("fast vote: fist and palm confirm on 2 consecutive frames, a stale majority cannot flip back", () => {
+  assert.equal(GRAB_CONFIRM_FRAMES, 2);
+  assert.equal(RELEASE_CONFIRM_FRAMES, 2);
+  const votes = [];
+  for (let i = 0; i < 3; i += 1) voteGesture(votes, "peace", null);
+  assert.equal(voteGesture(votes, "fist", "peace"), "peace");
+  assert.equal(voteGesture(votes, "fist", "peace"), "fist");
+  assert.equal(voteGesture(votes, null, "fist"), "fist");
+  assert.equal(voteGesture(votes, "palm", "fist"), "fist");
+  assert.equal(voteGesture(votes, "palm", "fist"), "palm");
+  // Dwell poses stay on the stricter 3-of-5 majority.
+  const slow = [];
+  assert.equal(voteGesture(slow, "web", null), null);
+  assert.equal(voteGesture(slow, "web", null), null);
+  assert.equal(voteGesture(slow, "web", null), "web");
 });
 
 test("normalizeHandShape: custom match is translation, scale and roll invariant", () => {

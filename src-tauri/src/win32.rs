@@ -45,9 +45,9 @@ mod platform {
         GetWindowLongPtrW, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
         EnumChildWindows, GetClientRect, GetWindowThreadProcessId, IsIconic,
         IsWindow, IsWindowVisible, IsZoomed, PostMessageW, SetForegroundWindow, SetWindowPos,
-        ShowWindow, WindowFromPoint, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SWP_ASYNCWINDOWPOS,
-        SWP_DEFERERASE, SWP_NOACTIVATE, SWP_NOSENDCHANGING, SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE,
-        WS_EX_TOOLWINDOW,
+        ShowWindow, ShowWindowAsync, WindowFromPoint, SC_CLOSE, SC_MINIMIZE, SW_MAXIMIZE,
+        SW_MINIMIZE, SW_RESTORE, SWP_ASYNCWINDOWPOS, SWP_DEFERERASE, SWP_NOACTIVATE,
+        SWP_NOSENDCHANGING, SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE, WM_SYSCOMMAND, WS_EX_TOOLWINDOW,
     };
     use windows_registry::CURRENT_USER;
 
@@ -261,6 +261,28 @@ mod platform {
         Ok((hwnd, desc))
     }
 
+    /// Looser gate for minimize/close: `describe` rejects untitled/cloaked/tool windows that are still valid targets.
+    fn action_target(raw: i64) -> Result<HWND, String> {
+        let hwnd = hwnd_of(raw);
+        if raw == 0 || unsafe { !IsWindow(Some(hwnd)).as_bool() } {
+            return Err("window gone".into());
+        }
+        let class = class_name(hwnd);
+        if root_of(hwnd) != hwnd
+            || class == "TaskManagerWindow"
+            || skipped_class(&class)
+            || unsafe { !IsWindowVisible(hwnd).as_bool() }
+        {
+            return Err("window protected".into());
+        }
+        let mut pid = 0u32;
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+        if pid == std::process::id() {
+            return Err("window protected".into());
+        }
+        Ok(hwnd)
+    }
+
     pub fn window_at(x: i32, y: i32) -> Result<Option<DesktopWindow>, String> {
         let hwnd = unsafe { WindowFromPoint(POINT { x, y }) };
         if !hwnd.0.is_null() {
@@ -278,7 +300,8 @@ mod platform {
                 return Ok(None);
             }
         }
-        // Fallback: search top-to-bottom z-order windows
+        // Fallback: search top-to-bottom z-order windows (also reached when the hit is our own
+        // overlay/control window: `describe` rejects our pid, so the scan continues below it).
         let list = list_windows()?;
         for win in list {
             if x >= win.x && x < win.x + win.width && y >= win.y && y < win.y + win.height {
@@ -519,9 +542,10 @@ mod platform {
     }
 
     pub fn close_window(raw: i64) -> Result<(), String> {
-        let (hwnd, _) = checked_target(raw)?;
+        let hwnd = action_target(raw)?;
         unsafe {
-            PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0))
+            PostMessageW(Some(hwnd), WM_SYSCOMMAND, WPARAM(SC_CLOSE as usize), LPARAM(0))
+                .or_else(|_| PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)))
                 .map_err(|err| err.to_string())?;
         }
         Ok(())
@@ -592,9 +616,12 @@ mod platform {
     }
 
     pub fn minimize_window(raw: i64) -> Result<(), String> {
-        let (hwnd, _) = checked_target(raw)?;
+        let hwnd = action_target(raw)?;
         unsafe {
-            let _ = ShowWindow(hwnd, SW_MINIMIZE);
+            if !ShowWindowAsync(hwnd, SW_MINIMIZE).as_bool() {
+                PostMessageW(Some(hwnd), WM_SYSCOMMAND, WPARAM(SC_MINIMIZE as usize), LPARAM(0))
+                    .map_err(|err| err.to_string())?;
+            }
         }
         Ok(())
     }

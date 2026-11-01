@@ -460,20 +460,20 @@ test("Air Scroll: rejected when index or middle is closed", () => {
   assert.equal(isAirScroll(middleClosed).active, false);
 });
 
-test("Air Scroll vs Peace Sign deadband: ratio in (0.32, 0.42] activates neither gesture", () => {
+test("Air Scroll deadband: ratio in (0.32, 0.42] does not scroll, and reads as peace (v0.6 has no gap rule)", () => {
   const deadbandHand = makeScrollHand(0.36); // in (0.32, 0.42]
   assert.equal(isAirScroll(deadbandHand).active, false);
-  assert.equal(isPeaceSign(deadbandHand), false);
+  assert.equal(isPeaceSign(deadbandHand), true);
 });
 
 // ============================================================================
 // 6. Collision Avoidance Invariant Unit Tests
 // ============================================================================
 
-test("Collision avoidance: Air Scroll never triggers isPeaceSign", () => {
+test("v0.6: two fingers together are peace; Air Scroll is no longer classified", () => {
   const scrollHand = makeScrollHand(0.18);
   assert.equal(isAirScroll(scrollHand).active, true);
-  assert.equal(isPeaceSign(scrollHand), false);
+  assert.equal(isPeaceSign(scrollHand), true);
 });
 
 test("Collision avoidance: isPeaceSign never triggers isAirScroll", () => {

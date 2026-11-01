@@ -1,22 +1,21 @@
 import { FilesetResolver, HandLandmarker, PoseLandmarker } from "@mediapipe/tasks-vision";
 import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, migrateBindings, removeBinding, upsertBinding } from "./bindings.js";
-import { DEFAULT_MODELS, OPENAI_PRESETS, autoTileWorkspace, chatWithAi, fetchOllamaModels, optimizeSettingsWithAi, sendAiGreeting, testAiConnection } from "./ai.js";
-import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen, adjustVolume, mediaPlayPause, mediaNextTrack, showDesktop, zoomDesktop, scrollWheel } from "./desktop.js";
-import { FLICK_RELEASE_WINDOW_MS, classifyGesture, worldShape, fingerStates, isFlickRelease, hollowPurpleReady, isFingerGun, isPowerFist, isInFaceDeadzone, voteGesture, wristDepths, isAirKnobGrip, isAirMediaHold, isAirMediaFlick, isNinjaShield, isPinchZoom, isAirScroll } from "./gestures.js";
-import { cloneLandmarks, createHandFilter, filterLandmarks, handSpeed, predict, predictPalmAnchor } from "./filter.js";
-import { createAirModeLock, createDwell, alignHandSlots, resolvePinchIntent, trimHistory } from "./gesture-runtime.js";
+import { chatWithAi } from "./ai.js";
+import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen } from "./desktop.js";
+import { classifyGesture, worldShape, fingerStates, isFist, isInFaceDeadzone, voteGesture } from "./gestures.js";
+import { cloneLandmarks, createHandFilter, filterLandmarks, handSpeed, leadMs, predict, predictPalmAnchor, ropeDeadzone } from "./filter.js";
+import { ACTION_COOLDOWN_MS, CLOSE_DWELL_MS, GRAB_CONFIRM_FRAMES, MINIMIZE_DWELL_MS, RELEASE_CONFIRM_FRAMES, createDwell, alignHandSlots, trimHistory } from "./gesture-runtime.js";
 import { registerCustomLook } from "./effects.js";
 import { clientOf } from "./target.js";
-import { flickAim, flickImpulse, throwToMonitor } from "./throw.js";
+import { snapToEdge, throwToMonitor, validThrow } from "./throw.js";
+import { applyTheme as applyUiTheme } from "./theme.js";
 import { getLang, initI18n, setLang, t } from "./i18n.js";
 import { activeProfile, createProfile, loadProfiles, recordMs, recordShot, removeProfile, sanitizeProfiles, saveProfiles } from "./profiles.js";
 import {
   isAudioEnabled,
   playFling,
   playGrab,
-  playHollowPurple,
   playImpact,
-  playInfinityShield,
   playThwip,
   setAudioEnabled,
 } from "./sound.js";
@@ -74,7 +73,7 @@ const ACTION_KEYS = {
   overlay_toggle: "actionOverlay",
   show_control: "actionShow",
   close_tab: "actionCloseTab",
-  ask_ai: "actionAskAi",
+  close: "gestCloseTitle",
   scan_document: "actionScanDoc",
   gestures_pause: "actionGesturesPause",
 };
@@ -91,21 +90,23 @@ const GESTURE_KEYS = {
   custom: "gestureCustom",
   pinch: "gesturePinch",
 };
-const ACTION_COOLDOWN_MS = 600;
 // Fast motion blurs the hand for a few frames; keep grabs alive instead of dropping the window.
 const MISS_GRACE_MS = 300;
 // Pointer lead along hand velocity; roughly one camera frame of hidden latency.
-const PREDICT_MS = 12;
-// Hollow Purple: the two-hand stance must hold this long, and the webbed tab stays a target this long after release.
-const PURPLE_HOLD_MS = 420;
-const PURPLE_TARGET_MS = 3000;
 const POSE_GAP_MS = 80;
 const POSE_FRESH_MS = 300;
 const WORKER_BOOT_MS = 4000;
-const SNIPER_HOLD_MS = 350;
-const DWELL_MS = { peace: 350, finger_gun: 400 };
-const SENSITIVE_WINDOW_RE = /github|gitlab|google docs|google sheets|sheets\.google|docs\.google|notion|figma|visual studio|code|vscode|jira|trello|bank|pay|checkout|save|unsaved|draft|taslak|kaydedilmedi/i;
-const lockAir = createAirModeLock({ releaseMs: 400 });
+// A fist that stops being seen for this long ends the grab even without a clean palm.
+const FIST_LOST_MS = 150;
+const LEAD_CAP_MS = 25;
+// The hand must rest within DWELL_MOVE_PX this long before the minimize/close ring starts filling.
+const PRE_HOVER_MS = 300;
+// Above this hand speed (screen widths/s) a closing fist is a swipe, not a grab.
+const GRAB_MAX_SPEED = 1.2;
+const COAST_FRAMES = 2;
+const DWELL_MOVE_PX = 60;
+const SNAP_EDGE_PX = 24;
+const EMIT_GAP_MS = 16;
 const dwell = createDwell();
 const VIRTUAL_CAMERA = /droidcam|obs|virtual|manycam|xsplit|snap camera|iriun|epoccam|camo/i;
 
@@ -188,22 +189,6 @@ function wireChrome() {
     });
   }
 
-  const purpleToggle = document.getElementById("purpleToggle");
-  if (purpleToggle) {
-    purpleToggle.addEventListener("click", () => {
-      state.settings.hollowPurpleEnabled = !state.settings.hollowPurpleEnabled;
-      persist();
-    });
-  }
-
-  const aiSniperBtn = document.getElementById("aiSniperBtn");
-  if (aiSniperBtn) {
-    aiSniperBtn.addEventListener("click", () => askAiAt(null));
-  }
-  const aiOcrBtn = document.getElementById("aiOcrBtn");
-  if (aiOcrBtn) {
-    aiOcrBtn.addEventListener("click", () => scanCameraDocument());
-  }
   const recordGestureBtn = document.getElementById("recordCustomGestureBtn");
   if (recordGestureBtn) {
     recordGestureBtn.addEventListener("click", () => {
@@ -265,15 +250,21 @@ function wireChrome() {
     });
   }
 
-  const websToggle = document.getElementById("websToggle");
-  if (websToggle) {
-    websToggle.addEventListener("click", () => {
-      state.settings.showWebs = !state.settings.showWebs;
-      emitTo("overlay", "overlay-settings", { showWebs: state.settings.showWebs });
-      persist();
-      render();
-    });
-  }
+  document.getElementById("themeSelect")?.addEventListener("change", (e) => {
+    state.settings.theme = applyUiTheme(e.target.value);
+    emitTo("overlay", "overlay-preset", overlayLook());
+    persist();
+  });
+
+  document.getElementById("effectsSelect")?.addEventListener("change", (e) => {
+    const on = e.target.value === "classic";
+    state.settings.showWebs = on;
+    state.settings.fxPreset = on ? "classic" : "off";
+    state.settings.focusFrameOnly = !on && state.settings.showFocusFrame !== false;
+    emitTo("overlay", "overlay-preset", overlayLook());
+    emitTo("overlay", "overlay-settings", { showWebs: on, focusFrameOnly: state.settings.focusFrameOnly, accent: overlayLook().accent });
+    persist();
+  });
 
   const focusFrameToggle = document.getElementById("focusFrameToggle");
   if (focusFrameToggle) {
@@ -307,57 +298,6 @@ function wireChrome() {
     });
   }
 
-  const airVolumeToggle = document.getElementById("airVolumeToggle");
-  if (airVolumeToggle) {
-    airVolumeToggle.addEventListener("click", () => {
-      state.settings.airVolumeToggle = !state.settings.airVolumeToggle;
-      state.settings.air_volume_enabled = state.settings.airVolumeToggle;
-      persist();
-      render();
-    });
-  }
-
-  const airMediaToggle = document.getElementById("airMediaToggle");
-  if (airMediaToggle) {
-    airMediaToggle.addEventListener("click", () => {
-      state.settings.airMediaToggle = !state.settings.airMediaToggle;
-      state.settings.air_media_enabled = state.settings.airMediaToggle;
-      persist();
-      render();
-    });
-  }
-
-  const ninjaShieldToggle = document.getElementById("ninjaShieldToggle");
-  if (ninjaShieldToggle) {
-    ninjaShieldToggle.addEventListener("click", () => {
-      state.settings.ninjaShieldToggle = !state.settings.ninjaShieldToggle;
-      state.settings.ninja_shield_enabled = state.settings.ninjaShieldToggle;
-      persist();
-      render();
-    });
-  }
-
-  const airZoomToggle = document.getElementById("airZoomToggle");
-  if (airZoomToggle) {
-    airZoomToggle.addEventListener("click", () => {
-      state.settings.airZoomToggle = !state.settings.airZoomToggle;
-      state.settings.air_zoom_enabled = state.settings.airZoomToggle;
-      persist();
-      render();
-    });
-  }
-
-  const airScrollToggle = document.getElementById("airScrollToggle");
-  if (airScrollToggle) {
-    airScrollToggle.addEventListener("click", () => {
-      state.settings.airScrollToggle = !state.settings.airScrollToggle;
-      state.settings.air_scroll_enabled = state.settings.airScrollToggle;
-      persist();
-      render();
-    });
-  }
-
-  wireCustomFx();
   wireAi();
   wireTabsAndPresets();
 
@@ -366,49 +306,6 @@ function wireChrome() {
     refreshCamerasBtn.addEventListener("click", async () => {
       await listCameras();
       if (!state.stream) startCamera();
-    });
-  }
-
-  const testPurple = document.getElementById("testPurple");
-  if (testPurple) {
-    testPurple.addEventListener("click", async () => {
-      if (!state.overlay?.visible) await toggleOverlay();
-      emitTo("overlay", "overlay-purple", { x: 0.5, y: 0.45 });
-      playHollowPurple();
-    });
-  }
-
-  const aiApiKey = document.getElementById("aiApiKey");
-  if (aiApiKey) {
-    aiApiKey.addEventListener("change", (e) => {
-      state.settings.aiApiKey = e.target.value;
-      persist();
-    });
-  }
-
-  const aiEndpoint = document.getElementById("aiEndpoint");
-  if (aiEndpoint) {
-    aiEndpoint.addEventListener("change", (e) => {
-      state.settings.aiEndpoint = e.target.value;
-      persist();
-    });
-  }
-
-  const aiModel = document.getElementById("aiModel");
-  if (aiModel) {
-    aiModel.addEventListener("change", (e) => {
-      state.settings.aiModel = e.target.value;
-      persist();
-    });
-  }
-
-  const aiTestBtn = document.getElementById("aiTestBtn");
-  if (aiTestBtn) {
-    aiTestBtn.addEventListener("click", async () => {
-      const msg = document.getElementById("aiStatusMessage");
-      if (msg) msg.textContent = "Bağlanıyor / Testing...";
-      const res = await testAiConnection(state.settings);
-      if (msg) msg.textContent = res.message;
     });
   }
 
@@ -438,72 +335,6 @@ function wireChrome() {
   // Guarantee clean camera teardown when page/app unloads
   window.addEventListener("beforeunload", () => stopCamera(true));
   window.addEventListener("pagehide", () => stopCamera(true));
-}
-
-function wireCustomFx() {
-  const pInput = document.getElementById("customPrimary");
-  const gInput = document.getElementById("customGlow");
-  const partInput = document.getElementById("customParticle");
-  const styleSelect = document.getElementById("customStyle");
-  const thickSlider = document.getElementById("customThickness");
-  const previewBtn = document.getElementById("customPreviewBtn");
-  const saveBtn = document.getElementById("customSaveBtn");
-
-  const syncToUI = () => {
-    const fx = state.settings?.customFx || {
-      primary: "#00f5ff",
-      glow: "#a855f7",
-      particle: "#ffffff",
-      style: "sparks",
-      thickness: 3,
-    };
-    if (pInput && fx.primary) pInput.value = fx.primary;
-    if (gInput && fx.glow) gInput.value = fx.glow;
-    if (partInput && fx.particle) partInput.value = fx.particle;
-    if (styleSelect && fx.style) styleSelect.value = fx.style;
-    if (thickSlider && fx.thickness) thickSlider.value = fx.thickness;
-  };
-
-  if (previewBtn) {
-    previewBtn.addEventListener("click", async () => {
-      const custom = {
-        primary: pInput?.value || "#00f5ff",
-        glow: gInput?.value || "#a855f7",
-        particle: partInput?.value || "#ffffff",
-        style: styleSelect?.value || "sparks",
-        thickness: Number(thickSlider?.value) || 3,
-      };
-      registerCustomLook(custom);
-      emitTo("overlay", "overlay-settings", { customFx: custom });
-      emitTo("overlay", "overlay-preset", { preset: "custom" });
-      if (!state.overlay?.visible) await toggleOverlay();
-      emitTo("overlay", "overlay-shot", { x: 0.5, y: 0.5 });
-      playThwip();
-    });
-  }
-
-  if (saveBtn) {
-    saveBtn.addEventListener("click", async () => {
-      const custom = {
-        primary: pInput?.value || "#00f5ff",
-        glow: gInput?.value || "#a855f7",
-        particle: partInput?.value || "#ffffff",
-        style: styleSelect?.value || "sparks",
-        thickness: Number(thickSlider?.value) || 3,
-      };
-      state.settings.customFx = custom;
-      state.settings.theme = "custom";
-      state.settings.fxPreset = "custom";
-      registerCustomLook(custom);
-      emitTo("overlay", "overlay-settings", { customFx: custom });
-      emitTo("overlay", "overlay-preset", { preset: "custom" });
-      applyTheme("custom");
-      await persist();
-      render();
-    });
-  }
-
-  state._syncCustomFxUI = syncToUI;
 }
 
 function formatSmoothingBadge(val) {
@@ -538,61 +369,6 @@ function wireTabsAndPresets() {
     });
   }
 
-  const applyGesturePreset = async (mode) => {
-    if (!state.settings) return;
-    if (mode === "all") {
-      state.settings.showWebs = true;
-      state.settings.showFocusFrame = true;
-      state.settings.focusFrameOnly = false;
-      state.settings.dualHands = true;
-      state.settings.airVolumeToggle = true;
-      state.settings.airMediaToggle = true;
-      state.settings.ninjaShieldToggle = true;
-      state.settings.airZoomToggle = true;
-      state.settings.airScrollToggle = true;
-      state.settings.hollowPurpleEnabled = true;
-      state.settings.safetyGuard = true;
-      state.settings.smoothing = 0.80;
-    } else if (mode === "core") {
-      state.settings.showWebs = true;
-      state.settings.showFocusFrame = true;
-      state.settings.focusFrameOnly = false;
-      state.settings.dualHands = true;
-      state.settings.airVolumeToggle = false;
-      state.settings.airMediaToggle = false;
-      state.settings.ninjaShieldToggle = false;
-      state.settings.airZoomToggle = false;
-      state.settings.airScrollToggle = false;
-      state.settings.hollowPurpleEnabled = true;
-      state.settings.safetyGuard = true;
-      state.settings.smoothing = 0.85;
-    } else if (mode === "eco") {
-      state.settings.showWebs = false;
-      state.settings.showFocusFrame = true;
-      state.settings.focusFrameOnly = true;
-      state.settings.dualHands = false;
-      state.settings.bodyTracking = false;
-      state.settings.airVolumeToggle = false;
-      state.settings.airMediaToggle = false;
-      state.settings.ninjaShieldToggle = false;
-      state.settings.airZoomToggle = false;
-      state.settings.airScrollToggle = true;
-      state.settings.hollowPurpleEnabled = false;
-      state.settings.targetFps = 60;
-      state.settings.smoothing = 0.70;
-    }
-    emitTo("overlay", "overlay-settings", {
-      showWebs: state.settings.showWebs,
-      showFocusFrame: state.settings.showFocusFrame,
-      focusFrameOnly: state.settings.focusFrameOnly,
-    });
-    await persist();
-    render();
-  };
-
-  document.getElementById("presetAllBtn")?.addEventListener("click", () => applyGesturePreset("all"));
-  document.getElementById("presetCoreBtn")?.addEventListener("click", () => applyGesturePreset("core"));
-  document.getElementById("presetEcoBtn")?.addEventListener("click", () => applyGesturePreset("eco"));
 }
 
 function renderDashboardTabs() {
@@ -606,49 +382,6 @@ function renderDashboardTabs() {
 }
 
 function wireAi() {
-  const greetingBtn = document.getElementById("aiGreetingBtn");
-  if (greetingBtn) {
-    greetingBtn.addEventListener("click", async () => {
-      appendAiChat("user", "👋 Merhaba! Sistem durumunu kontrol et.");
-      const res = await sendAiGreeting(state.settings, {
-        fps: state.renderFps,
-        delegate: state.delegate,
-        monitors: state.monitors,
-      });
-      appendAiChat("bot", res.text);
-    });
-  }
-
-  const optimizeBtn = document.getElementById("aiOptimizeBtn");
-  if (optimizeBtn) {
-    optimizeBtn.addEventListener("click", async () => {
-      appendAiChat("user", "⚡ Sistemi otomatik optimize et");
-      const res = await chatWithAi(state.settings, "optimize et", {
-        fps: state.renderFps,
-        delegate: state.delegate,
-        monitors: state.monitors,
-      });
-      if (res.appliedSettings) {
-        state.settings = { ...state.settings, ...res.appliedSettings };
-        await persist();
-        render();
-      }
-      appendAiChat("bot", res.text);
-    });
-  }
-
-  const tileBtn = document.getElementById("aiTileBtn");
-  if (tileBtn) {
-    tileBtn.addEventListener("click", async () => {
-      appendAiChat("user", "🗂️ Pencereleri ekrana yerleştir");
-      const windows = await invoke("list_windows").catch(() => []);
-      const snap = await invoke("desktop_snapshot").catch(() => ({}));
-      const res = await autoTileWorkspace(state.settings, windows, snap?.monitors || state.monitors)
-        .catch((err) => ({ message: `Yerleştirilemedi: ${err?.message || err}` }));
-      appendAiChat("bot", res.message);
-    });
-  }
-
   const chatForm = document.getElementById("aiChatForm");
   const chatInput = document.getElementById("aiChatInput");
   if (chatForm && chatInput) {
@@ -680,20 +413,6 @@ function wireAi() {
     chatForm.requestSubmit();
   });
 
-  const fetchModelsBtn = document.getElementById("aiFetchModelsBtn");
-  if (fetchModelsBtn) {
-    fetchModelsBtn.addEventListener("click", async () => {
-      appendAiChat("user", "Ollama modelleri taranıyor...");
-      const models = await fetchOllamaModels(state.settings.aiEndpoint);
-      appendAiChat("bot", `Bulunan yerel modeller: ${models.join(", ")}`);
-      if (models.length > 0) {
-        state.settings.aiModel = models[0];
-        const modelInput = document.getElementById("aiModel");
-        if (modelInput) modelInput.value = models[0];
-        persist();
-      }
-    });
-  }
 }
 
 function appendAiChat(role, text) {
@@ -737,10 +456,12 @@ function applySettingsEffects() {
   if (state.settings.customFx) {
     registerCustomLook(state.settings.customFx);
   }
-  applyTheme(state.settings.theme || "sakura");
+  state.settings.theme = applyUiTheme(state.settings.theme);
   setAudioEnabled(state.settings.soundEnabled !== false);
+  emitTo("overlay", "overlay-preset", overlayLook());
   emitTo("overlay", "overlay-settings", {
-    showWebs: state.settings.showWebs !== false,
+    accent: overlayLook().accent,
+    showWebs: state.settings.showWebs === true,
     showFocusFrame: state.settings.showFocusFrame !== false,
     focusFrameOnly: Boolean(state.settings.focusFrameOnly),
     customFx: state.settings.customFx,
@@ -940,17 +661,17 @@ function fallbackSettings() {
     idleReleaseSecs: 20,
     monitorMode: "one",
     monitorId: "",
-    fxPreset: "sakura",
+    fxPreset: "off",
     bindings: defaultBindings(),
     cameraDeviceId: "",
     targetFps: 120,
     soundEnabled: true,
-    showWebs: true,
+    showWebs: false,
     showFocusFrame: true,
     dualHands: true,
     bodyTracking: false,
     customFx: null,
-    theme: "sakura",
+    theme: "minimal",
     sniperTarget: "gemini_web",
     smoothing: 0.75,
     airVolumeToggle: true,
@@ -1054,7 +775,7 @@ async function toggleOverlay() {
   if (!result || result.unsupported) return;
   state.overlay = result;
   if (result.visible) {
-    emitTo("overlay", "overlay-preset", { preset: state.settings.theme || state.settings.fxPreset });
+    emitTo("overlay", "overlay-preset", overlayLook());
     emitTo("overlay", "overlay-frame", result);
     if (state.cameraWanted) await startCamera();
   }
@@ -1096,7 +817,7 @@ async function persist() {
       if (frame && !frame.unsupported) {
         state.overlay = frame;
         emitTo("overlay", "overlay-frame", frame);
-        emitTo("overlay", "overlay-preset", { preset: state.settings.theme || state.settings.fxPreset });
+        emitTo("overlay", "overlay-preset", overlayLook());
       }
     } catch (err) {
       console.warn("place_overlay invoke failed:", err);
@@ -1483,8 +1204,10 @@ async function detectTick() {
     // One frame in flight; the worker's reply runs onHands, which schedules the next tick.
     state.inFlight = true;
     try {
-      // Full-resolution bitmap is transferred (not copied); the GPU path rescales it for the model.
-      const bitmap = await createImageBitmap(video);
+      // Downscaled to 640px wide before transfer; the model input is smaller than that anyway.
+      const vw = video.videoWidth || 640;
+      const vh = video.videoHeight || 360;
+      const bitmap = await createImageBitmap(video, { resizeWidth: 640, resizeHeight: Math.round((640 * vh) / vw), resizeQuality: "low" });
       if (!state.worker) {
         bitmap.close();
         state.inFlight = false;
@@ -1492,7 +1215,7 @@ async function detectTick() {
       }
       state.sentAt = performance.now();
       state.worker.postMessage(
-        { type: "frame", bitmap, time: state.sentAt, body: Boolean(state.settings?.bodyTracking), numHands: state.settings?.dualHands === false ? 1 : 2 },
+        { type: "frame", bitmap, time: state.sentAt, body: Boolean(state.settings?.bodyTracking), numHands: state.settings?.dualHands === true ? 2 : 1 },
         [bitmap]
       );
     } catch {
@@ -1526,8 +1249,6 @@ async function detectTick() {
   }
 }
 
-const toDeg = (rad) => (rad * 180) / Math.PI;
-
 function airToast(text) {
   emitTo("overlay", "overlay-toast", { text });
 }
@@ -1546,11 +1267,9 @@ function armRing(id, x, y, progress, label) {
 // Full slot reset: a different hand (or no hand) owns this slot now, so nothing may leak across.
 function resetHandSlot(i, ft) {
   const hs = state.hands[i];
-  if (hs.grab) releaseGrab(i);
-  if (state.airOwner === i && lockAir.active()) {
-    lockAir.exit(ft);
-    state.airOwner = -1;
-  }
+  // A lost hand never throws; the window just stays where it was.
+  if (hs.grab || hs.parked) cancelGrab(i, true);
+  else emitTo("overlay", "overlay-target-window", { id: i, clear: true });
   if (hs.armKey) {
     dwell.reset(hs.armKey);
     armRing(hs.armKey, 0, 0, -1);
@@ -1561,153 +1280,57 @@ function resetHandSlot(i, ft) {
     votes: [],
     samples: [],
     history: [],
-    flickSamples: [],
-    flickFired: false,
     releaseStreak: 0,
-    air: null,
+    fistStreak: 0,
+    fistLostAt: null,
+    parked: null,
+    hover: null,
+    rope: null,
     armKey: null,
-    openAt: null,
     releasedAt: ft,
   });
 }
 
-// Air modes (scroll / knob / zoom / media) share one lock so two of them can never fire together.
-function updateAirModes(i, hs, pts, gesture, ar, ft, single) {
-  const cfg = state.settings || {};
-  const air = (hs.air ||= {});
-  const drop = () => {
-    if (lockAir.active() && state.airOwner === i) {
-      lockAir.exit(ft);
-      state.airOwner = -1;
-    }
-  };
+// Hand vanished mid-grab: stop the window (no throw) and keep the grab for MISS_GRACE_MS so a returning fist resumes it.
+function parkGrab(i, now) {
+  const hs = state.hands[i];
+  if (!hs.grab) return;
+  hs.parked = { ...hs.grab, at: now };
+  hs.grab = null;
+  hs.pendingMove = null;
+  hs.fistLostAt = null;
+}
 
-  // Scroll: one hand, Gojo sign held 150ms, vertical travel (deadzone keeps the remainder).
-  const scroll = cfg.airScrollToggle !== false && !hs.grab && single && gesture === "gojo"
-    ? isAirScroll(pts, { aspectRatio: ar, maxRatio: Infinity })
-    : null;
-  if (scroll?.active) {
-    air.scrollSince ||= ft;
-    if (ft - air.scrollSince >= 150 && lockAir.enter("scroll", ft)) {
-      state.airOwner = i;
-      const y = scroll.center.y;
-      if (air.lastScrollY == null) air.lastScrollY = y;
-      else if (Math.abs(y - air.lastScrollY) >= 0.003) {
-        air.scrollAcc = (air.scrollAcc || 0) - (y - air.lastScrollY) * 2400;
-        air.lastScrollY = y;
-        const notches = Math.trunc(air.scrollAcc / 120);
-        if (notches !== 0) {
-          air.scrollAcc -= notches * 120;
-          if (!state.practiceMode) scrollWheel(notches * 120).catch(() => {});
-        }
-      }
-    }
-  } else {
-    air.scrollSince = 0;
-    air.lastScrollY = null;
-    air.scrollAcc = 0;
-    if (lockAir.mode === "scroll") drop();
-  }
+function resumeGrab(i, point) {
+  const hs = state.hands[i];
+  const { at, ...p } = hs.parked;
+  hs.parked = null;
+  // Re-anchor: the window stays put and follows the hand from where it reappeared.
+  hs.grab = { ...p, anchorWinX: p.winX, anchorWinY: p.winY, anchorHandSx: point.sx, anchorHandSy: point.sy };
+  hs.rope = {};
+  hs.samples = [{ t: performance.now(), x: point.sx, y: point.sy }];
+  startGrabLoop();
+}
 
-  // Pinch family: a stable voted pinch locks an intent from its start pose (rotate = knob, spread/close = zoom).
-  const pinchOn = (cfg.airVolumeToggle !== false || cfg.airZoomToggle !== false) && !hs.grab;
-  const knob = isAirKnobGrip(pts, { aspectRatio: ar });
-  const zp = isPinchZoom(pts, { prevState: air.zoomState, aspectRatio: ar });
-  if (pinchOn && (gesture === "pinch" || knob.active || zp.active)) air.baseAt = ft;
-  const endPinch = () => {
-    air.pinch = null;
-    air.pinchSince = 0;
-    air.knobAngle = null;
-    air.dial = 0;
-    air.zoomState = null;
-    if (lockAir.mode === "knob" || lockAir.mode === "zoom") drop();
-  };
-  if (!air.pinch) {
-    if (pinchOn && gesture === "pinch" && knob.distance > 0 && !lockAir.active()) {
-      air.pinchSince ||= ft;
-      if (ft - air.pinchSince >= 250) {
-        air.pinch = { start: { angle: toDeg(knob.angle), distance: knob.distance }, intent: null };
-        air.baseAt = ft;
-      }
-    } else {
-      air.pinchSince = 0;
-    }
-  } else if (!pinchOn || ft - (air.baseAt ?? 0) >= 200) {
-    endPinch();
-  } else if (!air.pinch.intent) {
-    const intent = resolvePinchIntent(air.pinch.start, { angle: toDeg(knob.angle), distance: knob.distance });
-    if (intent) {
-      if (lockAir.enter(intent, ft)) {
-        air.pinch.intent = intent;
-        state.airOwner = i;
+// Outline the window under an open hand; one lookup in flight per hand, the overlay expires it after 300ms.
+function hoverTarget(i, point) {
+  const hs = state.hands[i];
+  if (hs.hoverBusy) return;
+  hs.hoverBusy = true;
+  invoke("window_at", { x: Math.round(point.sx), y: Math.round(point.sy) })
+    .catch(() => null)
+    .then((found) => {
+      hs.hoverBusy = false;
+      if (hs.grab || hs.parked) return;
+      if (found && !found.unsupported && found.hwnd) {
+        emitTo("overlay", "overlay-target-window", {
+          id: i,
+          window: { ...(clientOf(found) || found), hwnd: found.hwnd, title: found.title, grabbed: false },
+        });
       } else {
-        endPinch();
+        emitTo("overlay", "overlay-target-window", { id: i, clear: true });
       }
-    }
-  }
-  const intent = air.pinch?.intent;
-  if (intent === "knob" && cfg.airVolumeToggle !== false && knob.active) {
-    if (air.knobAngle != null) {
-      let d = knob.angle - air.knobAngle;
-      while (d > Math.PI) d -= 2 * Math.PI;
-      while (d < -Math.PI) d += 2 * Math.PI;
-      air.dial = (air.dial || 0) + d;
-      const STEP = (15 * Math.PI) / 180;
-      const steps = Math.trunc(air.dial / STEP);
-      if (steps !== 0) {
-        air.dial -= steps * STEP;
-        const label = `${steps > 0 ? t("toastVolumeUp") : t("toastVolumeDown")} ${Math.abs(steps)}`;
-        if (!practiceGate(label)) {
-          adjustVolume(steps).catch(() => {});
-          airToast(label);
-        }
-      }
-    }
-    air.knobAngle = knob.angle;
-  } else if (intent === "knob") {
-    air.knobAngle = null;
-  }
-  if (intent === "zoom" && cfg.airZoomToggle !== false && zp.active) {
-    if (ft - (air.lastZoomAt || 0) >= 260) {
-      const dir = zp.isClosed && air.zoomState === "open" ? false : zp.isOpen && air.zoomState === "closed" ? true : null;
-      if (dir !== null) {
-        air.lastZoomAt = ft;
-        const label = dir ? t("toastZoomIn") : t("toastZoomOut");
-        if (!practiceGate(label)) {
-          zoomDesktop(dir).catch(() => {});
-          airToast(label);
-        }
-      }
-    }
-    air.zoomState = zp.isClosed ? "closed" : zp.isOpen ? "open" : air.zoomState;
-  } else if (intent === "zoom") {
-    air.zoomState = null;
-  }
-
-  // Media: steady open palm toggles play/pause, a sideways flick skips. Never while another air mode is active.
-  if (cfg.airMediaToggle !== false && !hs.grab && gesture === "palm" && !lockAir.suppressDiscrete(ft) && ft - (hs.releasedAt ?? -Infinity) >= 1500) {
-    if (isAirMediaHold(pts, hs.history, { now: ft })) {
-      if (!air.holdFired && ft - (air.lastHoldAt || -Infinity) > 1500) {
-        air.holdFired = true;
-        air.lastHoldAt = ft;
-        if (!practiceGate(t("toastMediaToggle"))) {
-          mediaPlayPause().catch(() => {});
-          airToast(t("toastMediaToggle"));
-        }
-      }
-    } else if (air.holdFired && ft - (air.lastHoldAt || -Infinity) > 1500) {
-      air.holdFired = false;
-    }
-    if (isAirMediaFlick(pts, hs.history, { now: ft, mirrored: state.cameraMirrored }) && ft - (air.lastFlickAt || -Infinity) > 800) {
-      air.lastFlickAt = ft;
-      if (!practiceGate(t("toastNextTrack"))) {
-        mediaNextTrack().catch(() => {});
-        airToast(t("toastNextTrack"));
-      }
-    }
-  } else if (gesture !== "palm") {
-    air.holdFired = false;
-  }
+    });
 }
 
 function onHands(hands, detectMs, handedness, frameTime) {
@@ -1722,8 +1345,13 @@ function onHands(hands, detectMs, handedness, frameTime) {
     document.getElementById("handValue").textContent = t("handNo");
     const now = performance.now();
     badge?.style.setProperty("--arm", 0);
-    // Motion-blur coasting: if a hand is mid-sweep while holding a window, extrapolate for up to 4 frames (~100ms)
-    if (state.missStreak <= 4) {
+    if (state.missStreak === 1) {
+      for (let i = 0; i < state.hands.length; i += 1) {
+        if (!state.hands[i].grab) emitTo("overlay", "overlay-target-window", { id: i, clear: true });
+      }
+    }
+    // Motion-blur coasting: extrapolate a held window for up to COAST_FRAMES, then park it (no throw).
+    if (state.missStreak <= COAST_FRAMES) {
       for (let i = 0; i < state.hands.length; i += 1) {
         const hs = state.hands[i];
         if (hs.grab && hs.lastPoint && hs.samples?.length >= 2) {
@@ -1743,6 +1371,8 @@ function onHands(hands, detectMs, handedness, frameTime) {
           moveGrab(i, coastPoint);
         }
       }
+    } else {
+      for (let i = 0; i < state.hands.length; i += 1) parkGrab(i, now);
     }
     if (now - (state.lastHandAt || 0) > MISS_GRACE_MS) {
       for (let i = 0; i < state.hands.length; i += 1) {
@@ -1762,17 +1392,18 @@ function onHands(hands, detectMs, handedness, frameTime) {
     const ft = Number.isFinite(frameTime) ? frameTime : performance.now();
     state.frameNow = ft;
     const paused = state.gesturesPaused;
-    const maxHands = state.settings?.dualHands === false ? 1 : Math.min(hands.length, 2);
+    const maxHands = state.settings?.dualHands === true ? Math.min(hands.length, 2) : 1;
     const aligned = alignHandSlots(state.slotLabels, hands, handedness);
     for (const s of aligned.resetSlots) resetHandSlot(s, ft);
     const present = [0, 1].map((s) => aligned.slots[s] != null && aligned.slots[s] < maxHands);
-    const single = present.filter(Boolean).length === 1;
     let armMax = 0;
 
     for (let i = 0; i < 2; i += 1) {
       if (!present[i]) {
         const hs = state.hands[i];
-        if (state.slotLabels[i] || hs.lastGesture || hs.grab) resetHandSlot(i, ft);
+        parkGrab(i, ft);
+        if (hs.parked && ft - hs.parked.at <= MISS_GRACE_MS) continue;
+        if (state.slotLabels[i] || hs.lastGesture || hs.parked) resetHandSlot(i, ft);
         state.slotLabels[i] = null;
         continue;
       }
@@ -1806,116 +1437,87 @@ function onHands(hands, detectMs, handedness, frameTime) {
       });
       handState.votes ||= [];
       const gesture = voteGesture(handState.votes, raw, handState.lastGesture);
-      const bound = actionFor(state.settings.bindings, "gesture", gesture);
-      // Release happens after the pose already left "flick", so gate on a recent flick vote, not the current one.
-      if (gesture === "flick") handState.lastFlickAt = now;
-      const recentFlick = now - (handState.lastFlickAt ?? -Infinity) <= FLICK_RELEASE_WINDOW_MS;
-      const flickBound = actionFor(state.settings.bindings, "gesture", "flick");
-      const flickAction = recentFlick && flickBound !== "hollow_purple" ? (flickBound ?? "minimize") : null;
-      let action = bound === "hollow_purple" || gesture === "flick" ? null : bound;
+      let action = paused ? null : actionFor(state.settings.bindings, "gesture", gesture);
+      // Chin / face resting deadzone (ignored while dragging so bottom-screen drags never drop).
+      if (!handState.grab && isInFaceDeadzone(landmarks) && action !== "cancel") action = null;
 
-      // Chin / Face resting deadzone guard (bypassed while actively dragging a window so bottom-screen drags never drop):
-      const restingInFace = !handState.grab && isInFaceDeadzone(landmarks);
-      // Transition guard: a grab is ONLY allowed if the hand was open (palm/web) in the last 900ms or already holding.
-      if (gesture === "palm" || gesture === "web" || handState.grab) handState.openAt = now;
-      const wasOpen = now - (handState.openAt ?? -Infinity) <= 900;
-      const validPowerGrip = gesture === "fist" ? (Boolean(handState.grab) || isPowerFist(landmarks)) : true;
-
-      if (action === "grab" && (restingInFace || !wasOpen || !validPowerGrip)) action = null;
-      if (restingInFace && action === "close_tab") action = null;
-
-      if (paused) {
-        // Paused: classify for the HUD only. Nothing may fire and no air mode may hold the lock.
-        if (state.airOwner === i && lockAir.active()) {
-          lockAir.exit(now);
-          state.airOwner = -1;
-        }
-        handState.air = null;
-        action = null;
-      } else {
-        updateAirModes(i, handState, landmarks, gesture, ar, now, single);
-        // Never drop a window this hand is already holding because the other hand entered an air mode.
-        if (lockAir.suppressDiscrete(now) && !handState.grab) action = null;
-      }
-      const blocked = paused || lockAir.suppressDiscrete(now);
-
-      const edge = gesture !== handState.lastGesture;
-      // Adaptive velocity lead: scales from 14ms at rest up to 42ms during rapid hand sweeps to cancel camera pipeline lag.
       const speed = handSpeed(handState.filter, 9);
-      const leadMs = Math.min(42, Math.max(14, Math.round(14 + speed * 22)));
+      const lead = leadMs(speed);
       handState.lastSampleAt = performance.now();
-      handState.leadMs = leadMs;
-      const grabPoint = screenPoint(predictPalmAnchor(handState.filter, landmarks, leadMs));
-      const aimPoint = screenPoint(predict(handState.filter, 8, landmarks[8], leadMs));
+      handState.leadMs = lead;
+      const grabPoint = screenPoint(predictPalmAnchor(handState.filter, landmarks, lead));
+      const aimPoint = screenPoint(predict(handState.filter, 8, landmarks[8], lead));
+      handState.lastPoint = handState.grab ? grabPoint : aimPoint;
 
-      // Dwell gestures (peace, finger gun) arm with a visible ring before firing.
-      const dwellMs = DWELL_MS[gesture];
-      const dwellAction = dwellMs && action && action !== "grab" && action !== "shoot" ? action : null;
-      if (dwellAction) action = null;
-      const otherGun = !single && state.hands[1 - i].lastGesture === "finger_gun";
-      const activeKey = dwellAction && !(gesture === "finger_gun" && otherGun) ? `${gesture}-${i}` : null;
-      if (handState.armKey && handState.armKey !== activeKey) {
-        dwell.reset(handState.armKey);
-        armRing(handState.armKey, 0, 0, -1);
-      }
-      handState.armKey = activeKey;
-      if (activeKey) {
-        const p = dwell.update(activeKey, true, now, dwellMs);
-        if (p > 0) {
-          armMax = Math.max(armMax, p);
-          armRing(activeKey, aimPoint.nx, aimPoint.ny, p, t(ACTION_KEYS[dwellAction] || ""));
-        }
-        if (p >= 1 && now - (handState.lastFireAt || -Infinity) >= ACTION_COOLDOWN_MS) {
-          handState.lastFireAt = now;
-          runActionForHand(i, dwellAction, aimPoint, true);
-        }
+      if (handState.parked && now - handState.parked.at > MISS_GRACE_MS) {
+        handState.parked = null;
+        emitTo("overlay", "overlay-clear", { id: i });
       }
 
-      // Flick fires once, only when the circle actually opens (isFlickRelease).
-      if (flickAction && !blocked && !handState.flickFired && isFlickRelease(handState.history, { now, ar }) && now - (handState.lastFireAt || -Infinity) >= ACTION_COOLDOWN_MS) {
-        handState.flickFired = true;
-        handState.lastFireAt = now;
-        runActionForHand(i, flickAction, aimPoint, true);
-      } else if (!recentFlick) {
-        handState.flickFired = false;
-      }
-
-      // Web and grab are holds: the webbed tab follows the hand until the pose ends.
-      const holds = action === "grab" || action === "shoot";
-      const activePoint = (handState.grab || holds) ? grabPoint : aimPoint;
-      handState.lastPoint = activePoint;
-
-      if (handState.grab && !holds) {
-        // Explicit open palm releases/throws immediately; transient motion-blur requires 3 consecutive non-hold frames.
-        handState.releaseStreak = (handState.releaseStreak || 0) + 1;
-        if (gesture === "palm" || handState.releaseStreak >= 3) {
-          handState.releaseStreak = 0;
+      if (handState.grab) {
+        // Hysteresis: a held fist only needs the looser "stay" test; palm or a fist gone for FIST_LOST_MS releases.
+        const stillFist = action === "grab" || isFist(landmarks, { ar, stay: true });
+        handState.releaseStreak = gesture === "palm" ? (handState.releaseStreak || 0) + 1 : 0;
+        if (stillFist) handState.fistLostAt = null;
+        else handState.fistLostAt ??= now;
+        if (handState.releaseStreak >= RELEASE_CONFIRM_FRAMES || (handState.fistLostAt != null && now - handState.fistLostAt >= FIST_LOST_MS)) {
           releaseGrab(i);
         } else {
           moveGrab(i, grabPoint);
         }
-      } else if (holds && !edge) {
-        handState.releaseStreak = 0;
-        moveGrab(i, grabPoint);
-      } else if (edge && (action === "grab" || !(now - (handState.lastFireAt || -Infinity) < ACTION_COOLDOWN_MS))) {
-        handState.releaseStreak = 0;
-        if (action && action !== "grab") handState.lastFireAt = now;
-        if (handState.grab && holds) {
-          moveGrab(i, grabPoint);
-        } else {
-          runActionForHand(i, action, activePoint, true);
-          if (action === "shoot") beginGrab(i, grabPoint);
+      } else {
+        handState.fistStreak = action === "grab" ? (handState.fistStreak || 0) + 1 : 0;
+        if (handState.parked && action === "grab") {
+          resumeGrab(i, grabPoint);
+        } else if (handState.fistStreak >= GRAB_CONFIRM_FRAMES && speed <= GRAB_MAX_SPEED) {
+          handState.lastPoint = grabPoint;
+          runActionForHand(i, "grab", grabPoint, true);
         }
       }
+
+      // Minimize / close arm a ring under the hand, only after it rests on one spot for PRE_HOVER_MS.
+      const dwellMs = action === "minimize" ? MINIMIZE_DWELL_MS : action === "close" ? CLOSE_DWELL_MS : 0;
+      const activeKey = dwellMs && !handState.grab ? `${action}-${i}` : null;
+      if (handState.armKey && handState.armKey !== activeKey) {
+        dwell.reset(handState.armKey);
+        armRing(handState.armKey, 0, 0, -1);
+        handState.hover = null;
+      }
+      handState.armKey = activeKey;
+      if (activeKey) {
+        const h = handState.hover;
+        if (!h || Math.hypot(aimPoint.sx - h.sx, aimPoint.sy - h.sy) > DWELL_MOVE_PX) {
+          handState.hover = { sx: aimPoint.sx, sy: aimPoint.sy, at: now };
+          dwell.reset(activeKey);
+          armRing(activeKey, 0, 0, -1);
+        } else if (now - h.at >= PRE_HOVER_MS) {
+          const p = dwell.update(activeKey, true, now, dwellMs);
+          if (p > 0) {
+            armMax = Math.max(armMax, p);
+            armRing(activeKey, aimPoint.nx, aimPoint.ny, p, action === "minimize" ? "Minimize" : "Close");
+          }
+          if (p >= 1) {
+            armRing(activeKey, 0, 0, -1);
+            if (now - (handState.lastFireAt || -Infinity) >= ACTION_COOLDOWN_MS) {
+              handState.lastFireAt = now;
+              runActionForHand(i, action, aimPoint, true);
+            }
+          }
+        }
+      }
+
+      // Other bound actions (cancel, custom poses) fire once on the pose edge.
+      const edge = gesture !== handState.lastGesture;
+      if (edge && action && action !== "grab" && !dwellMs && !handState.grab && now - (handState.lastFireAt || -Infinity) >= ACTION_COOLDOWN_MS) {
+        handState.lastFireAt = now;
+        runActionForHand(i, action, aimPoint, true);
+      }
+
+      if (!handState.grab && !handState.parked && !paused) hoverTarget(i, aimPoint);
       handState.lastGesture = gesture;
     }
 
     badge?.style.setProperty("--arm", armMax);
-    const count = present[0] && present[1] ? 2 : 1;
-    const combos = paused ? 0 : count;
-    checkPurpleStance(combos);
-    checkSniperStance(combos);
-    checkNinjaShieldStance(combos);
   }
 
   const gap = nextGap(hands.length > 0, detectMs);
@@ -1924,98 +1526,6 @@ function onHands(hands, detectMs, handedness, frameTime) {
     updateGestureHud(hands);
   }
   scheduleDetect(gap);
-}
-
-// Dual Finger Gun stance: both hands form a finger gun, held for SNIPER_HOLD_MS (350ms).
-// Crosshair is the midpoint between both index fingertips. Triggers askAiAt(crosshair).
-function checkSniperStance(handCount) {
-  if (handCount < 2) {
-    state.sniperSince = 0;
-    state.sniperFired = false;
-    return;
-  }
-  const hands = state.hands.slice(0, handCount);
-  const now = state.frameNow || performance.now();
-  const points = hands.map((h) => h.landmarks);
-  if (!points[0] || !points[1]) return;
-  const ar = video?.videoWidth && video?.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9;
-  if (!isFingerGun(points[0], { ar, stay: hands[0].lastGesture === "finger_gun" }) || !isFingerGun(points[1], { ar, stay: hands[1].lastGesture === "finger_gun" })) {
-    if (state.sniperSince) armRing("sniper", 0, 0, -1);
-    state.sniperSince = 0;
-    state.sniperFired = false;
-    return;
-  }
-  state.sniperSince ||= now;
-  const tip0 = points[0][8];
-  const tip1 = points[1][8];
-  const midPoint = {
-    x: (tip0.x + tip1.x) / 2,
-    y: (tip0.y + tip1.y) / 2,
-  };
-  if (state.sniperFired) return;
-  const progress = Math.min(1, (now - state.sniperSince) / SNIPER_HOLD_MS);
-  armRing("sniper", midPoint.x, midPoint.y, progress, t("actionAskAi"));
-  if (progress < 1) return;
-  state.sniperFired = true;
-  armRing("sniper", 0, 0, -1);
-
-  const targetPoint = screenPoint(midPoint);
-  targetPoint.nx = midPoint.x;
-  targetPoint.ny = midPoint.y;
-  if (practiceGate(t(ACTION_KEYS.ask_ai))) return;
-  askAiAt(targetPoint);
-}
-
-// Gojo stance: one hand thrust at the camera, the other back at the chest, held PURPLE_HOLD_MS.
-// Fires once per stance, and only at a webbed tab (held by the back hand, or released moments ago).
-function checkPurpleStance(handCount) {
-  const hands = state.hands.slice(0, handCount);
-  const now = state.frameNow || performance.now();
-  const points = hands.map((h) => h.landmarks);
-  const pose = state.settings?.bodyTracking && now - (state.pose?.at || 0) < POSE_FRESH_MS ? state.pose.landmarks : null;
-  const front = handCount === 2 ? hollowPurpleReady(points, hands.map((h) => h.lastGesture), wristDepths(points, pose)) : -1;
-  const grabbing = state.hands.some((h) => h.grab);
-  // Both hands must hold the Gojo sign, one closer to the lens. A grab is not the combo.
-  if (front < 0 || grabbing) {
-    if (state.purpleSince) armRing("purple", 0, 0, -1);
-    state.purpleSince = 0;
-    state.purpleFired = false;
-    return;
-  }
-  state.purpleSince ||= now;
-  if (state.purpleFired) return;
-  const progress = Math.min(1, (now - state.purpleSince) / PURPLE_HOLD_MS);
-  const mid = { x: (points[0][9].x + points[1][9].x) / 2, y: (points[0][9].y + points[1][9].y) / 2 };
-  armRing("purple", mid.x, mid.y, progress, t(ACTION_KEYS.hollow_purple));
-  if (progress < 1) return;
-  state.purpleFired = true;
-  armRing("purple", 0, 0, -1);
-  if (practiceGate(t(ACTION_KEYS.hollow_purple))) return;
-
-  let webbed = null;
-  for (const h of state.hands) {
-    if (h.lastWebbed && now - h.lastWebbed.at < PURPLE_TARGET_MS) webbed = h.lastWebbed;
-  }
-  for (const h of state.hands) h.lastWebbed = null;
-  cancelGrab(undefined, true);
-  triggerHollowPurple(screenPoint(state.hands[front].landmarks[9]), webbed, { closeWindow: true });
-}
-
-// Ninja / Boss Shield stance: dual open palms downward flick with 1200ms anti-rebound cooldown.
-function checkNinjaShieldStance(handCount) {
-  if (handCount < 2 || state.settings?.ninjaShieldToggle === false) return;
-  const now = state.frameNow || performance.now();
-  if (now - (state.lastNinjaShieldAt || -Infinity) < 1200) return;
-  const h0 = state.hands[0];
-  const h1 = state.hands[1];
-  if (!h0?.landmarks || !h1?.landmarks) return;
-  const dualHistory = [h0.history || [], h1.history || []];
-  if (isNinjaShield(h0.landmarks, h1.landmarks, dualHistory, { now })) {
-    state.lastNinjaShieldAt = now;
-    if (practiceGate(t("toastShowDesktop"))) return;
-    showDesktop().catch(() => {});
-    airToast(t("toastShowDesktop"));
-  }
 }
 
 function drawCameraLandmarks(hands) {
@@ -2223,10 +1733,6 @@ function runActionForHand(handIndex, action, point, edge) {
       });
     return;
   }
-  if (action === "hollow_purple" && point) {
-    triggerHollowPurple(point);
-    return;
-  }
   if (action === "grab" && point) {
     beginGrab(handIndex, point);
     return;
@@ -2235,12 +1741,8 @@ function runActionForHand(handIndex, action, point, edge) {
     minimizeAt(point.sx, point.sy);
     return;
   }
-  if (action === "close_tab" && point) {
+  if ((action === "close" || action === "close_tab") && point) {
     closeActiveTabAt(point.sx, point.sy);
-    return;
-  }
-  if (action === "ask_ai" && point) {
-    askAiAt(point);
     return;
   }
   if (action === "scan_document") {
@@ -2265,68 +1767,12 @@ function runActionForHand(handIndex, action, point, edge) {
   if (action === "show_control") invoke("show_control_cmd").catch(() => {});
 }
 
-async function triggerHollowPurple(point, knownWin, opts = {}) {
-  if (state.settings.hollowPurpleEnabled === false) return;
-
-  emitTo("overlay", "overlay-purple", { x: point.nx, y: point.ny });
-  playHollowPurple();
-
-  let targetWin = knownWin || null;
-  if (!targetWin?.hwnd && point) {
-    targetWin = await invoke("window_at", { x: point.sx, y: point.sy });
-  }
-  // The combo closes the hit window only. No foreground fallback, so a miss does not close whatever is in front.
-  if (!opts.closeWindow && (!targetWin || targetWin.unsupported || !targetWin.hwnd)) {
-    targetWin = await invoke("get_foreground_window");
-  }
-
-  if (!targetWin || targetWin.unsupported || !targetWin.hwnd) {
-    if (opts.closeWindow) setMessage("shellBanner", t("bannerPurpleNoTarget"));
-    return;
-  }
-
-
-  if (state.settings.safetyGuard !== false && SENSITIVE_WINDOW_RE.test(targetWin.title)) {
-    playInfinityShield();
-    emitTo("overlay", "overlay-safety-shield", {
-      x: point.nx,
-      y: point.ny,
-      title: targetWin.title,
-      duration: 2500,
-    });
-    setMessage(
-      "shellBanner",
-      `🛡️ Infinity Shield: "${targetWin.title}" korundu. İptal için elinizi açın.`
-    );
-
-    const forceWindow = Boolean(opts.closeWindow);
-    const timer = window.setTimeout(async () => {
-      if (state.pendingCloses.has(targetWin.hwnd)) {
-        state.pendingCloses.delete(targetWin.hwnd);
-        executeClose(targetWin, { forceWindow });
-      }
-    }, 2400);
-
-    state.pendingCloses.set(targetWin.hwnd, timer);
-    return;
-  }
-
-  executeClose(targetWin, { forceWindow: Boolean(opts.closeWindow) });
-}
-
 async function minimizeAt(x, y) {
   let found = null;
   try {
     found = await invoke("window_at", { x: Math.round(x), y: Math.round(y) });
   } catch {
     found = null;
-  }
-  if (!found || found.unsupported || !found.hwnd) {
-    try {
-      found = await invoke("get_foreground_window");
-    } catch {
-      found = null;
-    }
   }
   if (!found || found.unsupported || !found.hwnd) {
     setMessage("shellBanner", "Simge durumuna indirilecek aktif pencere bulunamadı.");
@@ -2348,13 +1794,6 @@ async function closeActiveTabAt(x, y) {
     found = null;
   }
   if (!found || found.unsupported || !found.hwnd) {
-    try {
-      found = await invoke("get_foreground_window");
-    } catch {
-      found = null;
-    }
-  }
-  if (!found || found.unsupported || !found.hwnd) {
     setMessage("shellBanner", "Kapatılacak aktif pencere / sekme bulunamadı.");
     return;
   }
@@ -2362,57 +1801,14 @@ async function closeActiveTabAt(x, y) {
     setMessage("shellBanner", `🛡️ Hassas Koruma: "${found.title}" açık, kapatma engellendi.`);
     return;
   }
+  const tabMode = state.settings?.closeMode === "tab";
   try {
-    await invoke("close_active_tab", { hwnd: found.hwnd });
-    setMessage("shellBanner", `✂️ Sekme kapatıldı: ${found.title}`);
+    await invoke(tabMode ? "close_active_tab" : "close_window", { hwnd: found.hwnd });
+    setMessage("shellBanner", `✂️ ${tabMode ? "Sekme" : "Pencere"} kapatıldı: ${found.title}`);
   } catch (err) {
-    try {
-      await invoke("close_window", { hwnd: found.hwnd });
-      setMessage("shellBanner", `✂️ Pencere kapatıldı: ${found.title}`);
-    } catch (e2) {
+    {
       setMessage("shellBanner", `Kapatılamadı: ${err}`);
     }
-  }
-}
-
-async function askAiAt(point) {
-  let found = null;
-  if (point) {
-    try {
-      found = await invoke("window_at", { x: Math.round(point.sx), y: Math.round(point.sy) });
-    } catch {}
-  }
-  if (!found || found.unsupported || !found.hwnd) {
-    try {
-      found = await invoke("get_foreground_window");
-    } catch {}
-  }
-  const title = found?.title || "Aktif Pencere";
-  emitTo("overlay", "overlay-purple", { x: point?.nx ?? 0.5, y: point?.ny ?? 0.5 });
-  setMessage("shellBanner", `🎯 Hedefe Nişan Alındı: ${title}`);
-
-  const prompt = `🎯 Hedef Pencere: "${title}". Bu pencere hakkında hızlı özet çıkar, neler yapılabileceğini anlat.`;
-
-  if (state.settings?.sniperTarget === "gemini_web") {
-    try {
-      navigator.clipboard?.writeText?.(prompt)?.catch(() => {});
-      window.open("https://gemini.google.com/app", "_blank");
-      setMessage("shellBanner", "🚀 Gemini açıldı ve hedef bilgi panoya kopyalandı!");
-    } catch {
-      window.open("https://gemini.google.com/app", "_blank");
-    }
-    return;
-  }
-
-  const chatInput = document.getElementById("aiChatInput");
-  if (chatInput) chatInput.value = prompt;
-  appendAiMessage("user", prompt);
-  const loadingId = appendAiMessage("bot", "⏳ Hedef pencere analiz ediliyor…");
-  try {
-    const res = await chatWithAi(state.settings, prompt, { windows: [found].filter(Boolean) });
-    updateAiMessage(loadingId, res.text || "Hedef incelendi.");
-  } catch (err) {
-    updateAiMessage(loadingId, `Hata: ${err.message}`);
   }
 }
 
@@ -2524,16 +1920,6 @@ function renderCustomGesturesList() {
   });
 }
 
-async function executeClose(win, { forceWindow = false } = {}) {
-  const useWindow = forceWindow || state.settings.closeMode === "window";
-  const command = useWindow ? "close_window" : "close_active_tab";
-  try {
-    await invoke(command, { hwnd: win.hwnd });
-  } catch (err) {
-    setMessage("shellBanner", `Kapatılmadı: "${win.title}" (${err})`);
-  }
-}
-
 async function beginGrab(handIndex, point) {
   // One window_at lookup at a time; moveGrab calls this every frame until it lands.
   const handState = state.hands[handIndex];
@@ -2563,9 +1949,11 @@ async function beginGrab(handIndex, point) {
     shown: box || { x: found.x, y: found.y, width: found.width, height: found.height, hwnd: found.hwnd, title: found.title },
   };
   handState.releaseStreak = 0;
+  handState.fistLostAt = null;
+  handState.rope = {};
   handState.samples = [{ t: performance.now(), x: currentPoint.sx, y: currentPoint.sy }];
   state.lastHit = found.title;
-  sendTether(handIndex, currentPoint, handState.grab.shown);
+  if (!fxOff()) sendTether(handIndex, currentPoint, handState.grab.shown);
   emitTo("overlay", "overlay-target-window", {
     id: handIndex,
     window: { ...handState.grab.shown, title: found.title, grabbed: true },
@@ -2589,7 +1977,7 @@ function startGrabLoop() {
         anyGrab = true;
         const elapsed = Math.min(36, Math.max(0, now - (hs.lastSampleAt || now)));
         if (elapsed > 4) {
-          const totalLead = Math.min(60, (hs.leadMs || 18) + elapsed * 0.85);
+          const totalLead = Math.min(LEAD_CAP_MS, (hs.leadMs || 12) + elapsed * 0.85);
           const interpPoint = screenPoint(predictPalmAnchor(hs.filter, hs.landmarks, totalLead));
           hs.lastPoint = interpPoint;
           moveGrab(i, interpPoint);
@@ -2634,13 +2022,18 @@ function flushMoveQueue(handIndex) {
 
 async function moveGrab(handIndex, point) {
   const handState = state.hands[handIndex];
-  if (!handState.grab) {
-    await beginGrab(handIndex, point);
-    return;
-  }
+  if (!handState.grab) return;
   const grab = handState.grab;
-  const x = Math.round(grab.anchorWinX + (point.sx - grab.anchorHandSx));
-  const y = Math.round(grab.anchorWinY + (point.sy - grab.anchorHandSy));
+  const now = performance.now();
+  // Raw hand path feeds throw detection; keep ~200ms of it.
+  handState.samples.push({ t: now, x: point.sx, y: point.sy });
+  while (handState.samples.length > 2 && (now - handState.samples[0].t > 200 || handState.samples.length > 32)) handState.samples.shift();
+
+  handState.rope ||= {};
+  const rope = ropeDeadzone(handState.rope, point.sx, point.sy);
+  if (!rope.moved) return;
+  const x = Math.round(grab.anchorWinX + (rope.x - grab.anchorHandSx));
+  const y = Math.round(grab.anchorWinY + (rope.y - grab.anchorHandSy));
   grab.winX = x;
   grab.winY = y;
   const shown = {
@@ -2654,15 +2047,15 @@ async function moveGrab(handIndex, point) {
   };
   grab.shown = shown;
 
-  handState.samples.push({ t: performance.now(), x: point.sx, y: point.sy });
-  if (handState.samples.length > 8) handState.samples.shift();
-
-  // Zero-latency client-side visual feedback: update tether and focus box immediately before IPC completes
-  sendTether(handIndex, point, shown);
-  emitTo("overlay", "overlay-target-window", {
-    id: handIndex,
-    window: { ...shown, title: state.lastHit, grabbed: true },
-  });
+  // Overlay updates capped at ~60Hz; the native move below is not throttled.
+  if (now - (handState.emitAt || 0) >= EMIT_GAP_MS) {
+    handState.emitAt = now;
+    if (!fxOff()) sendTether(handIndex, point, shown);
+    emitTo("overlay", "overlay-target-window", {
+      id: handIndex,
+      window: { ...shown, title: state.lastHit, grabbed: true },
+    });
+  }
 
   // Coalesce native Win32 window position updates so only the latest target coordinate is dispatched
   handState.pendingMove = { hwnd: grab.hwnd, x, y };
@@ -2714,44 +2107,22 @@ async function releaseGrab(handIndex) {
   handState.lastWebbed = { hwnd: grab.hwnd, title: state.lastHit, at: performance.now() };
 
   const now = performance.now();
-  let recent = handState.samples.filter((sample) => now - sample.t < 160);
-  if (recent.length < 2 && handState.samples.length >= 2) {
-    recent = handState.samples.slice(-3);
-  }
-
-  let vx = 0;
-  let vy = 0;
-  if (recent.length >= 2) {
-    const first = recent[0];
-    const last = recent[recent.length - 1];
-    const dtMs = last.t - first.t;
-    if (dtMs > 4) {
-      const dtFrames = dtMs / 16;
-      vx = ((last.x - first.x) / dtFrames) * 1.35;
-      vy = ((last.y - first.y) / dtFrames) * 1.35;
-    }
-  }
-
-  const speed = Math.hypot(vx, vy);
-  if (speed > 3) {
-    const maxSpeed = 75;
-    if (speed > maxSpeed) {
-      vx = (vx / speed) * maxSpeed;
-      vy = (vy / speed) * maxSpeed;
-    }
-    const dest = throwToMonitor(
-      state.monitors,
-      { x: grab.winX, y: grab.winY, width: grab.width, height: grab.height },
-      vx,
-      vy,
-    );
-    playFling(speed);
+  const win = { x: grab.winX, y: grab.winY, width: grab.width, height: grab.height };
+  // Only a fast, straight stroke toward an adjacent monitor throws; anything else drops in place (edge-snapped).
+  const v = validThrow(handState.samples, now, state.lastThrowAt);
+  const dest = v ? throwToMonitor(state.monitors, win, v.vx * 16 * 1.35, v.vy * 16 * 1.35) : null;
+  try {
     if (dest) {
+      state.lastThrowAt = now;
+      playFling(Math.hypot(v.vx, v.vy) * 16);
       await invoke("place_window", { hwnd: grab.hwnd, ...dest });
       setMessage("shellBanner", "Pencere diğer ekrana atıldı.");
     } else {
-      await invoke("fling_window", { hwnd: grab.hwnd, vx, vy });
+      const snap = snapToEdge(state.monitors, win, SNAP_EDGE_PX);
+      if (snap) await invoke("place_window", { hwnd: grab.hwnd, ...snap });
     }
+  } catch {
+    // Window may have closed mid-drag.
   }
   render();
 }
@@ -2759,6 +2130,7 @@ async function releaseGrab(handIndex) {
 function cancelGrab(handIndex, clearWeb) {
   if (handIndex !== undefined && state.hands[handIndex]) {
     state.hands[handIndex].grab = null;
+    state.hands[handIndex].parked = null;
     state.hands[handIndex].pendingMove = null;
     state.hands[handIndex].releaseStreak = 0;
     if (clearWeb) {
@@ -2768,6 +2140,7 @@ function cancelGrab(handIndex, clearWeb) {
   } else {
     for (let i = 0; i < state.hands.length; i += 1) {
       state.hands[i].grab = null;
+      state.hands[i].parked = null;
       state.hands[i].pendingMove = null;
       state.hands[i].releaseStreak = 0;
     }
@@ -2893,7 +2266,11 @@ function paintLiveStatus() {
 function render() {
   if (!state.settings) return;
   paintLang();
-  applyTheme(state.settings.theme || "spiderman");
+  const uiTheme = applyUiTheme(state.settings.theme);
+  const themeSelect = document.getElementById("themeSelect");
+  if (themeSelect) themeSelect.value = uiTheme;
+  const effectsSelect = document.getElementById("effectsSelect");
+  if (effectsSelect) effectsSelect.value = fxOff() ? "off" : "classic";
   renderProfiles();
 
   const overlayOn = Boolean(state.overlay?.visible);
@@ -2905,19 +2282,9 @@ function render() {
     soundToggle.setAttribute("aria-pressed", String(state.settings.soundEnabled !== false));
   }
 
-  const purpleToggle = document.getElementById("purpleToggle");
-  if (purpleToggle) {
-    purpleToggle.setAttribute("aria-pressed", String(state.settings.hollowPurpleEnabled !== false));
-  }
-
   const safetyToggle = document.getElementById("safetyToggle");
   if (safetyToggle) {
     safetyToggle.setAttribute("aria-pressed", String(state.settings.safetyGuard !== false));
-  }
-
-  const websToggle = document.getElementById("websToggle");
-  if (websToggle) {
-    websToggle.setAttribute("aria-pressed", String(state.settings.showWebs !== false));
   }
 
   const focusFrameToggle = document.getElementById("focusFrameToggle");
@@ -2933,29 +2300,6 @@ function render() {
   if (bodyTrackingToggle) {
     bodyTrackingToggle.setAttribute("aria-pressed", String(!!state.settings.bodyTracking));
   }
-  const airVolumeToggle = document.getElementById("airVolumeToggle");
-  if (airVolumeToggle) {
-    airVolumeToggle.setAttribute("aria-pressed", String(state.settings.airVolumeToggle !== false));
-  }
-  const airMediaToggle = document.getElementById("airMediaToggle");
-  if (airMediaToggle) {
-    airMediaToggle.setAttribute("aria-pressed", String(state.settings.airMediaToggle !== false));
-  }
-  const ninjaShieldToggle = document.getElementById("ninjaShieldToggle");
-  if (ninjaShieldToggle) {
-    ninjaShieldToggle.setAttribute("aria-pressed", String(state.settings.ninjaShieldToggle !== false));
-  }
-  const airZoomToggle = document.getElementById("airZoomToggle");
-  if (airZoomToggle) {
-    airZoomToggle.setAttribute("aria-pressed", String(state.settings.airZoomToggle !== false));
-  }
-  const airScrollToggle = document.getElementById("airScrollToggle");
-  if (airScrollToggle) {
-    airScrollToggle.setAttribute("aria-pressed", String(state.settings.airScrollToggle !== false));
-  }
-
-  if (state._syncCustomFxUI) state._syncCustomFxUI();
-
   const smoothingSlider = document.getElementById("smoothingSlider");
   const smoothingValue = document.getElementById("smoothingValue");
   const smoothVal = Number(state.settings.smoothing) || 0.75;
@@ -2983,10 +2327,6 @@ function render() {
   setText("win32Label", state.win32 ? t("win32Ready") : t("win32Stub"));
   setText("fpsValue", String(state.renderFps));
 
-  renderTheme();
-  renderCloseModeChips();
-  renderSniperTargetChips();
-  renderAiProviderChips();
   renderFpsChips();
   renderMonitors(document.getElementById("monitorList"));
   renderBindings();
@@ -2994,143 +2334,18 @@ function render() {
 }
 
 function applyTheme(themeId) {
-  document.documentElement.dataset.theme = themeId || "sakura";
+  return applyUiTheme(themeId);
 }
 
-function renderTheme() {
-  const root = document.getElementById("themeChips");
-  if (!root) return;
-  root.replaceChildren();
-  const themes = [
-    ["spiderman", "themeSpiderman", "#ff4d4d", "#3b82f6"],
-    ["miles", "themeMiles", "#ff1744", "#ffd700"],
-    ["gojo", "themeGojo", "#c084fc", "#7c3aed"],
-    ["symbiote", "themeSymbiote", "#a855f7", "#1e1b4b"],
-    ["sakura", "themeSakura", "#f472b6", "#ec4899"],
-    ["midnight", "themeMidnight", "#22d3ee", "#0284c7"],
-    ["neon", "themeNeon", "#7cff6b", "#ff4dff"],
-    ["mint", "themeMint", "#9cf0c4", "#10b981"],
-    ["clean", "themeClean", "#f8fafc", "#38bdf8"],
-    ["custom", "themeCustom", state.settings?.customFx?.primary || "#00f5ff", state.settings?.customFx?.glow || "#a855f7"],
-  ];
-  const currentTheme = state.settings.theme === "sage" ? "mint" : (state.settings.theme || "sakura");
-  for (const [id, key, c1, c2] of themes) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "chip theme-chip";
-    const swatch = document.createElement("span");
-    swatch.className = "theme-swatch";
-    swatch.style.background = `linear-gradient(135deg, ${c1} 0%, ${c2} 100%)`;
-    const label = document.createElement("span");
-    label.textContent = t(key);
-    button.append(swatch, label);
-    const active = currentTheme === id;
-    button.setAttribute("aria-pressed", String(active));
-    button.addEventListener("click", async () => {
-      state.settings.theme = id;
-      state.settings.fxPreset = id;
-      applyTheme(id);
-      emitTo("overlay", "overlay-preset", { preset: id });
-      await persist();
-    });
-    root.append(button);
-  }
+// Overlay look: effects off = outline only; accent follows the UI theme.
+function overlayLook() {
+  const s = state.settings || {};
+  const preset = s.showWebs && s.fxPreset && s.fxPreset !== "off" ? s.fxPreset : "off";
+  return { preset, accent: s.theme === "anime" ? "#ff4fa3" : "#ffffff" };
 }
 
-function renderCloseModeChips() {
-  const root = document.getElementById("closeModeChips");
-  if (!root) return;
-  root.replaceChildren();
-  const modes = [
-    ["tab", "closeModeTab"],
-    ["window", "closeModeWindow"],
-  ];
-  for (const [mode, key] of modes) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "chip";
-    button.textContent = t(key);
-    const active = (state.settings.closeMode || "tab") === mode;
-    button.setAttribute("aria-pressed", String(active));
-    button.addEventListener("click", async () => {
-      state.settings.closeMode = mode;
-      await persist();
-    });
-    root.append(button);
-  }
-}
-
-function renderSniperTargetChips() {
-  const root = document.getElementById("sniperTargetChips");
-  if (!root) return;
-  root.replaceChildren();
-  const targets = [
-    ["gemini_web", "sniperTargetGemini"],
-    ["chat", "sniperTargetChat"],
-  ];
-  const current = state.settings.sniperTarget || "gemini_web";
-  for (const [target, key] of targets) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "chip";
-    button.textContent = t(key);
-    const active = current === target;
-    button.setAttribute("aria-pressed", String(active));
-    button.addEventListener("click", async () => {
-      state.settings.sniperTarget = target;
-      await persist();
-      renderSniperTargetChips();
-    });
-    root.append(button);
-  }
-}
-
-function renderAiProviderChips() {
-  const root = document.getElementById("aiProviderChips");
-  if (!root) return;
-  root.replaceChildren();
-  const providers = [
-    ["none", "aiNone"],
-    ["gemini", "aiGemini"],
-    ["ollama", "aiOllama"],
-    ["groq", "aiGroq"],
-    ["openrouter", "aiOpenRouter"],
-    ["pollinations", "aiPollinations"],
-    ["lmstudio", "aiLmStudio"],
-    ["custom", "aiCustom"],
-  ];
-  const current = state.settings.aiProvider || "none";
-  for (const [prov, key] of providers) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "chip";
-    button.textContent = t(key);
-    const active = current === prov;
-    button.setAttribute("aria-pressed", String(active));
-    button.addEventListener("click", async () => {
-      // A model name from another provider would just 404, so switch to this one's default.
-      if (prov !== current) state.settings.aiModel = DEFAULT_MODELS[prov] || "";
-      state.settings.aiProvider = prov;
-      await persist();
-    });
-    root.append(button);
-  }
-
-  const keyRow = document.getElementById("aiKeyRow");
-  const endpointRow = document.getElementById("aiEndpointRow");
-  const modelRow = document.getElementById("aiModelRow");
-
-  const preset = OPENAI_PRESETS[current];
-  if (keyRow) keyRow.hidden = current === "none" || current === "ollama" || preset?.key === false;
-  if (endpointRow) endpointRow.hidden = current === "none" || current === "gemini" || Boolean(preset);
-  if (modelRow) modelRow.hidden = current === "none";
-
-  const keyInput = document.getElementById("aiApiKey");
-  if (keyInput && keyInput !== document.activeElement) keyInput.value = state.settings.aiApiKey || "";
-  const endInput = document.getElementById("aiEndpoint");
-  if (endInput && endInput !== document.activeElement) endInput.value = state.settings.aiEndpoint || "http://localhost:11434";
-  const modInput = document.getElementById("aiModel");
-  if (modInput && modInput !== document.activeElement) modInput.value = state.settings.aiModel || DEFAULT_MODELS[current] || "";
+function fxOff() {
+  return overlayLook().preset === "off";
 }
 
 function renderFpsChips() {

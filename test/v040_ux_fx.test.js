@@ -52,13 +52,12 @@ test("v0.4.0 FX Engine: all 6 particle styles and thickness render without error
   }
 });
 
-test("v0.4.0 Theme & UI Overhaul: index.html includes category tabs, presets, and responsiveness slider", () => {
+test("v0.4.0 Theme & UI Overhaul: index.html includes theme, effects, and responsiveness slider", () => {
   const html = fs.readFileSync(path.resolve("index.html"), "utf8");
-  assert.ok(html.includes('id="dashboardTabs"'), "Dashboard category tabs must exist");
+  assert.ok(html.includes('id="themeSelect"'), "Theme select must exist");
+  assert.ok(html.includes('id="effectsSelect"'), "Effects select must exist");
+  assert.ok(html.includes('id="howItWorks"'), "How-it-works card must exist");
   assert.ok(html.includes('id="smoothingSlider"'), "Responsiveness slider must exist");
-  assert.ok(html.includes('id="presetAllBtn"'), "Full power preset button must exist");
-  assert.ok(html.includes('id="presetCoreBtn"'), "Core preset button must exist");
-  assert.ok(html.includes('id="presetEcoBtn"'), "Eco preset button must exist");
   assert.equal((html.match(/id="testShot"/g) || []).length, 1, "No duplicate #testShot buttons");
   assert.equal((html.match(/id="hitLabel"/g) || []).length, 1, "No duplicate #hitLabel elements");
   assert.equal((html.match(/id="win32Label"/g) || []).length, 1, "No duplicate #win32Label elements");

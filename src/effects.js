@@ -11,7 +11,8 @@ import { shiftPinned } from "./target.js";
 
 const FRAME_MS = 33;
 
-export const FX_PRESETS = ["classic", "mint", "neon", "low"];
+// "off" = outline-only overlay (default); every other preset is an opt-in effect look.
+export const FX_PRESETS = ["off", "classic", "mint", "neon", "low"];
 
 export const LOOKS = {
   spiderman: {
@@ -170,6 +171,7 @@ export const LOOKS = {
   },
 };
 LOOKS.light = LOOKS.low;
+LOOKS.off = LOOKS.low;
 
 export function registerCustomLook(custom) {
   if (!custom) return;

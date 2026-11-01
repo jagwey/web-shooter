@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="tr" data-theme="minimal">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0d3b2e" />
+    <meta name="theme-color" content="#0f1115" />
     <title>Jagwey Web Shooter</title>
     <link rel="icon" href="/app-icon.png" type="image/png" />
   </head>
@@ -11,15 +11,15 @@
     <main class="shell">
       <header class="top">
         <div class="brand">
-          <img src="/app-icon.png" alt="Jagwey Web Shooter" width="40" height="40" style="border-radius: 9px; box-shadow: 0 0 16px rgba(239, 68, 68, 0.65); object-fit: cover;" />
+          <img src="/app-icon.png" alt="" width="32" height="32" class="brand-icon" />
           <div>
-            <h1>JAG<span>WEY</span></h1>
-            <p><span data-i18n="tagline">Masaüstü örtüsü</span> · <span id="appVersion"></span></p>
+            <h1>Jagwey <span>Web Shooter</span></h1>
+            <p><span data-i18n="tagline">El hareketiyle pencere yönetimi</span> · <span id="appVersion"></span></p>
           </div>
         </div>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <button type="button" class="btn ghost" id="checkUpdateBtn" style="padding: 5px 12px; font-size: 0.85rem; border-radius: 999px;">🔄 <span data-i18n="checkUpdate">Güncellemeleri kontrol et</span></button>
-          <button type="button" class="btn ghost" id="fullscreenToggleBtn" title="Tam Ekran Aç / Kapat" style="padding: 5px 12px; font-size: 0.85rem; border-radius: 999px;">⛶ <span data-i18n="fullscreen">Tam Ekran</span></button>
+        <div class="top-actions">
+          <button type="button" class="btn ghost small" id="checkUpdateBtn"><span data-i18n="checkUpdate">Güncellemeleri denetle</span></button>
+          <button type="button" class="btn ghost small" id="fullscreenToggleBtn"><span data-i18n="fullscreen">Tam ekran</span></button>
           <div class="lang" role="group" aria-label="Language">
             <button type="button" id="langTr" data-lang="tr">TR</button>
             <button type="button" id="langEn" data-lang="en">EN</button>
@@ -34,13 +34,13 @@
 
       <section id="onboarding">
         <article class="card step" data-step="welcome">
-          <h2 data-i18n="welcomeTitle">Ağını masaüstüne at.</h2>
-          <p data-i18n="welcomeBody">El hareketin pencereleri tutar. Uygulama tepside açık kalır.</p>
+          <h2 data-i18n="welcomeTitle">Pencereleri elinle yönet.</h2>
+          <p data-i18n="welcomeBody">Yumrukla tut, hızlı bırakıp diğer monitöre at. Uygulama tepside açık kalır.</p>
           <button type="button" class="btn" id="welcomeNext" data-i18n="next">Devam</button>
         </article>
         <article class="card step" data-step="camera" hidden>
           <h2 data-i18n="cameraTitle">Kamera izni</h2>
-          <p data-i18n="cameraBody">Windows bir izin penceresi açacak. Ağ işareti için kameraya Evet de.</p>
+          <p data-i18n="cameraBody">Windows bir izin penceresi açacak. El takibi için kameraya izin ver. Görüntü bilgisayardan çıkmaz.</p>
           <p class="message" id="onboardCameraMessage" aria-live="polite"></p>
           <div class="row">
             <button type="button" class="btn" id="onboardAllow" data-i18n="cameraAllow">Kameraya izin ver</button>
@@ -54,8 +54,8 @@
           <button type="button" class="btn" id="displayNext" data-i18n="next">Devam</button>
         </article>
         <article class="card step" data-step="play" hidden>
-          <h2 data-i18n="playTitle">Üç hareket yeter.</h2>
-          <p data-i18n="playBody">İşaret + serçe atar. Yumruk pencereyi tutar. Parmakları yelpaze açıp başparmağı dışarı alınca bırakır.</p>
+          <h2 data-i18n="playTitle">Temel hareketler</h2>
+          <p data-i18n="playBody">Yumruk pencereyi tutar. Hızlı bırakırsan diğer monitöre gider. Açık avuç bırakır.</p>
           <button type="button" class="btn" id="playGo" data-i18n="playGo" onclick="window.finishOnboarding && window.finishOnboarding()">Başla</button>
         </article>
       </section>
@@ -65,18 +65,16 @@
         <p class="banner warn" id="monitorBanner" hidden></p>
 
         <div class="dashboard-grid">
-          <!-- Sol Kolon: Canlı Kamera, El İskeleti, Sayaçlar, Hızlı Rehber -->
           <div class="dashboard-left">
-            <!-- Live Camera & Hand Testing Studio -->
             <section class="card camera-studio-card">
-              <div class="device-row" style="justify-content: space-between; margin-bottom: 6px;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <strong style="font-size: 0.98rem;" data-i18n="cameraStudio">Canlı Kamera & El Test Stüdyosu</strong>
+              <div class="card-head">
+                <div class="card-title">
+                  <h2 data-i18n="cameraStudio">Kamera</h2>
                   <span class="live-dot" id="liveCameraDot"></span>
                 </div>
-                <div style="display: flex; gap: 6px;">
-                  <button type="button" class="btn-icon" id="cameraMirrorBtn" title="Ayna Modu (Mirror Mode)">🪞</button>
-                  <button type="button" class="btn-icon" id="cameraExpandBtn" title="Büyüt / Küçült">🔍</button>
+                <div class="card-actions">
+                  <button type="button" class="btn-icon" id="cameraMirrorBtn" aria-label="Mirror"><span data-i18n="cameraMirror">Ayna</span></button>
+                  <button type="button" class="btn-icon" id="cameraExpandBtn" aria-label="Expand"><span data-i18n="cameraExpand">Büyüt</span></button>
                 </div>
               </div>
 
@@ -85,20 +83,19 @@
                 <canvas id="cameraCanvas"></canvas>
                 <div class="camera-hud">
                   <div class="gesture-badge" id="gestureBadge">
-                    <span class="gesture-icon">✨</span>
-                    <span class="gesture-name" data-i18n="noGesture">El Bekleniyor...</span>
+                    <span class="gesture-icon">•</span>
+                    <span class="gesture-name" data-i18n="noGesture">El bekleniyor</span>
                   </div>
                   <span id="gestureStatusChip" class="status-chip" data-state="active" data-i18n="statusActive">Aktif</span>
                 </div>
               </div>
 
               <div class="gesture-controls">
-                <label class="practice-toggle"><input type="checkbox" id="practiceToggle" aria-describedby="practiceHint"><span data-i18n="practiceMode">Deneme modu</span></label>
+                <label class="practice-toggle"><input type="checkbox" id="practiceToggle" aria-describedby="practiceHint" /><span data-i18n="practiceMode">Deneme modu</span></label>
                 <button type="button" id="gesturePauseBtn" class="btn-pause" data-i18n="pauseGestures">Duraklat</button>
                 <small id="practiceHint" class="practice-hint" data-i18n="practiceModeHint">Hareketler algılanır ama komut çalışmaz; sadece ne yapılacağı gösterilir.</small>
               </div>
 
-              <!-- Fingers Status Bar -->
               <div class="finger-status-bar" id="fingerStatusBar">
                 <span class="finger-pill" data-finger="thumb"><b data-i18n="fingerThumb">Baş</b></span>
                 <span class="finger-pill" data-finger="index"><b data-i18n="fingerIndex">İşaret</b></span>
@@ -107,22 +104,19 @@
                 <span class="finger-pill" data-finger="pinky"><b data-i18n="fingerPinky">Serçe</b></span>
               </div>
 
-              <!-- Controls & Diagnostics -->
-              <div class="device-row" style="margin-top: 8px; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 6px; flex: 1;">
-                  <select id="cameraSelect" class="device-select" aria-label="Camera Device"></select>
-                  <button type="button" class="btn ghost" id="refreshCamerasBtn" style="padding: 4px 10px; font-size: 0.75rem;" data-i18n="cameraRefresh">↻ Yenile</button>
-                </div>
-                <p id="modelLabel" style="font-size: 0.74rem; color: var(--muted); margin: 0;">El takibi hazırlanıyor…</p>
+              <div class="device-row">
+                <select id="cameraSelect" class="device-select" aria-label="Camera"></select>
+                <button type="button" class="btn ghost small" id="refreshCamerasBtn" data-i18n="cameraRefresh">Yenile</button>
               </div>
-              <div style="display: flex; justify-content: space-between; gap: 8px; margin-top: 4px;">
-                <small id="deviceLabel" style="font-size: 0.71rem; color: var(--muted);"></small>
-                <small id="holderLabel" style="font-size: 0.71rem; color: var(--muted);"></small>
+              <p id="modelLabel" class="quiet">El takibi hazırlanıyor…</p>
+              <div class="diag-row">
+                <small id="deviceLabel"></small>
+                <small id="holderLabel"></small>
               </div>
 
-              <div class="meters" style="margin-top: 8px;">
+              <div class="meters">
                 <span><b id="fpsValue">0</b> <small data-i18n="fps">Kare</small></span>
-                <span><b id="msValue">0ms</b> <small>Gecikme</small></span>
+                <span><b id="msValue">0ms</b> <small data-i18n="latency">Gecikme</small></span>
                 <span><b id="handValue">Yok</b> <small data-i18n="hand">El</small></span>
                 <span><b id="winValue">0</b> <small data-i18n="windowsSeen">Pencere</small></span>
               </div>
@@ -132,305 +126,174 @@
                   <span class="diag-pill" id="win32Label"></span>
                   <span class="diag-pill" id="hitLabel"></span>
                 </div>
-                <div style="display: flex; gap: 6px;">
-                  <button type="button" class="btn ghost compact-btn" id="testShot" data-i18n="testShot">🎯 Prova Atışı</button>
-                  <button type="button" class="btn ghost compact-btn" id="testPurple" data-i18n="testPurple">🟣 Prova Mor</button>
-                </div>
+                <button type="button" class="btn ghost small" id="testShot" data-i18n="testShot">Örtüyü test et</button>
               </div>
             </section>
 
-            <div class="row" style="gap: 8px;">
-              <button type="button" class="switch" id="overlayToggle" aria-pressed="false" style="flex: 1;">
+            <div class="switch-pair">
+              <button type="button" class="switch" id="overlayToggle" aria-pressed="false">
                 <span class="knob" aria-hidden="true"></span>
                 <span><strong data-i18n="overlay">Örtü</strong><small data-i18n="overlayHint">Masaüstünün üstünde</small></span>
               </button>
-              <button type="button" class="switch" id="cameraToggle" aria-pressed="false" style="flex: 1;">
+              <button type="button" class="switch" id="cameraToggle" aria-pressed="false">
                 <span class="knob" aria-hidden="true"></span>
                 <span><strong data-i18n="camera">Kamera</strong><small id="cameraState" data-i18n="cameraHint">El takibi</small></span>
               </button>
             </div>
-            <p class="message" id="cameraMessage" aria-live="polite" style="margin: 0;"></p>
+            <p class="message" id="cameraMessage" aria-live="polite"></p>
             <button type="button" class="btn ghost" id="cameraRetry" hidden data-i18n="cameraRetry">Tekrar dene</button>
 
-            <!-- Compact Quick Gesture Cheat-Sheet -->
-            <section class="card compact-guide-card">
-              <div class="device-row" style="justify-content: space-between;">
-                <h2 data-i18n="guideTitle" style="font-size: 0.92rem;">Nasıl Kullanılır? (Hızlı Rehber)</h2>
-                <span class="trust-badge" style="margin: 0;" data-i18n="privacyBadge">🔒 %100 Çevrimdışı & Yerel</span>
-              </div>
-              <div class="cheat-grid">
-                <div class="cheat-pill"><span class="cheat-emoji">🤟</span><div><strong data-i18n="guideShootTitle">Ağ At</strong><small data-i18n="guideShootDesc">İşaret + serçe</small></div></div>
-                <div class="cheat-pill"><span class="cheat-emoji">✊</span><div><strong data-i18n="guideGrabTitle">Yakala</strong><small data-i18n="guideGrabDesc">Yumruk yap & taşı</small></div></div>
-                <div class="cheat-pill"><span class="cheat-emoji">🖐️</span><div><strong data-i18n="guideFlingTitle">Fırlat</strong><small data-i18n="guideFlingDesc">Avucu aç & savur</small></div></div>
-                <div class="cheat-pill"><span class="cheat-emoji">🟣</span><div><strong data-i18n="guidePurpleTitle">Gojo Moru</strong><small data-i18n="guidePurpleDesc">2 el işaret+orta</small></div></div>
-                <div class="cheat-pill"><span class="cheat-emoji">👌</span><div><strong>Küçült</strong><small>OK fiske (Görev çb.)</small></div></div>
-                <div class="cheat-pill"><span class="cheat-emoji">✌️</span><div><strong>Sekme Kapat</strong><small>Zafer / Makas (Ctrl+W)</small></div></div>
-              </div>
-              <details class="trust-details">
-                <summary data-i18n="privacyTitle">🛡️ Gizlilik, İpuçları & Kamera Güvencesi</summary>
-                <p style="margin: 6px 0 4px; font-size: 0.75rem; color: var(--muted);" id="webcamTip" data-i18n="webcamTip">💡 Geniş açılı, 720p/1080p 60fps kaliteli bir webcam önerilir. İyi ışık + elin tamamı kadrajda olsun.</p>
-                <p style="margin: 0 0 6px; font-size: 0.75rem; color: var(--muted);" data-i18n="privacyText">Jagwey Web Shooter tamamen açık kaynaklıdır ve 100% yerel çalışır. Kamera görüntünüz asla dışarı çıkmaz.</p>
-                <div class="trust-list">
-                  <div class="trust-item"><span class="icon">✓</span> <span data-i18n="permCamera">Kamera: Yalnızca yerel MediaPipe el hareketi tespiti için kullanılır.</span></div>
-                  <div class="trust-item"><span class="icon">✓</span> <span data-i18n="permWin32">Win32: Pencereleri taşımak ve ekrana yaslamak için kullanılır.</span></div>
-                  <div class="trust-item"><span class="icon">✓</span> <span data-i18n="permOffline">Sıfır Telemetri: İnternet bağlantısı gerektirmez, veri toplamaz.</span></div>
-                </div>
+            <section class="card how-card" id="howItWorks">
+              <h2 data-i18n="howTitle">Nasıl çalışır</h2>
+              <p class="section-label" data-i18n="howGestures">Hareketler</p>
+              <ol class="how-list">
+                <li><strong data-i18n="gestGrabTitle">Yumruk</strong><span data-i18n="gestGrabDesc">Pencereyi tut ve taşı.</span></li>
+                <li><strong data-i18n="gestThrowTitle">Hızlı bırak</strong><span data-i18n="gestThrowDesc">Taşırken elini hızla aç: pencere yandaki monitöre gider.</span></li>
+                <li><strong data-i18n="gestSnapTitle">Kenara bırak</strong><span data-i18n="gestSnapDesc">Üst kenar tam ekran yapar, sol/sağ kenar yarım ekrana yaslar.</span></li>
+                <li><strong data-i18n="gestReleaseTitle">Açık avuç</strong><span data-i18n="gestReleaseDesc">Bırakır veya işlemi iptal eder.</span></li>
+                <li><strong data-i18n="gestMinTitle">V işareti (basılı tut)</strong><span data-i18n="gestMinDesc">Halka dolunca (~0,6 sn) pencere küçülür.</span></li>
+                <li><strong data-i18n="gestCloseTitle">Rock işareti (basılı tut)</strong><span data-i18n="gestCloseDesc">İşaret + serçe ~0,8 sn: pencereyi kapatır.</span></li>
+              </ol>
+
+              <details class="how-details">
+                <summary data-i18n="howTips">İpuçları</summary>
+                <ul class="plain-list">
+                  <li data-i18n="tip1">Kameradan 40–80 cm uzakta dur, elinin tamamı kadrajda olsun.</li>
+                  <li data-i18n="tip2">Önden gelen iyi ışık algılamayı belirgin şekilde iyileştirir.</li>
+                  <li data-i18n="tip3">Hareketi kısa bir an sabit tut; kamera altındaki rozet ne algılandığını gösterir.</li>
+                </ul>
+              </details>
+              <details class="how-details">
+                <summary data-i18n="howHotkeys">Kısayollar</summary>
+                <dl class="hotkeys">
+                  <div><dt><kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>J</kbd></dt><dd data-i18n="hkOverlay">Örtüyü aç/kapat</dd></div>
+                  <div><dt><kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>K</kbd></dt><dd data-i18n="hkControl">Kontrol penceresini göster</dd></div>
+                  <div><dt><kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>P</kbd></dt><dd data-i18n="hkPause">Hareketleri duraklat/sürdür</dd></div>
+                </dl>
+              </details>
+              <details class="how-details">
+                <summary data-i18n="howMonitors">Birden fazla monitör</summary>
+                <ul class="plain-list">
+                  <li data-i18n="mon1">Pencereyi tut, gitmek istediğin monitöre doğru elini hızla aç. Yön, savurma yönünden belirlenir.</li>
+                  <li data-i18n="mon2">Yavaş bırakırsan pencere olduğu ekranda kalır. Monitörler Ekran & Sistem bölümünde listelenir.</li>
+                </ul>
+              </details>
+              <details class="how-details">
+                <summary data-i18n="privacyTitle">Gizlilik</summary>
+                <p class="quiet" data-i18n="privacyText">El takibi tamamen yerel çalışır. Kamera görüntüsü bilgisayardan çıkmaz.</p>
+                <ul class="plain-list">
+                  <li data-i18n="permCamera">Kamera: Yalnızca yerel MediaPipe el hareketi tespiti için kullanılır.</li>
+                  <li data-i18n="permWin32">Win32: Pencereleri taşımak ve ekrana yaslamak için kullanılır.</li>
+                  <li data-i18n="permOffline">Sıfır telemetri: İnternet bağlantısı gerektirmez, veri toplamaz.</li>
+                </ul>
               </details>
             </section>
           </div>
 
-          <!-- Sağ Kolon: Kategorize Sekmeli Kontrol Paneli -->
           <div class="dashboard-right">
-            <!-- Category Navigation Bar -->
-            <nav class="nav-tabs" id="dashboardTabs" aria-label="Dashboard Categories">
-              <button type="button" class="nav-tab" data-tab-target="all" aria-selected="true" data-i18n="tabAll">✨ Tümü</button>
-              <button type="button" class="nav-tab" data-tab-target="gestures" aria-selected="false" data-i18n="tabGestures">🎮 Hareketler</button>
-              <button type="button" class="nav-tab" data-tab-target="themes" aria-selected="false" data-i18n="tabThemes">🎨 Tema & FX</button>
-              <button type="button" class="nav-tab" data-tab-target="ai" aria-selected="false" data-i18n="tabAi">🤖 AI & Stüdyo</button>
-              <button type="button" class="nav-tab" data-tab-target="system" aria-selected="false" data-i18n="tabSystem">🖥️ Ekran & Sistem</button>
+            <nav class="nav-tabs" id="dashboardTabs" aria-label="Sections">
+              <button type="button" class="nav-tab" data-tab-target="all" aria-selected="true" data-i18n="tabAll">Tümü</button>
+              <button type="button" class="nav-tab" data-tab-target="gestures" aria-selected="false" data-i18n="tabGestures">Hareketler</button>
+              <button type="button" class="nav-tab" data-tab-target="appearance" aria-selected="false" data-i18n="tabAppearance">Görünüm</button>
+              <button type="button" class="nav-tab" data-tab-target="system" aria-selected="false" data-i18n="tabSystem">Sistem</button>
+              <button type="button" class="nav-tab" data-tab-target="guide" aria-selected="false" data-i18n="tabGuide">Rehber</button>
             </nav>
 
-            <!-- Local profiles (Compact Bar) -->
-            <section class="card compact-profile-card" data-tab="system">
-              <div class="device-row" style="justify-content: space-between; gap: 10px;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <h2 data-i18n="profileTitle" style="margin: 0; font-size: 0.95rem;">Profil</h2>
-                  <small id="profileStats" style="font-size: 0.75rem; color: var(--mint);"></small>
+            <section class="card" data-tab="system">
+              <div class="card-head">
+                <div class="card-title">
+                  <h2 data-i18n="profileTitle">Profil</h2>
+                  <small id="profileStats"></small>
                 </div>
-                <div style="display: flex; gap: 6px; flex: 1; max-width: 440px;">
-                  <select id="profileSelect" class="device-select" style="flex: 1; max-width: none; padding: 5px 8px;"></select>
-                  <button type="button" class="btn ghost compact-btn" id="profileDelete" data-i18n="profileDelete">Sil</button>
-                  <input id="profileName" maxlength="32" class="profile-input" placeholder="Yeni profil adı" />
-                  <button type="button" class="btn compact-btn" id="profileAdd" data-i18n="profileAdd">Ekle</button>
-                </div>
+              </div>
+              <div class="profile-row">
+                <select id="profileSelect" class="device-select" aria-label="Profile"></select>
+                <button type="button" class="btn ghost small" id="profileDelete" data-i18n="profileDelete">Sil</button>
+                <input id="profileName" maxlength="32" class="text-input" placeholder="Yeni profil adı" />
+                <button type="button" class="btn small" id="profileAdd" data-i18n="profileAdd">Ekle</button>
               </div>
             </section>
 
-            <!-- Features, Responsiveness & Hybrid Mode -->
             <section class="card" data-tab="gestures">
-              <div class="device-row" style="justify-content: space-between; align-items: center;">
-                <h2 data-i18n="combinedFeatures" style="margin: 0;">Özellikler & Hibrit Mod</h2>
-                <div class="preset-bar">
-                  <button type="button" class="preset-pill" id="presetAllBtn" data-i18n="presetAllOn">🔥 Tam Güç (Tümü)</button>
-                  <button type="button" class="preset-pill" id="presetCoreBtn" data-i18n="presetCoreOnly">🕸️ Sadece Temel</button>
-                  <button type="button" class="preset-pill" id="presetEcoBtn" data-i18n="presetEco">🍃 Eko / Sade</button>
+              <h2 data-i18n="combinedFeatures">Hareket ayarları</h2>
+
+              <div class="setting">
+                <div class="setting-head">
+                  <label for="smoothingSlider" data-i18n="smoothingTitle">Takip tepkisi</label>
+                  <span class="sensitivity-badge" id="smoothingValue">%75</span>
                 </div>
+                <div class="range-row">
+                  <small data-i18n="smoothingSmooth">Yumuşak</small>
+                  <input type="range" id="smoothingSlider" min="0.30" max="1.00" step="0.05" value="0.75" />
+                  <small data-i18n="smoothingFast">Anlık</small>
+                </div>
+                <small class="hint" data-i18n="smoothingHint">Yüksek değer anında tepki verir; düşük değer titremeyi azaltır.</small>
               </div>
 
-              <!-- Live Responsiveness / Sensitivity Slider -->
-              <div class="sensitivity-box">
-                <div class="device-row" style="justify-content: space-between; margin-bottom: 4px;">
-                  <strong style="font-size: 0.84rem;" data-i18n="smoothingTitle">⚡ Takip Tepki Hızı (Hassasiyet)</strong>
-                  <span class="sensitivity-badge" id="smoothingValue">%75 · Espor</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                  <small style="font-size: 0.72rem;" data-i18n="smoothingSmooth">Yumuşak</small>
-                  <input type="range" id="smoothingSlider" min="0.30" max="1.00" step="0.05" value="0.75" style="flex: 1; accent-color: var(--mint);" />
-                  <small style="font-size: 0.72rem;" data-i18n="smoothingFast">Espor / Anlık</small>
-                </div>
-              </div>
-
-              <!-- 2-Column Bento Feature Grid -->
               <div class="feature-grid">
-                <button type="button" class="switch slim" id="websToggle" aria-pressed="true">
-                  <span class="knob" aria-hidden="true"></span>
-                  <span><strong data-i18n="featureWebs">Ağ İpleri & Efektler</strong><small>Spider-Man tarzı dinamik ağ lifleri ve parçacıklar</small></span>
-                </button>
                 <button type="button" class="switch slim" id="focusFrameToggle" aria-pressed="true">
                   <span class="knob" aria-hidden="true"></span>
-                  <span><strong data-i18n="featureFocus">Hedef Pencere Çerçevesi</strong><small>Seçilen pencerenin etrafına yüksek kontrastlı odak kutusu</small></span>
+                  <span><strong data-i18n="featureFocus">Hedef çerçevesi</strong><small data-i18n="featureFocusHint">Tutulacak pencerenin çevresini çizer.</small></span>
                 </button>
                 <button type="button" class="switch slim" id="dualHandsToggle" aria-pressed="true">
                   <span class="knob" aria-hidden="true"></span>
-                  <span><strong data-i18n="featureDualHands">Çift El Bağımsız Kontrol</strong><small>İki elle aynı anda pencere taşıma ve kombo hareketler</small></span>
-                </button>
-                <button type="button" class="switch slim" id="airScrollToggle" aria-pressed="true">
-                  <span class="knob" aria-hidden="true"></span>
-                  <span><strong data-i18n="featureAirScroll">Havada Kaydırma (Air Scroll)</strong><small data-i18n="featureAirScrollHint">İşaret + orta parmağı birleştirip yukarı/aşağı kaydır</small></span>
-                </button>
-                <button type="button" class="switch slim" id="airVolumeToggle" aria-pressed="true">
-                  <span class="knob" aria-hidden="true"></span>
-                  <span><strong data-i18n="featureAirVolume">DJ Air Knob (Ses Ayarı)</strong><small data-i18n="featureAirVolumeHint">Baş ve işaret parmağıyla sanal düğme çevirerek ses ayarla</small></span>
-                </button>
-                <button type="button" class="switch slim" id="airMediaToggle" aria-pressed="true">
-                  <span class="knob" aria-hidden="true"></span>
-                  <span><strong data-i18n="featureAirMedia">Air Medya Kontrolü</strong><small data-i18n="featureAirMediaHint">1 sn sabit avuç Oynat/Duraklat, sağa fiske Sonraki Parça</small></span>
-                </button>
-                <button type="button" class="switch slim" id="ninjaShieldToggle" aria-pressed="true">
-                  <span class="knob" aria-hidden="true"></span>
-                  <span><strong data-i18n="featureNinjaShield">Ninja / Patron Kalkanı</strong><small data-i18n="featureNinjaShieldHint">İki açık avucu aşağı savurarak masaüstünü göster (Win+D)</small></span>
-                </button>
-                <button type="button" class="switch slim" id="airZoomToggle" aria-pressed="true">
-                  <span class="knob" aria-hidden="true"></span>
-                  <span><strong data-i18n="featureAirZoom">Havada Yakınlaştırma (Zoom)</strong><small data-i18n="featureAirZoomHint">İki parmakla kıstırıp açarak ekranı yakınlaştır/uzaklaştır</small></span>
-                </button>
-                <button type="button" class="switch slim" id="purpleToggle" aria-pressed="true">
-                  <span class="knob" aria-hidden="true"></span>
-                  <span><strong data-i18n="hollowPurple">Gojo Moru (Pencere Kapat)</strong><small data-i18n="hollowPurpleHint">İki el Gojo işaretiyle hedef pencereyi kapatır</small></span>
+                  <span><strong data-i18n="featureDualHands">İki el</strong><small data-i18n="featureDualHandsHint">İki eli ayrı ayrı izler; her el bir pencere tutabilir.</small></span>
                 </button>
                 <button type="button" class="switch slim" id="safetyToggle" aria-pressed="true">
                   <span class="knob" aria-hidden="true"></span>
-                  <span><strong data-i18n="safetyGuard">Infinity Shield (Koruma)</strong><small data-i18n="safetyGuardHint">Kod, döküman ve form sayfalarında kazara kapanmayı önler</small></span>
+                  <span><strong data-i18n="safetyGuard">Kapatma koruması</strong><small data-i18n="safetyGuardHint">Kod, belge ve form pencerelerinin kazara kapanmasını önler.</small></span>
                 </button>
-              </div>
-
-              <div class="device-row" style="margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--line); justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <strong style="font-size: 0.82rem;" data-i18n="closeMode">Kapatma Hedefi:</strong>
-                  <div class="chips" id="closeModeChips" style="display: flex; gap: 6px;"></div>
-                </div>
-                <button type="button" class="switch slim" id="bodyTrackingToggle" aria-pressed="false" style="width: auto; padding: 6px 10px; margin: 0;">
-                  <span class="knob" aria-hidden="true" style="transform: scale(0.78);"></span>
-                  <span><strong data-i18n="featureBodyTracking" style="font-size: 0.78rem;">Vücut Takibi (Deneysel)</strong></span>
+                <button type="button" class="switch slim" id="bodyTrackingToggle" aria-pressed="false">
+                  <span class="knob" aria-hidden="true"></span>
+                  <span><strong data-i18n="featureBodyTracking">Vücut takibi (deneysel)</strong><small data-i18n="featureBodyTrackingHint">Eli vücuda göre konumlar; daha fazla CPU kullanır.</small></span>
                 </button>
               </div>
             </section>
 
-            <!-- Theme & Custom FX Studio Combined -->
-            <section class="card" id="customFxCard" data-tab="themes">
-              <div class="device-row" style="justify-content: space-between;">
-                <h2 data-i18n="themeTitle" style="margin: 0;">Tema & Görsel Efektler</h2>
-              </div>
-              <div class="chips theme-chips-grid" id="themeChips"></div>
-
-              <details class="custom-fx-drawer" open>
-                <summary data-i18n="customFxTitle">🎨 Kendi Efektini Yarat (Özel FX Stüdyosu)</summary>
-                <div class="fx-builder-grid" style="margin-top: 10px;">
-                  <div class="fx-color-item">
-                    <label for="customPrimary" data-i18n="customPrimary">Ağ Rengi</label>
-                    <input type="color" id="customPrimary" value="#00f5ff" />
-                  </div>
-                  <div class="fx-color-item">
-                    <label for="customGlow" data-i18n="customGlow">Aura Parlaması</label>
-                    <input type="color" id="customGlow" value="#a855f7" />
-                  </div>
-                  <div class="fx-color-item">
-                    <label for="customParticle" data-i18n="customParticle">Parçacık Rengi</label>
-                    <input type="color" id="customParticle" value="#ffffff" />
-                  </div>
-                </div>
-                <div class="device-row" style="margin-top: 10px;">
-                  <span style="font-size: 0.82rem;" data-i18n="customStyle">Parçacık Stili:</span>
-                  <select id="customStyle" class="device-select" style="max-width: 220px; padding: 5px 8px;">
-                    <option value="sparks">⚡ Elektrik / Kıvılcım (Miles)</option>
-                    <option value="stardust">✨ Yıldız Tozu (Elmas)</option>
-                    <option value="webs">🕸️ Klasik Ağ Lifleri</option>
-                    <option value="sakura">🌸 Kiraz Çiçeği Yaprakları</option>
-                    <option value="fire">🔥 Yükselen Alev Korları</option>
-                    <option value="purple">💜 Gojo Boşluk Küreleri</option>
-                  </select>
-                </div>
-                <div class="row" style="margin-top: 8px; justify-content: space-between;">
-                  <span style="font-size: 0.82rem;" data-i18n="customThickness">Ağ Kalınlığı:</span>
-                  <input type="range" id="customThickness" min="1" max="8" value="3" style="width: 55%; accent-color: var(--mint);" />
-                </div>
-                <div class="row" style="margin-top: 10px;">
-                  <button type="button" class="btn ghost compact-btn" id="customPreviewBtn" data-i18n="customPreview">🎯 Prova Atışı Yap</button>
-                  <button type="button" class="btn compact-btn" id="customSaveBtn" data-i18n="customSave">💾 Efekti Kaydet & Seç</button>
-                </div>
-              </details>
-            </section>
-
-            <!-- AI Assistant & Custom Gesture Studio -->
-            <section class="card" data-tab="ai">
-              <div class="device-row" style="justify-content: space-between;">
-                <h2 style="margin:0;" data-i18n="aiTitle">Yapay Zeka Masaüstü Asistanı</h2>
-                <span class="ai-status-pill" id="aiStatusPill">🟢 Aktif</span>
-              </div>
-
-              <div class="ai-quick-actions" style="margin-top: 6px; display:flex; flex-wrap:wrap; gap:6px;">
-                <button type="button" class="ai-chip-btn" id="aiGreetingBtn" data-i18n="aiGreetingBtn">👋 Merhaba</button>
-                <button type="button" class="ai-chip-btn" id="aiSniperBtn" style="border-color:var(--mint); color:var(--mint);" data-i18n="btnSniperAi">🎯 Nişan Al & AI'ya Sor</button>
-                <button type="button" class="ai-chip-btn" id="aiOcrBtn" style="border-color:#a855f7; color:#c084fc;" data-i18n="btnScanDoc">📄 Belge Oku (OCR)</button>
-                <button type="button" class="ai-chip-btn" id="aiOptimizeBtn" data-i18n="aiOptimizeBtn">⚡ Optimize Et</button>
-                <button type="button" class="ai-chip-btn" id="aiTileBtn" data-i18n="aiTile">🗂️ Pencereleri Düzenle</button>
-              </div>
-
-              <div class="row" style="margin-top: 6px; justify-content: space-between; align-items: center;">
-                <strong style="font-size: 0.82rem;" data-i18n="sniperTargetTitle">🎯 Nişan Hedefi:</strong>
-                <div class="chips" id="sniperTargetChips" style="display: flex; gap: 6px;"></div>
-              </div>
-
-              <div class="ai-chat-box" id="aiChatBox">
-                <div class="ai-chat-log" id="aiChatLog">
-                  <div class="ai-msg ai-bot">
-                    <strong>Jagwey AI:</strong>
-                    <span>Selam! Uygulamanın rehberiyim: her özelliği adım adım anlatırım. "Nasıl...?" diye sor ya da aşağıdan bir konu seç. Yapay zeka eklemeden de çalışırım.</span>
-                  </div>
-                </div>
-                <div class="chip-row" id="aiSuggestChips">
-                  <button type="button" class="chip" data-ask="Ağ nasıl atılır?">Ağ nasıl atılır?</button>
-                  <button type="button" class="chip" data-ask="Pencere nasıl taşınır?">Pencere nasıl taşınır?</button>
-                  <button type="button" class="chip" data-ask="Yapay zeka nasıl eklenir?">Yapay zeka nasıl eklenir?</button>
-                  <button type="button" class="chip" data-ask="Hangi yapay zeka modelini kurmalıyım?">Hangi model bana uygun?</button>
-                  <button type="button" class="chip" data-ask="Jest algılanmıyor, neden?">Jest algılanmıyor</button>
-                </div>
-                <form class="ai-chat-input-row" id="aiChatForm">
-                  <input type="text" id="aiChatInput" placeholder="Yapay zekaya bir şey sor veya komut ver..." data-i18n-placeholder="aiChatPlaceholder" />
-                  <button type="submit" class="btn compact-btn" id="aiSendBtn" data-i18n="aiSend">Gönder</button>
-                </form>
-              </div>
-
-              <details style="margin-top: 6px;">
-                <summary style="font-size: 0.82rem; color: var(--muted); cursor: pointer;">⚙️ AI Model & Sağlayıcı Ayarları</summary>
-                <div class="row" style="margin-top: 8px; justify-content: space-between; flex-wrap: wrap;">
-                  <strong style="font-size: 0.85rem;" data-i18n="aiProvider">Sağlayıcı:</strong>
-                  <div class="chips" id="aiProviderChips"></div>
-                </div>
-                <div id="aiConfigFields" style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
-                  <div class="device-row" id="aiKeyRow">
-                    <span data-i18n="aiApiKey">API Key</span>
-                    <input type="password" id="aiApiKey" class="device-select" style="padding: 4px 8px; font-size: 0.8rem; max-width: 240px;" placeholder="AIzaSy... / Key" />
-                  </div>
-                  <div class="device-row" id="aiEndpointRow">
-                    <span data-i18n="aiEndpoint">Endpoint</span>
-                    <input type="text" id="aiEndpoint" class="device-select" style="padding: 4px 8px; font-size: 0.8rem; max-width: 240px;" placeholder="http://localhost:11434" />
-                  </div>
-                  <div class="device-row" id="aiModelRow">
-                    <span data-i18n="aiModel">Model</span>
-                    <div style="display: flex; gap: 4px; width: 65%;">
-                      <input type="text" id="aiModel" class="device-select" style="padding: 4px 8px; font-size: 0.8rem; flex: 1; max-width: none;" placeholder="gemini-2.5-flash / llama3.2" />
-                      <button type="button" class="btn ghost compact-btn" id="aiFetchModelsBtn">Tara</button>
-                    </div>
-                  </div>
-                  <div class="device-row" style="justify-content: space-between; margin-top: 4px;">
-                    <button type="button" class="btn ghost compact-btn" id="aiTestBtn">🔌 Bağlantıyı Test Et</button>
-                    <small id="aiStatusMessage" style="font-size: 0.75rem; color: var(--muted);"></small>
-                  </div>
-                </div>
-              </details>
-            </section>
-
-            <!-- Custom Gesture Studio -->
-            <section class="card" id="customGestureCard" data-tab="ai">
-              <h2 data-i18n="customGestureTitle">Özel Hareket Stüdyosu (Hareket Öğret)</h2>
-              <p class="hint" style="color:var(--muted); font-size:0.78rem; margin:0;">Kameraya istediğin pozu göster ve kaydet; yapay zeka senin hareketini tanısın.</p>
-              <div class="row" style="gap:6px; flex-wrap:wrap;">
-                <input type="text" id="customGestureName" placeholder="Hareket adı (örn: Rock, Shaka)..." style="flex:1; min-width:140px; padding:6px 10px; border-radius:8px; background:rgba(255,255,255,0.05); border:1px solid var(--line); color:var(--ink); font-size:0.8rem;" />
-                <select id="customGestureAction" class="device-select" style="min-width:150px; max-width:none; padding:6px 8px; font-size:0.8rem;">
-                  <option value="close_tab">✂️ Sekme Kapat (Ctrl+W)</option>
-                  <option value="minimize">🔻 Simge Durumuna Küçült</option>
-                  <option value="ask_ai">🎯 Nişan Al & AI'ya Sor</option>
-                  <option value="scan_document">📄 Belge Oku (OCR)</option>
-                  <option value="overlay_toggle">🕸️ Örtüyü Aç/Kapat</option>
+            <section class="card" data-tab="appearance">
+              <h2 data-i18n="appearanceTitle">Görünüm</h2>
+              <div class="setting">
+                <label for="themeSelect" data-i18n="themeSelectLabel">Tema</label>
+                <select id="themeSelect" class="device-select">
+                  <option value="minimal" data-i18n="themeMinimal">Minimal (koyu)</option>
+                  <option value="anime" data-i18n="themeAnime">Anime</option>
                 </select>
-                <button type="button" class="btn compact-btn" id="recordCustomGestureBtn" data-i18n="btnCustomGesture">📸 Pozu Kaydet</button>
+                <small class="hint" data-i18n="themeSelectHint">Yalnızca bu pencerenin görünümünü değiştirir.</small>
               </div>
-              <div id="customGestureList" style="display:flex; flex-direction:column; gap:4px;"></div>
+              <div class="setting">
+                <label for="effectsSelect" data-i18n="effectsTitle">Efektler</label>
+                <select id="effectsSelect" class="device-select">
+                  <option value="off" data-i18n="effectsOff">Kapalı</option>
+                  <option value="classic" data-i18n="effectsClassic">Klasik</option>
+                </select>
+                <small class="hint" data-i18n="effectsHint">Örtüdeki hedef ve hareket efektleri. Kapalı en hızlısıdır.</small>
+              </div>
             </section>
 
-            <!-- Display, Power & System Settings -->
-            <section class="card" data-tab="system">
-              <div class="device-row">
-                <h2 style="margin:0;" data-i18n="displays">Ekran & Sistem Ayarları</h2>
+            <section class="card" id="customGestureCard" data-tab="gestures">
+              <h2 data-i18n="customGestureTitle">Özel hareket</h2>
+              <p class="hint" data-i18n="customGestureHint">Kameraya bir poz göster, ad ver ve bir işe bağla.</p>
+              <div class="profile-row">
+                <input type="text" id="customGestureName" class="text-input" data-i18n-placeholder="customGestureNamePh" placeholder="Hareket adı" />
+                <select id="customGestureAction" class="device-select" aria-label="Action">
+                  <option value="close_tab" data-i18n="actCloseTab">Sekmeyi kapat (Ctrl+W)</option>
+                  <option value="minimize" data-i18n="actMinimize">Pencereyi küçült</option>
+                  <option value="overlay_toggle" data-i18n="actOverlay">Örtüyü aç/kapat</option>
+                </select>
+                <button type="button" class="btn small" id="recordCustomGestureBtn" data-i18n="btnCustomGesture">Pozu kaydet</button>
               </div>
-              <div class="monitor-list" id="monitorList" style="margin-top: 4px;"></div>
-              <p class="hint" data-i18n="throwHint" style="margin: 4px 0 0; color: var(--muted); font-size: 0.76rem;">Ağ ile tut, diğer ekrana doğru savur: site o monitöre gider. 👌 OK fiske = görev çubuğuna indir.</p>
+              <div id="customGestureList" class="stack"></div>
+            </section>
 
-              <div class="feature-grid" style="margin-top: 8px;">
+            <section class="card" data-tab="system">
+              <h2 data-i18n="displays">Ekranlar ve sistem</h2>
+              <div class="monitor-list" id="monitorList"></div>
+              <p class="hint" data-i18n="throwHint">Pencereyi tut ve hedef monitöre doğru hızlıca bırak.</p>
+
+              <div class="feature-grid">
                 <button type="button" class="switch slim" id="soundToggle" aria-pressed="true">
                   <span class="knob" aria-hidden="true"></span>
-                  <span><strong data-i18n="sound">Ses Efektleri (THWIP)</strong><small data-i18n="soundHint">Ağ atışında ve fırlatmada ses çal.</small></span>
+                  <span><strong data-i18n="sound">Ses efektleri</strong><small data-i18n="soundHint">Tutma ve fırlatmada kısa ses çalar.</small></span>
                 </button>
                 <button type="button" class="switch slim" id="autostartToggle" aria-pressed="false">
                   <span class="knob" aria-hidden="true"></span>
@@ -440,26 +303,25 @@
                   <span class="knob" aria-hidden="true"></span>
                   <span><strong data-i18n="idleCamera">Boşta kamerayı kapat</strong><small data-i18n="idleCameraHint">El yokken bir süre sonra kamera durur.</small></span>
                 </button>
-                <div class="fps-card-box">
-                  <strong style="font-size: 0.82rem;" data-i18n="fpsSetting">Hedef FPS:</strong>
-                  <div class="chips" id="fpsChips" style="display: flex; gap: 6px;"></div>
+                <div class="setting">
+                  <span class="setting-label" data-i18n="fpsSetting">Hedef FPS</span>
+                  <div class="chips" id="fpsChips"></div>
                 </div>
               </div>
 
-              <details class="phone-guide-box">
-                <summary style="cursor: pointer; font-weight: 600;" data-i18n="phoneGuideTitle">📱 Telefon Kamerasını Bağlama (Kablosuz / USB)</summary>
-                <p style="margin: 6px 0 0 0; color: var(--muted); font-size: 0.78rem;" data-i18n="phoneGuideDesc">Telefonunuzu kablosuz (Wi-Fi) veya USB ile bağlayıp yüksek kaliteli el takibi yapabilirsiniz:</p>
-                <ol class="phone-steps">
-                  <li><strong data-i18n="phoneApp1">DroidCam (Ücretsiz & Hızlı - Android/iOS)</strong></li>
-                  <li><strong data-i18n="phoneApp2">Iriun Webcam (Otomatik Bağlantı)</strong></li>
-                  <li><strong data-i18n="phoneApp3">Camo (Stüdyo Kalitesi)</strong></li>
+              <details class="sub-details">
+                <summary data-i18n="phoneGuideTitle">Telefonu kamera olarak kullan</summary>
+                <p class="quiet" data-i18n="phoneGuideDesc">Telefonunu Wi-Fi veya USB ile bağlayıp kamera olarak seçebilirsin:</p>
+                <ol class="plain-list">
+                  <li data-i18n="phoneApp1">DroidCam (Ücretsiz & Hızlı - Android/iOS)</li>
+                  <li data-i18n="phoneApp2">Iriun Webcam (Otomatik Bağlantı)</li>
+                  <li data-i18n="phoneApp3">Camo (Stüdyo Kalitesi)</li>
                 </ol>
               </details>
             </section>
 
-            <!-- Bindings & Hotkeys -->
             <details class="card" data-tab="system">
-              <summary data-i18n="bindings">Komutlar & Kısayol Atamaları</summary>
+              <summary data-i18n="bindings">Komutlar ve kısayollar</summary>
               <p class="quiet" data-i18n="bindingsHint">Her satır: yapılacak iş → onu tetikleyen el hareketi veya klavye tuşu.</p>
               <div id="bindingList" class="binding-list"></div>
               <strong class="bind-title" data-i18n="bindingsNew">Yeni komut ekle</strong>
@@ -471,14 +333,34 @@
                   <option value="hotkey" data-i18n="kindHotkey">Kısayol</option>
                 </select>
                 <select id="bindGesture"></select>
-                <button type="button" class="btn ghost compact-btn" id="bindCapture" data-i18n="bindingsCapture">Tuşu yakala</button>
-                <button type="button" class="btn compact-btn" id="bindSave" data-i18n="bindingsSave">Kaydet</button>
+                <button type="button" class="btn ghost small" id="bindCapture" data-i18n="bindingsCapture">Tuşu yakala</button>
+                <button type="button" class="btn small" id="bindSave" data-i18n="bindingsSave">Kaydet</button>
               </div>
             </details>
 
+            <section class="card" data-tab="guide">
+              <h2 data-i18n="guideChatTitle">Rehber</h2>
+              <div class="ai-chat-box" id="aiChatBox">
+                <div class="ai-chat-log" id="aiChatLog">
+                  <div class="ai-msg ai-bot"><span class="ai-msg-text" data-i18n="guideChatIntro">Uygulamayla ilgili bir şey sor ya da aşağıdan bir konu seç.</span></div>
+                </div>
+                <div class="chip-row" id="aiSuggestChips">
+                  <button type="button" class="chip" data-ask="Pencere nasıl taşınır?" data-i18n="askMove">Pencere nasıl taşınır?</button>
+                  <button type="button" class="chip" data-ask="Diğer monitöre nasıl atarım?" data-i18n="askThrow">Diğer monitöre nasıl atarım?</button>
+                  <button type="button" class="chip" data-ask="Pencere nasıl küçültülür?" data-i18n="askMinimize">Pencere nasıl küçültülür?</button>
+                  <button type="button" class="chip" data-ask="Kısayollar neler?" data-i18n="askHotkeys">Kısayollar neler?</button>
+                  <button type="button" class="chip" data-ask="Jest algılanmıyor, neden?" data-i18n="askNoDetect">Jest algılanmıyor</button>
+                </div>
+                <form class="ai-chat-input-row" id="aiChatForm">
+                  <input type="text" id="aiChatInput" class="text-input" placeholder="Bir soru yaz…" data-i18n-placeholder="aiChatPlaceholder" />
+                  <button type="submit" class="btn small" id="aiSendBtn" data-i18n="aiSend">Gönder</button>
+                </form>
+              </div>
+            </section>
+
             <footer class="dashboard-footer">
               <span data-i18n="trayHint">Pencereyi kapatınca uygulama tepside kalır.</span>
-              <span>·</span>
+              <span aria-hidden="true">·</span>
               <span data-i18n="credit">Uyarlama: SpiderSense © 2026 Rittika Das, MIT.</span>
               <span hidden data-i18n="inspire">IG reel yalnızca ilhamdır.</span>
             </footer>

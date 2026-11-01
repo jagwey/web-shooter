@@ -20,7 +20,9 @@ const targetWindows = new Map();
 let focusFrameOnly = false;
 let showWebs = true;
 let showFocusFrame = true;
-let preset = "sakura";
+let preset = "off";
+// Theme accent for outline/ring, set by control.js via overlay-preset / overlay-settings { accent }.
+let accent = "";
 let customAccent = "";
 let customThickness = 3;
 let activeToast = null;
@@ -61,53 +63,69 @@ function kick() {
   requestAnimationFrame(loop);
 }
 
+// Outline-only mode: no spotlight, net, strands, particles or tethers.
+function minimal() {
+  return preset === "off" || !showWebs || focusFrameOnly;
+}
+
+// Dirty rect of the last minimal frame; effect frames always need a full clear.
+let dirtyFull = true;
+let dx0 = Infinity;
+let dy0 = Infinity;
+let dx1 = -Infinity;
+let dy1 = -Infinity;
+
+function markDirty(x, y, w, h) {
+  dx0 = Math.min(dx0, x);
+  dy0 = Math.min(dy0, y);
+  dx1 = Math.max(dx1, x + w);
+  dy1 = Math.max(dy1, y + h);
+}
+
+function clearDirty() {
+  if (dirtyFull) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  else if (dx1 > dx0 && dy1 > dy0) ctx.clearRect(dx0, dy0, dx1 - dx0, dy1 - dy0);
+  dirtyFull = false;
+  dx0 = dy0 = Infinity;
+  dx1 = dy1 = -Infinity;
+}
+
 function loop(now) {
-  // Drop a finished shot's window once the splash is gone. A held window stays until release.
-  if (!fx.pin()) {
+  const lean = minimal();
+  if (lean) {
+    // Hover outlines live only while control.js keeps re-sending them (lost hand / missed clear never sticks).
+    for (const [id, win] of targetWindows) {
+      if (!win.grabbed && now - win.seen > HOVER_TTL_MS) targetWindows.delete(id);
+    }
+  } else if (!fx.pin()) {
+    // Drop a finished shot's window once the splash is gone. A held window stays until release.
     for (const [id, win] of targetWindows) {
       if (!win.grabbed) targetWindows.delete(id);
     }
   }
   pruneRings(now);
-  const busy = fx.hasWork() || rings.size > 0 || tethers.size > 0 || targetWindows.size > 0 || Boolean(activeToast && now < activeToast.until);
+  const toast = Boolean(activeToast && now < activeToast.until);
+  const busy = rings.size > 0 || targetWindows.size > 0 || toast || (!lean && (fx.hasWork() || tethers.size > 0));
+  clearDirty();
   if (!busy) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
     running = false;
     lastNow = 0;
     emitTo("control", "render-fps", { fps: 0, mode: "idle" });
     return;
   }
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  pumpTracks();
-  // Windows snap to their vsync-tracked bounds; only tethers ease.
-  const k = lastNow ? 1 - Math.exp(-Math.min(100, now - lastNow) / EASE_MS) : 1;
-  lastNow = now;
-  for (const line of tethers.values()) ease(line.cur, line, k, ["x0", "y0", "x1", "y1"]);
-
-  // Draw target window focus frames (Clean bounding boxes with contrast corner reticles)
-  if (showFocusFrame || focusFrameOnly) {
-    const rects = [...targetWindows.values()].map((win) => [win, windowRect(win)]).filter(([, r]) => r);
-    drawSpotlight(rects.map(([, r]) => r));
-    for (const [win, r] of rects) {
-      drawNet(win, r, now);
-      drawFocusFrame(win, r);
-    }
-  }
-
-  // Draw web FX and tethers if enabled
-  if (!focusFrameOnly || showWebs) {
-    const held = tethers.values().next().value?.cur;
-    fx.anchor(held ? held.x0 * canvas.width : 0, held ? held.y0 * canvas.height : 0, Boolean(held));
-    fx.draw(now);
-    // While the shot is still flying it is the strand; the tether takes over once it lands.
-    if (!fx.flying()) {
-      for (const line of tethers.values()) {
-        drawTether(line.cur);
+  if (lean) {
+    // Grabbed rects come straight from control.js events; hover rects are refreshed at camera rate, so no Win32 polling.
+    if (showFocusFrame) {
+      for (const win of targetWindows.values()) {
+        const r = windowRect(win);
+        if (r) drawOutline(win, r);
       }
     }
+  } else {
+    drawEffects(now);
   }
   drawRings(now);
-  if (activeToast && now < activeToast.until) {
+  if (toast) {
     drawToast(now);
   } else if (activeToast) {
     activeToast = null;
@@ -128,10 +146,44 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
+function drawEffects(now) {
+  dirtyFull = true;
+  pumpTracks();
+  // Windows snap to their vsync-tracked bounds; only tethers ease.
+  const k = lastNow ? 1 - Math.exp(-Math.min(100, now - lastNow) / EASE_MS) : 1;
+  lastNow = now;
+  for (const line of tethers.values()) ease(line.cur, line, k, ["x0", "y0", "x1", "y1"]);
+
+  // Draw target window focus frames (Clean bounding boxes with contrast corner reticles)
+  if (showFocusFrame) {
+    const rects = [...targetWindows.values()].map((win) => [win, windowRect(win)]).filter(([, r]) => r);
+    drawSpotlight(rects.map(([, r]) => r));
+    for (const [win, r] of rects) {
+      drawNet(win, r, now);
+      drawFocusFrame(win, r);
+    }
+  }
+
+  // Draw web FX and tethers
+  {
+    const held = tethers.values().next().value?.cur;
+    fx.anchor(held ? held.x0 * canvas.width : 0, held ? held.y0 * canvas.height : 0, Boolean(held));
+    fx.draw(now);
+    // While the shot is still flying it is the strand; the tether takes over once it lands.
+    if (!fx.flying()) {
+      for (const line of tethers.values()) {
+        drawTether(line.cur);
+      }
+    }
+  }
+}
+
 // Dwell arm rings keyed by id; a ring not refreshed within RING_TTL_MS (lost hand) expires.
 const rings = new Map();
 const RING_TTL_MS = 300;
 const RING_FLASH_MS = 150;
+const RING_R = 22;
+const HOVER_TTL_MS = 300;
 
 function pruneRings(now) {
   for (const [id, ring] of rings) {
@@ -144,28 +196,34 @@ function drawRings(now) {
   const color = getThemeColor();
   ctx.save();
   ctx.lineCap = "round";
+  ctx.font = "600 12px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
   for (const ring of rings.values()) {
     const cx = ring.x * canvas.width;
     const cy = ring.y * canvas.height;
     const full = Boolean(ring.flashUntil);
-    ctx.globalAlpha = 0.25;
-    ctx.fillStyle = "#000";
-    ctx.beginPath();
-    ctx.arc(cx, cy, 28, 0, Math.PI * 2);
-    ctx.fill();
     ctx.globalAlpha = full ? Math.max(0, (ring.flashUntil - now) / RING_FLASH_MS) : 1;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 4;
+    // Dark track under the accent arc keeps the ring readable on any background.
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.75)";
+    ctx.lineWidth = 6;
     ctx.beginPath();
-    ctx.arc(cx, cy, 28, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (full ? 1 : Math.min(1, ring.progress)));
+    ctx.arc(cx, cy, RING_R, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, RING_R, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (full ? 1 : Math.min(1, ring.progress)));
     ctx.stroke();
     if (ring.label) {
-      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.75)";
+      ctx.lineWidth = 4;
+      ctx.strokeText(ring.label, cx, cy + RING_R + 16);
       ctx.fillStyle = color;
-      ctx.font = "bold 11px system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText(ring.label, cx, cy + 46);
+      ctx.fillText(ring.label, cx, cy + RING_R + 16);
     }
+    markDirty(cx - 80, cy - RING_R - 6, 160, RING_R * 2 + 34);
   }
   ctx.restore();
 }
@@ -175,6 +233,8 @@ function ease(cur, target, k, keys) {
 }
 
 function getThemeColor() {
+  if (accent) return accent;
+  if (preset === "off") return "#ffffff";
   if (preset === "custom" && customAccent) return customAccent;
   if (preset === "sakura") return "#f472b6";
   if (preset === "clean") return "#38bdf8";
@@ -201,6 +261,7 @@ function rememberWindow(id, win, grabbed) {
     title: win.title || prev?.title || "",
     grabbed: grabbed ?? prev?.grabbed ?? false,
     born: prev?.born ?? performance.now(),
+    seen: prev?.seen ?? performance.now(),
     netCanvas: prev?.netCanvas,
     netKey: prev?.netKey,
   });
@@ -344,6 +405,28 @@ function traceNet(ctx, w, h, grow, isLow) {
   }
 }
 
+function pathRoundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, w, h, r);
+  else ctx.rect(x, y, w, h);
+}
+
+// Minimal outline: accent (default white) 2px inside, dark 2px outside; hover dimmer than grabbed.
+function drawOutline(win, { x, y, w, h }) {
+  const lw = 2 * (cachedDpr > 0 ? cachedDpr : 1);
+  const half = lw / 2;
+  ctx.globalAlpha = win.grabbed ? 1 : 0.6;
+  ctx.lineWidth = lw;
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.75)";
+  pathRoundRect(x - half, y - half, w + lw, h + lw, 6 + half);
+  ctx.stroke();
+  ctx.strokeStyle = getThemeColor();
+  pathRoundRect(x + half, y + half, Math.max(0, w - lw), Math.max(0, h - lw), Math.max(0, 6 - half));
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  markDirty(x - 2 * lw, y - 2 * lw, w + 4 * lw, h + 4 * lw);
+}
+
 function drawFocusFrame(win, { x, y, w, h }) {
   const color = getThemeColor();
   ctx.save();
@@ -481,9 +564,11 @@ function drawToast(now) {
   ctx.textBaseline = "middle";
   ctx.fillText(text, canvas.width / 2, y + h / 2);
   ctx.restore();
+  markDirty(x - 4, y - 4, w + 8, h + 8);
 }
 
 function shootNormalized(nx, ny, win) {
+  if (minimal()) return;
   fx.setPreset(preset);
   const box = win ? clientOf(win) : null;
   const rect = box ? windowRect(box) : null;
@@ -497,8 +582,11 @@ listen("overlay-frame", (event) => {
 });
 
 listen("overlay-preset", (event) => {
-  preset = event.payload?.preset || "spiderman";
+  preset = event.payload?.preset || "off";
+  if (event.payload?.accent !== undefined) accent = String(event.payload.accent || "");
   fx.setPreset(preset);
+  dirtyFull = true;
+  kick();
 });
 
 listen("overlay-shot", (event) => {
@@ -507,6 +595,7 @@ listen("overlay-shot", (event) => {
 });
 
 listen("overlay-purple", (event) => {
+  if (minimal()) return;
   const { x, y } = event.payload;
   fx.triggerPurple(x * canvas.width, y * canvas.height);
   kick();
@@ -526,6 +615,7 @@ listen("overlay-arm", (event) => {
 });
 
 listen("overlay-safety-shield", (event) => {
+  if (minimal()) return;
   const { x, y, title, duration } = event.payload;
   fx.triggerShield(x * canvas.width, y * canvas.height, title || "Hassas Çalışma", duration || 2400);
   kick();
@@ -553,10 +643,15 @@ listen("overlay-target-window", (event) => {
     else targetWindows.clear();
   } else if (win) {
     rememberWindow(id ?? 0, win, win.grabbed);
+    const kept = targetWindows.get(id ?? 0);
+    if (kept) kept.seen = performance.now();
   }
 });
 
 listen("overlay-settings", (event) => {
+  if (event.payload?.accent !== undefined) {
+    accent = String(event.payload.accent || "");
+  }
   if (event.payload?.focusFrameOnly !== undefined) {
     focusFrameOnly = Boolean(event.payload.focusFrameOnly);
   }
@@ -572,6 +667,8 @@ listen("overlay-settings", (event) => {
     customThickness = Number(event.payload.customFx.thickness) || 3;
     if (preset === "custom") fx.setPreset("custom");
   }
+  // A mode switch can leave effect pixels outside the minimal dirty rect.
+  dirtyFull = true;
 });
 
 listen("overlay-toast", (event) => {

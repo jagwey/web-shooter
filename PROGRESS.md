@@ -1,12 +1,22 @@
 # 🕸️ Jagwey Web Shooter — Project Status & Progress Report (PROGRESS.md)
 
-**Versiyon:** `0.4.2`  
+**Versiyon:** `0.6.0`  
 **Proje:** Jagwey Web Shooter (Masaüstü Örtüsü / Desktop Web Shooter & Window Manipulator)  
 **Hedef Platform:** Windows 10/11 x64  
 **Teknoloji Yığını:** Tauri 2 (Rust) + Vite + MediaPipe Tasks Vision + Win32 API + Web Audio API  
 **Depo (GitHub):** [https://github.com/jagwey/web-shooter](https://github.com/jagwey/web-shooter)  
 
-## Son tur (2026-11-01 — v0.4.2 TDZ Kamera Başlatma Hatası Onarımı & Kararlılık)
+## Son tur (2026-11-01 — v0.6.0 UI Redesign, Minimal Dark Theme & Low-Latency Kinematic Tracking)
+- 🎨 **Minimal Dark UI & Tema Seçici:**
+  - Tek accent sistem fontlu şık karanlık arayüz, `#themeSelect` (Minimal / Anime) ve `#effectsSelect` (Kapalı / Klasik).
+  - Sadeleştirilmiş "Nasıl çalışır" kartı, TR/EN 311 anahtarlı i18n rehberi.
+- ⚡ **Düşük Gecikmeli Kinematik Takip & Sağlam Pencere Yönetimi:**
+  - 2. derece kinematik One Euro filtresi + `predictPalmAnchor`.
+  - rAF grab döngüsü, BroadcastChannel tabanlı yüksek hızlı IPC (Tauri event fallback + 15ms dedupe).
+  - Win32 `action_target` ve `ShowWindowAsync(SW_MINIMIZE)` / `WM_SYSCOMMAND SC_CLOSE` ile korumalı, anlık ve güvenilir pencere küçültme / kapatma.
+- 📦 **Dağıtım ve Kurulum:**
+  - İmzalı Windows NSIS kurulum paketi (`Jagwey.Web.Shooter_0.6.0_x64-setup.exe`) derlendi, GitHub'a v0.6.0 olarak yayımlandı ve yerel çalışma alanına kopyalandı.
+- 🧪 **Birim Testleri:** 103/103 birim testi ve challenger stres testleri tam başarıyla tamamlandı.
 - 🐛 **`Cannot access 'Oo' before initialization` (TDZ) Onarımı (`src/control.js`):**
   - Minified kodda `Oo` adını alan `VIRTUAL_CAMERA` regex'i dosyanın altlarında (~satır 1300) tanımlı olduğu için, `boot()` fonksiyonu `startCamera()` -> `preferRealCamera()` çağırdığında değişken henüz ilklendirilmemiş olabiliyordu ve JavaScript Temporal Dead Zone (TDZ) `ReferenceError` fırlatıyordu.
   - `src/control.js` içerisindeki tüm modül değişkenleri ve sabitleri (`VIRTUAL_CAMERA`, `POSE_GAP_MS`, `WORKER_BOOT_MS`, `SNIPER_HOLD_MS`, `landmarker`, `lastCamW/H`, `aiMsgSeq`) dosyanın en üstüne (satır 80-108) taşındı.
@@ -241,3 +251,13 @@ scripts\build.bat
 ### v0.5.1
 - Güncelle butonu aslında çalışıyordu: 0.5.0 indirildi/kuruldu (temp `*-0.5.0-updater-*`, /P /R ile yeniden açılış).
 - Başlığa aktif sürüm etiketi eklendi (`#appVersion`, `getVersion()`); v0.5.0 assetleri `--clobber` ile yenilendi.
+
+### v0.6.0 UI redesign (index.html / style.css / i18n / guide)
+- Minimal dark UI (tek accent, sistem fontu), `#themeSelect` (minimal/anime) + `src/theme.js` `applyTheme()`, `#effectsSelect` (Kapalı/Klasik), "Nasıl çalışır" kartı.
+- Kaldırılan özelliklerin UI'si silindi; guide KB yeni jest setine göre yazıldı; i18n TR/EN 311 anahtar. `npx vite build` OK.
+- Bekleyen: control.js wiring (themeSelect, effectsSelect, emoji ikonlar, liveDot inline renk).
+
+### v0.6.0 control/grab pass (control.js, filter.js, throw.js, hands-worker.js)
+- Grab: GRAB_CONFIRM_FRAMES fist + speed ≤ 1.2 onset; palm×RELEASE_CONFIRM_FRAMES or fist lost ≥150ms releases; lost hand parks the grab (no throw), resumes with a re-anchor within 300ms.
+- Throw only via `validThrow` + adjacent `throwToMonitor`, else `snapToEdge` 24px; minimize/close dwell is on the window under the hand only (300ms pre-hover, no foreground fallback); `closeMode` tab/window.
+- Hover outline every frame; emits capped by EMIT_GAP_MS; lead cap 25ms; coasting ≤2 frames; 640px bitmap; 1 hand by default. Tests 107/107, vite build + cargo check OK.

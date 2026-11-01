@@ -62,7 +62,7 @@ export function throwToMonitor(monitors, win, vx, vy) {
   let best = null;
   let bestDot = 0.45;
   for (const monitor of monitors) {
-    if (monitor === home) continue;
+    if (monitor === home || !adjacent(home, monitor)) continue;
     const mx = monitor.x + monitor.width / 2 - cx;
     const my = monitor.y + monitor.height / 2 - cy;
     const mag = Math.hypot(mx, my) || 1;
@@ -84,4 +84,51 @@ export function throwToMonitor(monitors, win, vx, vy) {
     ? Math.min(Math.max(win.y, best.y + margin), best.y + best.height - height - margin)
     : (vy >= 0 ? best.y + margin : best.y + best.height - height - margin);
   return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) };
+}
+
+function adjacent(a, b, gap = 8) {
+  const xTouch = Math.abs(a.x + a.width - b.x) <= gap || Math.abs(b.x + b.width - a.x) <= gap;
+  const yTouch = Math.abs(a.y + a.height - b.y) <= gap || Math.abs(b.y + b.height - a.y) <= gap;
+  const xOverlap = a.x < b.x + b.width && b.x < a.x + a.width;
+  const yOverlap = a.y < b.y + b.height && b.y < a.y + a.height;
+  return (xTouch && yOverlap) || (yTouch && xOverlap);
+}
+
+/**
+ * Release velocity (px/ms) of a deliberate throw, or null.
+ * Needs >= minTravel px inside the last windowMs, a mostly straight stroke, and the refractory gap.
+ */
+export function validThrow(samples, now, lastThrowAt = -Infinity, opts = {}) {
+  const windowMs = opts.windowMs ?? 160;
+  const minTravel = opts.minTravel ?? 64;
+  const maxLateral = opts.maxLateral ?? 0.5;
+  const refractoryMs = opts.refractoryMs ?? 450;
+  if (now - lastThrowAt < refractoryMs) return null;
+  const recent = (samples || []).filter((s) => now - s.t <= windowMs && now - s.t >= 0);
+  if (recent.length < 2) return null;
+  const first = recent[0];
+  const last = recent[recent.length - 1];
+  const dt = Math.max(1, last.t - first.t);
+  const dx = last.x - first.x;
+  const dy = last.y - first.y;
+  const main = Math.max(Math.abs(dx), Math.abs(dy));
+  const lateral = Math.min(Math.abs(dx), Math.abs(dy));
+  if (Math.hypot(dx, dy) < minTravel || lateral / main > maxLateral) return null;
+  return { vx: dx / dt, vy: dy / dt };
+}
+
+/** Rect snapped flush to a monitor edge when it was released within edgePx of it, else null. */
+export function snapToEdge(monitors, win, edgePx = 24) {
+  if (!monitors || !monitors.length || !win) return null;
+  const cx = win.x + win.width / 2;
+  const cy = win.y + win.height / 2;
+  const m = monitors.find((monitor) => contains(monitor, cx, cy));
+  if (!m) return null;
+  let { x, y } = win;
+  if (Math.abs(win.x - m.x) <= edgePx) x = m.x;
+  else if (Math.abs(m.x + m.width - (win.x + win.width)) <= edgePx) x = m.x + m.width - win.width;
+  if (Math.abs(win.y - m.y) <= edgePx) y = m.y;
+  else if (Math.abs(m.y + m.height - (win.y + win.height)) <= edgePx) y = m.y + m.height - win.height;
+  if (x === win.x && y === win.y) return null;
+  return { x, y, width: win.width, height: win.height };
 }

@@ -20,14 +20,14 @@ let landmarker = null;
 let pose = null;
 let poseLoading = false;
 let poseAt = 0;
-let currentNumHands = 2;
+let currentNumHands = 1;
 let lastTimestampMs = 0;
 
 async function createHands(vision, model, delegate) {
   const options = {
     baseOptions: { modelAssetPath: model, delegate },
     runningMode: "VIDEO",
-    numHands: 2,
+    numHands: 1,
     minHandDetectionConfidence: 0.4,
     minHandPresenceConfidence: 0.35,
     minTrackingConfidence: 0.35,
@@ -79,7 +79,7 @@ self.onmessage = async (event) => {
           for (const delegate of ["GPU", "CPU"]) {
             try {
               landmarker = await createHands(vision, src.model, delegate);
-              currentNumHands = 2;
+              currentNumHands = 1;
               if (landmarker) {
                 console.log(`[hands-worker] HandLandmarker initialized successfully (${delegate}, ${src.tag})`);
                 self.postMessage({ type: "ready", delegate, tag: src.tag });

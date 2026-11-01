@@ -121,3 +121,18 @@ export function handSpeed(f, idx = 9) {
   if (!f || !f.dx) return 0;
   return Math.hypot(f.dx[idx * 3] || 0, f.dx[idx * 3 + 1] || 0);
 }
+
+// Grab prediction lead (ms) from hand speed: small at rest, capped so fast moves do not overshoot.
+export function leadMs(speed) {
+  return Math.min(20, Math.max(8, 8 + (speed || 0) * 12));
+}
+
+// Rope deadzone: ignore target jitter inside r px; r shrinks each update (12 -> 3) once the grab settles.
+export function ropeDeadzone(state, x, y) {
+  const r = state.r ?? 12;
+  state.r = Math.max(3, r * 0.9);
+  if (state.x != null && Math.hypot(x - state.x, y - state.y) < r) return { x: state.x, y: state.y, moved: false };
+  state.x = x;
+  state.y = y;
+  return { x, y, moved: true };
+}

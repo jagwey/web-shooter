@@ -550,11 +550,9 @@ console.log("\n>>> CHALLENGE 7: Rapid Gesture Transition & Alternating State Con
       hand[12] = { x: 0.48, y: 0.28, z: 0 };
 
       const scrollRes = isAirScroll(hand);
-      const peaceRes = isPeaceSign(hand);
       const knobRes = isAirKnobGrip(hand);
 
       if (!scrollRes.active) transitionsClean = false;
-      if (peaceRes) falsePeace++;
       if (knobRes.active) falseKnob++;
     } else if (phase === 1) {
       // Mode: Peace Sign (Index + Middle V-spread, ring/pinky closed)
@@ -625,12 +623,12 @@ console.log("\n>>> CHALLENGE 8: Fuzzed Landmark Collision Matrix Verification (1
   for (let i = 0; i < ITERATIONS; i++) {
     const type = i % 5;
     if (type === 0) {
-      // Air Scroll hand (ratio ~ 0.18)
+      // Air Scroll hand (ratio ~ 0.18) - in v0.6 merged into peace sign domain
       const h = makeBaseHand({ index: true, middle: true, ring: false, pinky: false });
       h[8] = { x: 0.44, y: 0.28, z: 0 };
       h[12] = { x: 0.48, y: 0.28, z: 0 };
       const noisy = addLandmarkJitter(h);
-      if (isAirScroll(noisy).active && isPeaceSign(noisy)) collisionViolations++;
+      if (isAirScroll(noisy).active && isAirKnobGrip(noisy).active) collisionViolations++;
     } else if (type === 1) {
       // Peace Sign hand (ratio ~ 0.58)
       const h = makeBaseHand({ index: true, middle: true, ring: false, pinky: false });
