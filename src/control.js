@@ -847,6 +847,7 @@ async function boot() {
   if (state.settings) state.settings.bindings = migrateBindings(state.settings.bindings);
   wireProfiles();
   applySettingsEffects();
+  renderCustomGesturesList();
 
   await listCameras();
   await refreshDesktop();
@@ -2347,7 +2348,8 @@ function saveCurrentCustomGesture(name, action) {
 function renderCustomGesturesList() {
   const container = document.getElementById("customGestureList");
   if (!container) return;
-  const list = state.settings.customGestures || [];
+  // wireChrome runs before boot() loads settings.
+  const list = state.settings?.customGestures || [];
   if (list.length === 0) {
     container.innerHTML = '<span style="font-size:0.75rem; color:var(--muted);">Henüz özel hareket kaydedilmedi.</span>';
     return;

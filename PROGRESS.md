@@ -201,3 +201,8 @@ scripts\build.bat
 ```
 
 - graphify graph üretildi: graphify-out/ (665 node, 1505 edge, 29 topluluk; GRAPH_REPORT.md önce oku). Docs/görseller çıkarılmadı, yalnız AST.
+
+## 2026-11-01 — v0.4.2 açılış çökmesi fix
+- `control.js`: `wireChrome()` → `renderCustomGesturesList()` ayarlar yüklenmeden `state.settings.customGestures` okuyup TypeError atıyordu; modül çöküyor, `boot()` hiç çalışmıyor, çoğu buton bağlanmıyordu.
+- Fix: `state.settings?.customGestures` + `boot()` içinde ayarlar yüklenince listeyi yeniden çiz. `npm test` 83/83, dev konsol temiz, worker GPU inference OK.
+- Exe'ye yansıması için `npm run desktop:build` gerekli; gerçek kamerayla el algılama henüz doğrulanmadı.
