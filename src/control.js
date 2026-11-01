@@ -86,9 +86,26 @@ const PREDICT_MS = 12;
 // Hollow Purple: the two-hand stance must hold this long, and the webbed tab stays a target this long after release.
 const PURPLE_HOLD_MS = 420;
 const PURPLE_TARGET_MS = 3000;
+const POSE_GAP_MS = 80;
+const POSE_FRESH_MS = 300;
+const WORKER_BOOT_MS = 4000;
+const SNIPER_HOLD_MS = 350;
+const VIRTUAL_CAMERA = /droidcam|obs|virtual|manycam|xsplit|snap camera|iriun|epoccam|camo/i;
+
+export function isVirtualCamera(label) {
+  if (!label || typeof label !== "string") return false;
+  return VIRTUAL_CAMERA.test(label);
+}
 
 let profiles = null;
 let profileSaveTimer = 0;
+let aiMsgSeq = 0;
+let landmarker = null;
+let landmarkerPromise = null;
+let poseLandmarker = null;
+let poseLoading = false;
+let lastCamW = -1;
+let lastCamH = -1;
 
 initI18n();
 window.finishOnboarding = finishOnboarding;
@@ -656,8 +673,6 @@ function wireAi() {
   }
 }
 
-let aiMsgSeq = 0;
-
 function appendAiChat(role, text) {
   return appendAiMessage(role, text);
 }
@@ -1062,15 +1077,7 @@ async function persist() {
   render();
 }
 
-let landmarker = null;
-let landmarkerPromise = null;
-
 // Optional body tracking (settings.bodyTracking): pose lite model, used only for arm depth.
-let poseLandmarker = null;
-let poseLoading = false;
-const POSE_GAP_MS = 80;
-const POSE_FRESH_MS = 300;
-
 async function ensurePose() {
   if (poseLandmarker || poseLoading) return;
   poseLoading = true;
@@ -1096,8 +1103,6 @@ async function ensurePose() {
   }
   poseLoading = false;
 }
-
-const WORKER_BOOT_MS = 4000;
 
 /** Resolves {tag} once the worker's model is ready, or null (then the main-thread path runs). */
 function startWorker(sources) {
@@ -1296,19 +1301,19 @@ async function openStream(deviceId) {
   throw lastError;
 }
 
-const VIRTUAL_CAMERA = /droidcam|obs|virtual|manycam|xsplit|snap camera|iriun|epoccam|camo/i;
-
 // Virtual cams (DroidCam, OBS...) give a blank frame when their source is off, so default to a real camera.
 async function preferRealCamera(stream) {
-  if (!VIRTUAL_CAMERA.test(stream.getVideoTracks()[0]?.label || "")) return stream;
-  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
-  const real = devices.find((d) => d.kind === "videoinput" && d.deviceId && !VIRTUAL_CAMERA.test(d.label));
-  if (!real) return stream;
   try {
+    const label = stream?.getVideoTracks?.()[0]?.label || "";
+    if (!isVirtualCamera(label)) return stream;
+    const devices = await navigator.mediaDevices?.enumerateDevices?.().catch(() => []);
+    const real = devices?.find((d) => d.kind === "videoinput" && d.deviceId && !isVirtualCamera(d.label));
+    if (!real) return stream;
     const next = await openStream(real.deviceId);
-    stream.getTracks().forEach((track) => track.stop());
+    stream?.getTracks?.().forEach((track) => track.stop());
     return next;
-  } catch {
+  } catch (err) {
+    console.warn("[Camera] preferRealCamera fallback failed:", err);
     return stream;
   }
 }
@@ -1790,8 +1795,6 @@ function onHands(hands, detectMs) {
 
 // Dual Finger Gun stance: both hands form a finger gun, held for SNIPER_HOLD_MS (350ms).
 // Crosshair is the midpoint between both index fingertips. Triggers askAiAt(crosshair).
-const SNIPER_HOLD_MS = 350;
-
 function checkSniperStance(handCount) {
   if (handCount < 2) {
     state.sniperSince = 0;
@@ -1868,9 +1871,6 @@ function checkNinjaShieldStance(handCount) {
     emitTo("overlay", "overlay-toast", { text: "🥷 Ninja Kalkanı · Masaüstü" });
   }
 }
-
-let lastCamW = -1;
-let lastCamH = -1;
 
 function drawCameraLandmarks(hands) {
   const canvas = document.getElementById("cameraCanvas");

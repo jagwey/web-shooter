@@ -6,7 +6,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-0.4.1-emerald?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-0.4.2-emerald?style=for-the-badge)
 ![Tauri 2](https://img.shields.io/badge/Tauri_2-Rust_%2B_Vite-blue?style=for-the-badge)
 ![MediaPipe](https://img.shields.io/badge/MediaPipe_Hands-120_FPS_Float16-orange?style=for-the-badge)
 ![Filter](https://img.shields.io/badge/Filter-1_Euro_%2B_14--42ms_Adaptive_Lead-cyan?style=for-the-badge)
@@ -156,6 +156,8 @@ flowchart TD
 | **v0.2.0** | **Masaüstü Süper Güçleri & AI Stüdyosu** | 🔊 **DJ Air Knob** (ses kontrolü), ⏸️ **Air Media Control** (oynat/durdur/sonraki), 🥷 **Ninja Shield** (Win+D patron modu), 🔍 **Pinch Zoom** (Büyüteç), 📜 **Air Scroll** (fare tekeri kaydırma), 🎯 **AI Sniper** (çift el nişan), 📄 **Kamera OCR**, 📸 **Özel Hareket Stüdyosu**, 🎛️ **5 Bağımsız UI Toggle**, Çene ölü bölge koruması | 74/74 birim testi, 51/51 stres testi, kusursuz onboarding ve sıfır çakışma garantisi |
 | **v0.3.0** | **Sıfır Gecikme & Tam Sistem Revizyonu** | 🚀 **Win32 `move_window_fast`** (`SWP_ASYNCWINDOWPOS | SWP_NOSENDCHANGING` ile <0.1ms asenkron pencere taşıma), ⚓ **Çapa (Anchor) Tabanlı Sürükleme** (sıfır DWM kenarlık kayması + 0ms istemci örtü güncellemesi + IPC Coalescing), 🖐️ **Avuç Merkezi Takibi & 14–42ms Adaptif Hız Öngörüsü**, 💨 **Motion-Blur Coasting & 3-Kare Tutuş Histerezisi**, 📷 **Anında Kamera Listeleme & 4sn Worker Fallback**, 👤 **Tauri `profiles.json` Kalıcılığı** | Kamera seçimi, model yükleme takılması, profil ekleme ve hızlı el hareketinde pencere gecikmesi/kopması tamamen giderildi (80/80 birim testi + 51/51 stres testi). |
 | **v0.4.0** | **Bento UX Tasarımı, 6-Stilli FX & Canlı HUD** | 🧭 **5 Sekmeli Kategori Navigasyonu & 2 Sütunlu Bento Grid**, ⚡ **Canlı Takip Tepki Hızı Kaydırıcısı (`%30–%100`) & 1-Tık Mod Ön Ayarları** (`Tam Güç / Sadece Temel / Eko`), 🎨 **6 Farklı Parçacık Geometrisi** (`sparks, stardust, sakura, fire, purple, webs`) + **Dinamik Ağ Kalınlığı & Tema Renkli Halat**, 💬 **Masaüstü Örtüsü Canlı HUD Bildirimleri (`overlay-toast`)** | Sağ sütundaki dikey kaydırma karmaşası, sol sütundaki metin kalabalığı ve Özel FX'te çalışmayan parçacık stili / kalınlık ayarları tamamen yenilendi (83/83 birim testi + 51/51 stres testi). |
+| **v0.4.1** | **HP & Evrensel Kamera Fallback** | 📷 **Aşamalı Kamera Akış Fallback'i** (`exact` -> `ideal` -> varsayılan `video: true`), 🔍 **Açıklayıcı Hata Teşhisi** (`error.message`). | Bazı entegre ve HP kameraların katı çözünürlük veya FPS parametreleri nedeniyle başlatılamaması çözüldü. |
+| **v0.4.2** | **Kamera TDZ Başlatma Onarımı** | 🐛 **`Cannot access 'Oo' before initialization` (TDZ) Onarımı**: Modül değişkenleri (`VIRTUAL_CAMERA` vb.) dosyanın en üstüne taşındı, `isVirtualCamera` ve korumalı `preferRealCamera` eklendi. | Uygulama açılışında kameranın TDZ ReferenceError ile kilitlenmesi tamamen giderildi (83/83 test + 4 Challenger paketi). |
 | **v0.1.9** | **AI Sniper, Kamera OCR & Özel Jestler** | 🎯 İki el / tabancayla hedefe nişan alıp Gemini/AI'ya sorma (Screen Sniper), 📄 kameradan anlık belge okuma (OCR & Panoya kopyalama), 📸 özel el hareketi kaydetme stüdyosu (şablon eşleme), ✌️ 'V' makas işaretiyle sekme kapatma, çene/yüz dinlenme kör noktası filtresi (40/40 birim testi). | Çeneyi dayayınca pencere tutma hatası, fiske atınca küçültmeme ve sekme kapatamama sorunları tamamen çözüldü. |
 
 ---

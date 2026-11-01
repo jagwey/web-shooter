@@ -1,12 +1,22 @@
 # 🕸️ Jagwey Web Shooter — Project Status & Progress Report (PROGRESS.md)
 
-**Versiyon:** `0.4.1`  
+**Versiyon:** `0.4.2`  
 **Proje:** Jagwey Web Shooter (Masaüstü Örtüsü / Desktop Web Shooter & Window Manipulator)  
 **Hedef Platform:** Windows 10/11 x64  
 **Teknoloji Yığını:** Tauri 2 (Rust) + Vite + MediaPipe Tasks Vision + Win32 API + Web Audio API  
 **Depo (GitHub):** [https://github.com/jagwey/web-shooter](https://github.com/jagwey/web-shooter)  
 
-## Son tur (2026-11-01 — v0.4.1 HP Kamera & Evrensel Fallback Yaması)
+## Son tur (2026-11-01 — v0.4.2 TDZ Kamera Başlatma Hatası Onarımı & Kararlılık)
+- 🐛 **`Cannot access 'Oo' before initialization` (TDZ) Onarımı (`src/control.js`):**
+  - Minified kodda `Oo` adını alan `VIRTUAL_CAMERA` regex'i dosyanın altlarında (~satır 1300) tanımlı olduğu için, `boot()` fonksiyonu `startCamera()` -> `preferRealCamera()` çağırdığında değişken henüz ilklendirilmemiş olabiliyordu ve JavaScript Temporal Dead Zone (TDZ) `ReferenceError` fırlatıyordu.
+  - `src/control.js` içerisindeki tüm modül değişkenleri ve sabitleri (`VIRTUAL_CAMERA`, `POSE_GAP_MS`, `WORKER_BOOT_MS`, `SNIPER_HOLD_MS`, `landmarker`, `lastCamW/H`, `aiMsgSeq`) dosyanın en üstüne (satır 80-108) taşındı.
+  - `isVirtualCamera()` yardımcı fonksiyonu eklendi; `preferRealCamera` fonksiyonu güvenli `try/catch` içine alınarak herhangi bir kamera etiketleme hatasında orijinal akışın kesilmeden devam etmesi sağlandı.
+- 📦 **Dağıtım ve Kurulum:**
+  - `package.json`, `src-tauri/Cargo.toml` ve `src-tauri/tauri.conf.json` sürüm `0.4.2` olarak eşitlendi.
+  - İmzalı Windows NSIS kurulum paketi (`Jagwey.Web.Shooter_0.4.2_x64-setup.exe`) derlendi ve kullanıcının proje dizinine kopyalandı.
+- 🧪 **Birim ve Stres Testleri:** 83/83 birim testi ve tüm Challenger stres testleri (1000 noisy frame fuzzing, aspect ratio invariance, Schmitt trigger hysteresis) %100 başarıyla tamamlandı.
+
+## Önceki tur (2026-11-01 — v0.4.1 HP Kamera & Evrensel Fallback Yaması)
 - 📷 **HP & Entegre Kameralar İçin Evrensel Aşamalı Fallback (`openStream`):** `openStream` fonksiyonundaki katı `exact: deviceId` ve `min: 30` FPS kısıtlamaları esnetildi. Kamera sürücüsü yüksek çözünürlük veya 60 FPS modunu başlatamazsa hata fırlatıp durmak yerine önce `{ ideal: deviceId }` serbest modunu, ardından `{ video: true }` evrensel sistem varsayılanını dener.
 - 🔍 **Açıklayıcı Hata Teşhisi:** Kamera açılamadığında salt `Kamera açılamadı.` yerine Windows MediaFoundation veya tarayıcıdan dönen teknik hata detayı (`error.message`) ekrana eklenir.
 - 🧪 **Birim Testleri:** 83/83 birim testi tam başarıyla doğrulandı.
