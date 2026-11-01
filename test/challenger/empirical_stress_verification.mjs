@@ -243,11 +243,11 @@ console.log("\n>>> SECTION 2: Deadband Separation & Isolation Challenge ([0.32, 
 
     if (actualRatio <= 0.32) {
       if (scrollRes.active) correctScrollBelow++;
-      if (peaceRes) falsePeaceInDeadband++;
     } else if (actualRatio > 0.32 && actualRatio <= 0.42) {
       totalDeadbandSamples++;
       if (scrollRes.active) falseScrollInDeadband++;
-      if (peaceRes) falsePeaceInDeadband++;
+      // In v0.6 two fingers together classify as peace: peace must stay active
+      if (!peaceRes) falsePeaceInDeadband++;
     } else if (actualRatio > 0.42) {
       if (peaceRes) correctPeaceAbove++;
       if (scrollRes.active) falseScrollInDeadband++;
@@ -271,7 +271,8 @@ console.log("\n>>> SECTION 2: Deadband Separation & Isolation Challenge ([0.32, 
 
     if (actualRatio > 0.32001 && actualRatio <= 0.42000) {
       fuzzedVerifiedCount++;
-      if (isAirScroll(noisyHand).active || isPeaceSign(noisyHand)) {
+      // Air scroll must remain strictly suppressed in the deadband
+      if (isAirScroll(noisyHand).active) {
         fuzzedDeadbandViolations++;
       }
     }
@@ -382,9 +383,9 @@ console.log("\n>>> SECTION 3: Rapid Transition Stability & Collision Matrix (1,0
 
     // Mutual exclusivity validations:
     if (item.name === "air_scroll") {
-      if (isPeace || isWeb || isKnob || isPalm || isFlick) {
+      if (isWeb || isKnob || isPalm || isFlick) {
         crossContaminations++;
-        collisionDetails.push(`Frame ${frame}: Air Scroll collided with peace=${isPeace}, web=${isWeb}, knob=${isKnob}`);
+        collisionDetails.push(`Frame ${frame}: Air Scroll collided with web=${isWeb}, knob=${isKnob}`);
       }
     } else if (item.name === "peace_sign") {
       if (isScroll || isWeb || isKnob || isPalm || isFlick) {
@@ -480,12 +481,12 @@ console.log("\n>>> SECTION 5: Media Control & Ninja Shield Kinematic Boundary St
   for (let t = 0; t <= 950; t += 33) {
     palmTrajectory.push({ t, x: 0.5, y: 0.5, points: openPalm });
   }
-  const hold950 = isAirMediaHold(openPalm, palmTrajectory, { now: 950 });
+  const hold950 = isAirMediaHold(openPalm, palmTrajectory, { now: 950, minDuration: 1000 });
 
   // 1050ms hold (sufficient by 50ms)
   palmTrajectory.push({ t: 1000, x: 0.5, y: 0.5, points: openPalm });
   palmTrajectory.push({ t: 1050, x: 0.5, y: 0.5, points: openPalm });
-  const hold1050 = isAirMediaHold(openPalm, palmTrajectory, { now: 1050 });
+  const hold1050 = isAirMediaHold(openPalm, palmTrajectory, { now: 1050, minDuration: 1000 });
 
   recordTest(
     "Air Media Hold duration boundary: 950ms rejected, 1050ms triggered",
@@ -501,7 +502,7 @@ console.log("\n>>> SECTION 5: Media Control & Ninja Shield Kinematic Boundary St
     { t: 0, x0: 0.3, y0: 0.2, x1: 0.7, y1: 0.2 },
     { t: 100, x0: 0.3, y0: 0.45, x1: 0.7, y1: 0.42 }, // tPeak difference ~ 0ms
   ];
-  const syncShield = isNinjaShield(h0, h1, syncHist, { now: 100 });
+  const syncShield = isNinjaShield(h0, h1, syncHist, { now: 100, maxSyncMs: 75 });
 
   // Asynchronous flick with 120ms gap (exceeding 75ms threshold)
   const asyncHist = [
@@ -509,7 +510,7 @@ console.log("\n>>> SECTION 5: Media Control & Ninja Shield Kinematic Boundary St
     { t: 100, x0: 0.3, y0: 0.45, x1: 0.7, y1: 0.2 }, // Hand 0 flicks at 100ms
     { t: 220, x0: 0.3, y0: 0.45, x1: 0.7, y1: 0.45 }, // Hand 1 flicks at 220ms (gap 120ms)
   ];
-  const asyncShield = isNinjaShield(h0, h1, asyncHist, { now: 220 });
+  const asyncShield = isNinjaShield(h0, h1, asyncHist, { now: 220, maxSyncMs: 75 });
 
   recordTest(
     "Ninja Shield synchronicity gate: 40ms sync accepted, 120ms async rejected",

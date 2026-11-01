@@ -46,6 +46,7 @@ test("validThrow needs a fast straight stroke and respects the refractory window
   assert.equal(validThrow([{ t: 900, x: 100, y: 500 }, { t: 1000, x: 200, y: 600 }], 1000), null, "diagonal");
   assert.equal(validThrow(fast, 1000, 800), null, "refractory");
   assert.equal(validThrow([{ t: 500, x: 0, y: 0 }, { t: 600, x: 400, y: 0 }], 1000), null, "stale samples");
+  assert.equal(validThrow([{ t: 840, x: 100, y: 500 }, { t: 1000, x: 180, y: 500 }], 1000), null, "ordinary drag pace");
 });
 
 test("snapToEdge pulls a window flush to a nearby monitor edge only", () => {
@@ -53,4 +54,5 @@ test("snapToEdge pulls a window flush to a nearby monitor edge only", () => {
   assert.deepEqual(snapToEdge([left, right], { x: 1920 + 1920 - 600 - 5, y: 300, width: 600, height: 400 }), { x: 3240, y: 300, width: 600, height: 400 });
   assert.equal(snapToEdge([left, right], { x: 500, y: 300, width: 600, height: 400 }), null);
   assert.equal(snapToEdge([], { x: 0, y: 0, width: 10, height: 10 }), null);
+  assert.equal(snapToEdge([left, right], { x: -8, y: -8, width: 1936, height: 1096 }), null, "maximized");
 });

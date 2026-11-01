@@ -51,6 +51,22 @@ mod platform {
     };
     use windows_registry::CURRENT_USER;
 
+    #[link(name = "winmm")]
+    extern "system" {
+        fn timeBeginPeriod(uPeriod: u32) -> u32;
+    }
+
+    static TIMER_INIT: std::sync::Once = std::sync::Once::new();
+
+    #[inline]
+    pub fn ensure_high_precision_timer() {
+        TIMER_INIT.call_once(|| {
+            unsafe {
+                timeBeginPeriod(1);
+            }
+        });
+    }
+
     pub fn hwnd_of(raw: i64) -> HWND {
         HWND(raw as *mut core::ffi::c_void)
     }
@@ -284,6 +300,7 @@ mod platform {
     }
 
     pub fn window_at(x: i32, y: i32) -> Result<Option<DesktopWindow>, String> {
+        ensure_high_precision_timer();
         let hwnd = unsafe { WindowFromPoint(POINT { x, y }) };
         if !hwnd.0.is_null() {
             let target = root_of(hwnd);
@@ -324,6 +341,7 @@ mod platform {
     static LAST_VALID_HWND: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
 
     pub fn move_window_fast(raw: i64, x: i32, y: i32) -> Result<(), String> {
+        ensure_high_precision_timer();
         let hwnd = hwnd_of(raw);
         if raw == 0 || unsafe { !IsWindow(Some(hwnd)).as_bool() } {
             LAST_VALID_HWND.store(0, Ordering::Relaxed);

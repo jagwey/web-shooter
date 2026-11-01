@@ -125,17 +125,69 @@ self.onmessage = async (event) => {
           poseAt = safeTime;
         }
       }
+      let landmarkFlat = null;
+      let worldFlat = null;
+      const transfer = [];
+      const numDetected = result.landmarks ? result.landmarks.length : 0;
+
+      if (numDetected > 0) {
+        landmarkFlat = new Float32Array(numDetected * 63);
+        for (let h = 0; h < numDetected; h += 1) {
+          const lms = result.landmarks[h];
+          const offset = h * 63;
+          for (let i = 0; i < 21; i += 1) {
+            const p = lms[i];
+            if (p) {
+              landmarkFlat[offset + i * 3] = p.x;
+              landmarkFlat[offset + i * 3 + 1] = p.y;
+              landmarkFlat[offset + i * 3 + 2] = p.z || 0;
+            }
+          }
+        }
+        transfer.push(landmarkFlat.buffer);
+
+        if (result.worldLandmarks && result.worldLandmarks.length > 0) {
+          worldFlat = new Float32Array(numDetected * 63);
+          for (let h = 0; h < numDetected; h += 1) {
+            const lms = result.worldLandmarks[h];
+            const offset = h * 63;
+            for (let i = 0; i < 21; i += 1) {
+              const p = lms ? lms[i] : null;
+              if (p) {
+                worldFlat[offset + i * 3] = p.x;
+                worldFlat[offset + i * 3 + 1] = p.y;
+                worldFlat[offset + i * 3 + 2] = p.z || 0;
+              }
+            }
+          }
+          transfer.push(worldFlat.buffer);
+        }
+      }
+
       self.postMessage({
         type: "hands",
-        hands: result.landmarks || [],
-        world: result.worldLandmarks || [],
+        landmarkFlat,
+        worldFlat,
+        numHands: numDetected,
+        hands: numDetected === 0 ? [] : null,
+        world: worldFlat ? null : (result.worldLandmarks || []),
         pose: body,
         ms: performance.now() - started,
         handedness: (result.handedness || result.handednesses || []).map((c) => (c && c[0] && c[0].categoryName) || ""),
         time: time ?? performance.now(),
-      });
+      }, transfer);
     } catch (error) {
-      self.postMessage({ type: "hands", hands: [], world: [], pose: null, ms: performance.now() - started, failed: String(error?.message || error) });
+      self.postMessage({
+        type: "hands",
+        landmarkFlat: null,
+        worldFlat: null,
+        numHands: 0,
+        hands: [],
+        world: [],
+        pose: null,
+        ms: performance.now() - started,
+        failed: String(error?.message || error),
+      });
     } finally {
       bitmap.close();
     }

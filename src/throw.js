@@ -100,7 +100,9 @@ function adjacent(a, b, gap = 8) {
  */
 export function validThrow(samples, now, lastThrowAt = -Infinity, opts = {}) {
   const windowMs = opts.windowMs ?? 160;
-  const minTravel = opts.minTravel ?? 64;
+  // ~1500px/s and 200px: an unhurried drag that opens mid-screen must drop, not throw.
+  const minTravel = opts.minTravel ?? 200;
+  const minSpeed = opts.minSpeed ?? 1.5;
   const maxLateral = opts.maxLateral ?? 0.5;
   const refractoryMs = opts.refractoryMs ?? 450;
   if (now - lastThrowAt < refractoryMs) return null;
@@ -113,7 +115,7 @@ export function validThrow(samples, now, lastThrowAt = -Infinity, opts = {}) {
   const dy = last.y - first.y;
   const main = Math.max(Math.abs(dx), Math.abs(dy));
   const lateral = Math.min(Math.abs(dx), Math.abs(dy));
-  if (Math.hypot(dx, dy) < minTravel || lateral / main > maxLateral) return null;
+  if (Math.hypot(dx, dy) < minTravel || Math.hypot(dx, dy) / dt < minSpeed || lateral / main > maxLateral) return null;
   return { vx: dx / dt, vy: dy / dt };
 }
 
@@ -124,6 +126,8 @@ export function snapToEdge(monitors, win, edgePx = 24) {
   const cy = win.y + win.height / 2;
   const m = monitors.find((monitor) => contains(monitor, cx, cy));
   if (!m) return null;
+  // A maximized window's outer rect overhangs the monitor; snapping it would un-maximize it.
+  if (win.width >= m.width && win.height >= m.height) return null;
   let { x, y } = win;
   if (Math.abs(win.x - m.x) <= edgePx) x = m.x;
   else if (Math.abs(m.x + m.width - (win.x + win.width)) <= edgePx) x = m.x + m.width - win.width;

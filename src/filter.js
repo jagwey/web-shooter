@@ -64,6 +64,9 @@ export function filterLandmarks(f, raw, t, { minCutoff = 1.8, beta = 18.0, dCuto
   return writePool(pool, f.x);
 }
 
+// Jerk limit constant: max physical human hand acceleration bound (normalized screen widths/s^2)
+const MAX_ACCEL = 100.0;
+
 // Braking-aware 2nd-order kinematic extrapolation along filtered velocity & acceleration to hide pipeline latency.
 export function predict(f, idx, point, ms) {
   if (!f?.dx) return point;
@@ -71,14 +74,23 @@ export function predict(f, idx, point, ms) {
   const j = idx * 3;
   const vx = f.dx[j] || 0;
   const vy = f.dx[j + 1] || 0;
-  const ax = f.ddx ? (f.ddx[j] || 0) : 0;
-  const ay = f.ddx ? (f.ddx[j + 1] || 0) : 0;
+  const rawAx = f.ddx ? (f.ddx[j] || 0) : 0;
+  const rawAy = f.ddx ? (f.ddx[j + 1] || 0) : 0;
 
   const vMag = Math.hypot(vx, vy);
-  const aMag = Math.hypot(ax, ay);
-  const align = (vMag > 1e-4 && aMag > 1e-4) ? (vx * ax + vy * ay) / (vMag * aMag) : 0;
-  const effS = align < 0 ? s * Math.max(0.25, 1 + 0.75 * align) : s;
-  const accelGain = align > 0 ? 0.25 * align : 0;
+  const aMag = Math.hypot(rawAx, rawAy);
+
+  // Jerk-limited acceleration scaling: clamp excessive acceleration spikes
+  const aScale = aMag > MAX_ACCEL ? MAX_ACCEL / aMag : 1.0;
+  const ax = rawAx * aScale;
+  const ay = rawAy * aScale;
+
+  const align = (vMag > 1e-4 && aMag > 1e-4) ? (vx * rawAx + vy * rawAy) / (vMag * aMag) : 0;
+  // Damped lead on sudden stops (align < 0) to prevent overshoot
+  const effS = align < 0 ? s * Math.max(0.2, 1 + 0.8 * align) : s;
+  // Rest jitter suppression: disable acceleration extrapolation when velocity is negligible
+  const restDamp = Math.min(1.0, Math.max(0, (vMag - 0.03) / 0.07));
+  const accelGain = align > 0 ? 0.25 * align * restDamp : 0;
 
   return {
     x: point.x + vx * effS + 0.5 * accelGain * ax * effS * effS,
@@ -100,14 +112,23 @@ export function predictPalmAnchor(f, landmarks, ms) {
   const s = Math.max(0, Math.min(0.08, ms / 1000));
   const vx = (f.dx[0] + f.dx[27]) * 0.5;
   const vy = (f.dx[1] + f.dx[28]) * 0.5;
-  const ax = f.ddx ? (f.ddx[0] + f.ddx[27]) * 0.5 : 0;
-  const ay = f.ddx ? (f.ddx[1] + f.ddx[28]) * 0.5 : 0;
+  const rawAx = f.ddx ? (f.ddx[0] + f.ddx[27]) * 0.5 : 0;
+  const rawAy = f.ddx ? (f.ddx[1] + f.ddx[28]) * 0.5 : 0;
 
   const vMag = Math.hypot(vx, vy);
-  const aMag = Math.hypot(ax, ay);
-  const align = (vMag > 1e-4 && aMag > 1e-4) ? (vx * ax + vy * ay) / (vMag * aMag) : 0;
-  const effS = align < 0 ? s * Math.max(0.25, 1 + 0.75 * align) : s;
-  const accelGain = align > 0 ? 0.25 * align : 0;
+  const aMag = Math.hypot(rawAx, rawAy);
+
+  // Jerk-limited acceleration scaling: clamp excessive acceleration spikes
+  const aScale = aMag > MAX_ACCEL ? MAX_ACCEL / aMag : 1.0;
+  const ax = rawAx * aScale;
+  const ay = rawAy * aScale;
+
+  const align = (vMag > 1e-4 && aMag > 1e-4) ? (vx * rawAx + vy * rawAy) / (vMag * aMag) : 0;
+  // Damped lead on sudden stops (align < 0) to prevent overshoot
+  const effS = align < 0 ? s * Math.max(0.2, 1 + 0.8 * align) : s;
+  // Rest jitter suppression: disable acceleration extrapolation when velocity is negligible
+  const restDamp = Math.min(1.0, Math.max(0, (vMag - 0.03) / 0.07));
+  const accelGain = align > 0 ? 0.25 * align * restDamp : 0;
 
   return {
     x: anchor.x + vx * effS + 0.5 * accelGain * ax * effS * effS,
@@ -123,8 +144,16 @@ export function handSpeed(f, idx = 9) {
 }
 
 // Grab prediction lead (ms) from hand speed: small at rest, capped so fast moves do not overshoot.
-export function leadMs(speed) {
+export function leadMs(speed, maxLead = 20) {
+  if (maxLead > 20) {
+    return Math.min(maxLead, Math.max(16, Math.round(16 + (speed || 0) * 26)));
+  }
   return Math.min(20, Math.max(8, 8 + (speed || 0) * 12));
+}
+
+// Adaptive Kinematic Predictive Lead expanding dynamically up to 55ms for high-speed tracking compensation.
+export function adaptiveLeadMs(speed, maxLead = 55) {
+  return Math.min(maxLead, Math.max(16, Math.round(16 + (speed || 0) * 26)));
 }
 
 // Rope deadzone: ignore target jitter inside r px; r shrinks each update (12 -> 3) once the grab settles.

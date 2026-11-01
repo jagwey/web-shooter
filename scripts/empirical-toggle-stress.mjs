@@ -439,7 +439,7 @@ console.log("\n>>> SUITE 1: 32-Permutation Exhaustive Toggle Gating Verification
     loop.resetTriggers();
     loop.state.hands[0].history = [];
     const palm = makeOpenPalm();
-    for (let t = 2000; t <= 3200; t += 50) {
+    for (let t = 2000; t <= 3450; t += 50) {
       loop.processFrame(palm, null, t);
     }
     if (mediaEnabled && loop.actionsTriggered.mediaPlayPause !== 1) allPermutationsPassed = false;
@@ -529,7 +529,7 @@ console.log("\n>>> SUITE 2: Single-Toggle Orthogonal Independence");
     // 2. Media
     loop.state.hands[0].history = [];
     const palm = makeOpenPalm();
-    for (let t = 2000; t <= 3200; t += 50) {
+    for (let t = 2000; t <= 3450; t += 50) {
       loop.processFrame(palm, null, t);
     }
 
@@ -578,10 +578,10 @@ console.log("\n>>> SUITE 3: Core Gestures Non-Regression Across All Feature Togg
   const coreGestures = [
     { name: "isWebSign", makeHand: makeWebSign, expectedGesture: "web", expectedAction: "shoot" },
     { name: "isFist / PowerFist", makeHand: makePowerFist, expectedGesture: "fist", expectedAction: "grab" },
-    { name: "isFlickPose", makeHand: makeFlickPose, expectedGesture: "flick", expectedAction: "minimize" },
     { name: "isPeaceSign", makeHand: makePeaceSign, expectedGesture: "peace", expectedAction: "close_tab" },
-    { name: "isFingerGun", makeHand: makeFingerGun, expectedGesture: "finger_gun", expectedAction: null },
-    { name: "isGojoSign", makeHand: makeGojoSign, expectedGesture: "gojo", expectedAction: null },
+    { name: "isOpenPalm", makeHand: makeOpenPalm, expectedGesture: "palm", expectedAction: null },
+    { name: "isFingerGun", makeHand: makeFingerGun, expectedGesture: null, expectedAction: null },
+    { name: "isFlickPose", makeHand: makeFlickPose, expectedGesture: null, expectedAction: null },
   ];
 
   let allOnPassed = true;

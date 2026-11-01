@@ -261,3 +261,8 @@ scripts\build.bat
 - Grab: GRAB_CONFIRM_FRAMES fist + speed ≤ 1.2 onset; palm×RELEASE_CONFIRM_FRAMES or fist lost ≥150ms releases; lost hand parks the grab (no throw), resumes with a re-anchor within 300ms.
 - Throw only via `validThrow` + adjacent `throwToMonitor`, else `snapToEdge` 24px; minimize/close dwell is on the window under the hand only (300ms pre-hover, no foreground fallback); `closeMode` tab/window.
 - Hover outline every frame; emits capped by EMIT_GAP_MS; lead cap 25ms; coasting ≤2 frames; 640px bitmap; 1 hand by default. Tests 107/107, vite build + cargo check OK.
+
+### v0.6.0 review fixes
+- Removed the dead hollowPurpleReady HUD branch (it threw a ReferenceError) and made scheduleDetect run from a finally block. Grab and hover now use the same target: the last open-hand aim, held for 400ms.
+- settings.rs: dropped the air*/ninja aliases that clashed as duplicate serde fields, plus the JS shims. Profile snapshots taken before 0.6.0 no longer override the migrate_v060 keys (profileSettings).
+- Throw now needs at least 200px in 160ms at 1.5px/ms or more. Snap is skipped for maximized windows and for windows that never moved. A dwell blocked by the cooldown re-arms. A palm within 400ms after release no longer cancels the throw. Tests 107/107, vite build and cargo check pass.

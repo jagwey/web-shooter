@@ -196,34 +196,77 @@ function drawRings(now) {
   const color = getThemeColor();
   ctx.save();
   ctx.lineCap = "round";
-  ctx.font = "600 12px system-ui, sans-serif";
+  ctx.lineJoin = "round";
+  ctx.font = "600 12px 'Segoe UI Variable Text', Inter, system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.lineJoin = "round";
+
   for (const ring of rings.values()) {
     const cx = ring.x * canvas.width;
     const cy = ring.y * canvas.height;
     const full = Boolean(ring.flashUntil);
-    ctx.globalAlpha = full ? Math.max(0, (ring.flashUntil - now) / RING_FLASH_MS) : 1;
-    // Dark track under the accent arc keeps the ring readable on any background.
-    ctx.strokeStyle = "rgba(0, 0, 0, 0.75)";
-    ctx.lineWidth = 6;
+    const alpha = full ? Math.max(0, (ring.flashUntil - now) / RING_FLASH_MS) : 1;
+    ctx.globalAlpha = alpha;
+
+    // Soft glowing ambient bloom around the ring
+    ctx.shadowColor = color;
+    ctx.shadowBlur = full ? 16 : 8;
+
+    // Translucent dark frosted inner plate
+    ctx.fillStyle = "rgba(10, 15, 26, 0.55)";
+    ctx.beginPath();
+    ctx.arc(cx, cy, RING_R - 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Dark high-contrast track underneath
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.78)";
+    ctx.lineWidth = 5.5;
     ctx.beginPath();
     ctx.arc(cx, cy, RING_R, 0, Math.PI * 2);
     ctx.stroke();
+
+    // Smooth progress arc with glowing bloom
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 8;
     ctx.strokeStyle = color;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3.2;
     ctx.beginPath();
-    ctx.arc(cx, cy, RING_R, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (full ? 1 : Math.min(1, ring.progress)));
+    const progressSweep = full ? 1 : Math.max(0, Math.min(1, ring.progress));
+    ctx.arc(cx, cy, RING_R, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progressSweep);
     ctx.stroke();
+
+    // Delicate landmark node at center
+    ctx.shadowBlur = 4;
+    ctx.shadowColor = color;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Sleek label pill beneath
     if (ring.label) {
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.75)";
-      ctx.lineWidth = 4;
-      ctx.strokeText(ring.label, cx, cy + RING_R + 16);
-      ctx.fillStyle = color;
-      ctx.fillText(ring.label, cx, cy + RING_R + 16);
+      const text = ring.label;
+      const textW = ctx.measureText(text).width;
+      const pillW = textW + 18;
+      const pillH = 22;
+      const pillX = cx - pillW / 2;
+      const pillY = cy + RING_R + 10;
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "rgba(10, 15, 26, 0.88)";
+      pathRoundRect(pillX, pillY, pillW, pillH, 999);
+      ctx.fill();
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(text, cx, pillY + pillH / 2);
     }
-    markDirty(cx - 80, cy - RING_R - 6, 160, RING_R * 2 + 34);
+
+    markDirty(cx - 90, cy - RING_R - 12, 180, RING_R * 2 + 54);
   }
   ctx.restore();
 }
@@ -432,22 +475,34 @@ function drawFocusFrame(win, { x, y, w, h }) {
   ctx.save();
   ctx.globalCompositeOperation = "source-over";
 
-  // Crisp high-contrast outline: dark halo under a white line reads on any background.
-  const radius = 8;
+  // Crisp high-contrast outline with soft rounded corners
+  const radius = 10;
   ctx.beginPath();
   if (ctx.roundRect) ctx.roundRect(x, y, w, h, radius);
   else ctx.rect(x, y, w, h);
+
+  // Layer 1: Dark halo with soft drop shadow
+  ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
+  ctx.shadowBlur = 8;
   ctx.strokeStyle = "rgba(0, 0, 0, 0.85)";
-  ctx.lineWidth = 6;
-  ctx.stroke();
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = 5.5;
   ctx.stroke();
 
-  // Corner Focus Brackets
+  // Layer 2: White line
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+  ctx.lineWidth = 2.2;
+  ctx.stroke();
+
+  // Corner Reticle Brackets (Smooth rounded L-brackets in accent color with subtle glow)
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
   ctx.strokeStyle = color;
-  const bracket = Math.min(24, Math.min(w, h) / 4);
-  ctx.lineWidth = 4.5;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  const bracket = Math.min(26, Math.min(w, h) / 4);
+  ctx.lineWidth = 4;
+
   ctx.beginPath();
   ctx.moveTo(x, y + bracket);
   ctx.lineTo(x, y);
@@ -470,21 +525,31 @@ function drawFocusFrame(win, { x, y, w, h }) {
   if (win.title) {
     ctx.shadowBlur = 0;
     const badgeText = (win.grabbed ? "✊ " : "🎯 ") + (win.title.length > 32 ? win.title.slice(0, 30) + "…" : win.title);
-    ctx.font = "bold 12px system-ui, sans-serif";
+    ctx.font = "600 12px 'Segoe UI Variable Text', Inter, system-ui, sans-serif";
     const textWidth = ctx.measureText(badgeText).width;
     const badgeW = textWidth + 24;
-    const badgeH = 22;
+    const badgeH = 24;
     const badgeX = Math.max(10, Math.min(canvas.width - badgeW - 10, x + 12));
     const badgeY = Math.max(10, y - badgeH - 6);
 
-    ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+    ctx.shadowColor = "rgba(0, 0, 0, 0.4)";
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 2;
+
+    const bgGrad = ctx.createLinearGradient(badgeX, badgeY, badgeX, badgeY + badgeH);
+    bgGrad.addColorStop(0, "rgba(20, 28, 44, 0.92)");
+    bgGrad.addColorStop(1, "rgba(12, 18, 30, 0.95)");
+    ctx.fillStyle = bgGrad;
+
     ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
+    if (ctx.roundRect) ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 8);
     else ctx.rect(badgeX, badgeY, badgeW, badgeH);
     ctx.fill();
 
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1.2;
+    ctx.lineWidth = 1.4;
     ctx.stroke();
 
     ctx.fillStyle = "#ffffff";
@@ -506,33 +571,55 @@ function drawTether(line) {
   const color = getThemeColor();
   const scaleW = Math.max(0.5, (preset === "custom" ? customThickness : 3) / 3);
 
-  // Theme-tinted silk strand: dark contrast halo + theme accent sheath + bright white core
   ctx.save();
   ctx.lineCap = "round";
+
+  // Layer 1: Contrast halo
   ctx.beginPath();
   ctx.moveTo(x0, y0);
   ctx.quadraticCurveTo(cx, cy, x1, y1);
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.7)";
-  ctx.lineWidth = 7 * scaleW;
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.75)";
+  ctx.lineWidth = 7.5 * scaleW;
   ctx.stroke();
 
+  // Layer 2: Glowing ambient sheath
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 10 * scaleW;
   ctx.strokeStyle = color;
-  ctx.globalAlpha = 0.65;
-  ctx.lineWidth = 4.4 * scaleW;
+  ctx.globalAlpha = 0.75;
+  ctx.lineWidth = 4.5 * scaleW;
   ctx.stroke();
 
+  // Layer 3: Radiant white core
+  ctx.shadowBlur = 0;
   ctx.globalAlpha = 1;
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.96)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.98)";
   ctx.lineWidth = 2.2 * scaleW;
   ctx.stroke();
 
+  // Hand Anchor: Concentric glowing nodes
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 12 * scaleW;
+
+  // Outer glow aura
   ctx.fillStyle = color;
+  ctx.globalAlpha = 0.4;
   ctx.beginPath();
-  ctx.arc(x0, y0, 4.5 * scaleW, 0, Math.PI * 2);
+  ctx.arc(x0, y0, 6 * scaleW, 0, Math.PI * 2);
   ctx.fill();
+
+  // Mid accent ring
+  ctx.globalAlpha = 0.9;
+  ctx.beginPath();
+  ctx.arc(x0, y0, 4 * scaleW, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Inner bright core
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
   ctx.fillStyle = "#ffffff";
   ctx.beginPath();
-  ctx.arc(x0, y0, 2.5 * scaleW, 0, Math.PI * 2);
+  ctx.arc(x0, y0, 2.2 * scaleW, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.restore();
@@ -541,30 +628,65 @@ function drawTether(line) {
 function drawToast(now) {
   if (!activeToast) return;
   const remain = Math.max(0, activeToast.until - now);
-  const alpha = Math.min(1, remain / 220);
+  const total = activeToast.duration || 1100;
+  const elapsed = total - remain;
+  const enterAlpha = Math.min(1, elapsed / 160);
+  const exitAlpha = Math.min(1, remain / 220);
+  const alpha = Math.max(0, Math.min(enterAlpha, exitAlpha));
+
+  const slideY = 28 - (1 - Math.sin(Math.min(1, elapsed / 220) * (Math.PI / 2))) * 8;
+
   const color = getThemeColor();
   const text = activeToast.text || "";
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.font = "bold 14px system-ui, sans-serif";
-  const w = ctx.measureText(text).width + 36;
-  const h = 34;
+  ctx.font = "600 13.5px 'Segoe UI Variable Text', Inter, system-ui, sans-serif";
+  const textW = ctx.measureText(text).width;
+  const w = textW + 40;
+  const h = 36;
   const x = (canvas.width - w) / 2;
-  const y = 28;
-  ctx.fillStyle = "rgba(10, 15, 25, 0.88)";
+  const y = slideY;
+
+  // Soft ambient drop shadow
+  ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+  ctx.shadowBlur = 16;
+  ctx.shadowOffsetY = 4;
+
+  // Translucent glassmorphic pill background
+  const grad = ctx.createLinearGradient(x, y, x, y + h);
+  grad.addColorStop(0, "rgba(22, 30, 46, 0.90)");
+  grad.addColorStop(1, "rgba(12, 17, 28, 0.92)");
+  ctx.fillStyle = grad;
+
   ctx.beginPath();
   if (ctx.roundRect) ctx.roundRect(x, y, w, h, 999);
   else ctx.rect(x, y, w, h);
   ctx.fill();
+
+  // Glowing accent border
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 10;
+  ctx.shadowOffsetY = 0;
   ctx.strokeStyle = color;
-  ctx.lineWidth = 1.8;
+  ctx.lineWidth = 1.5;
   ctx.stroke();
+
+  // Top specular highlight line inside the pill
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.22)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x + 1, y + 1, w - 2, h / 2, [999, 999, 0, 0]);
+  ctx.stroke();
+
+  // Clean, crisp typography
   ctx.fillStyle = "#ffffff";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(text, canvas.width / 2, y + h / 2);
   ctx.restore();
-  markDirty(x - 4, y - 4, w + 8, h + 8);
+
+  markDirty(x - 14, y - 14, w + 28, h + 28);
 }
 
 function shootNormalized(nx, ny, win) {
@@ -674,7 +796,8 @@ listen("overlay-settings", (event) => {
 listen("overlay-toast", (event) => {
   const text = event.payload?.text;
   if (!text) return;
-  activeToast = { text, until: performance.now() + (event.payload?.duration || 1100) };
+  const duration = event.payload?.duration || 1100;
+  activeToast = { text, duration, until: performance.now() + duration };
   kick();
 });
 

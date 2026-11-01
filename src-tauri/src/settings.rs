@@ -62,15 +62,15 @@ pub struct Settings {
     pub ai_endpoint: String,
     #[serde(default = "default_ai_model")]
     pub ai_model: String,
-    #[serde(default, alias = "airVolumeToggle")]
+    #[serde(default)]
     pub air_volume_enabled: bool,
-    #[serde(default, alias = "airMediaToggle")]
+    #[serde(default)]
     pub air_media_enabled: bool,
-    #[serde(default, alias = "ninjaShieldToggle")]
+    #[serde(default)]
     pub ninja_shield_enabled: bool,
-    #[serde(default, alias = "airZoomToggle")]
+    #[serde(default)]
     pub air_zoom_enabled: bool,
-    #[serde(default, alias = "airScrollToggle")]
+    #[serde(default)]
     pub air_scroll_enabled: bool,
     #[serde(default = "default_true")]
     pub body_tracking: bool,

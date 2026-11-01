@@ -3,7 +3,7 @@ import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, migrateBindings,
 import { chatWithAi } from "./ai.js";
 import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen } from "./desktop.js";
 import { classifyGesture, worldShape, fingerStates, isFist, isInFaceDeadzone, voteGesture } from "./gestures.js";
-import { cloneLandmarks, createHandFilter, filterLandmarks, handSpeed, leadMs, predict, predictPalmAnchor, ropeDeadzone } from "./filter.js";
+import { cloneLandmarks, createHandFilter, filterLandmarks, handSpeed, leadMs, adaptiveLeadMs, predict, predictPalmAnchor, ropeDeadzone } from "./filter.js";
 import { ACTION_COOLDOWN_MS, CLOSE_DWELL_MS, GRAB_CONFIRM_FRAMES, MINIMIZE_DWELL_MS, RELEASE_CONFIRM_FRAMES, createDwell, alignHandSlots, trimHistory } from "./gesture-runtime.js";
 import { registerCustomLook } from "./effects.js";
 import { clientOf } from "./target.js";
@@ -25,12 +25,40 @@ const video = document.getElementById("video");
 const onboard = document.getElementById("onboarding");
 const home = document.getElementById("home");
 
+// Pre-allocated flat landmark pools to eliminate V8 GC churn across the worker boundary
+const landmarkPool = [
+  Array.from({ length: 21 }, () => ({ x: 0, y: 0, z: 0 })),
+  Array.from({ length: 21 }, () => ({ x: 0, y: 0, z: 0 })),
+];
+const worldLandmarkPool = [
+  Array.from({ length: 21 }, () => ({ x: 0, y: 0, z: 0 })),
+  Array.from({ length: 21 }, () => ({ x: 0, y: 0, z: 0 })),
+];
+
+function unpackFlatLandmarks(flat, pool, numHands) {
+  if (!flat) return [];
+  const maxHands = Math.floor((flat.length || 0) / 63);
+  const count = Math.min(pool.length, numHands ? Math.min(numHands, maxHands) : maxHands);
+  for (let h = 0; h < count; h += 1) {
+    const hand = pool[h];
+    const offset = h * 63;
+    for (let i = 0; i < 21; i += 1) {
+      const p = hand[i];
+      p.x = flat[offset + i * 3];
+      p.y = flat[offset + i * 3 + 1];
+      p.z = flat[offset + i * 3 + 2];
+    }
+  }
+  return pool.slice(0, count);
+}
+
 const state = {
   settings: null,
   monitors: [],
   overlay: null,
   cameraWanted: false,
   cameraPaused: false,
+  cameraFps: 60,
   controlVisible: true,
   stream: null,
   worker: null,
@@ -98,13 +126,16 @@ const POSE_FRESH_MS = 300;
 const WORKER_BOOT_MS = 4000;
 // A fist that stops being seen for this long ends the grab even without a clean palm.
 const FIST_LOST_MS = 150;
-const LEAD_CAP_MS = 25;
+const LEAD_CAP_MS = 55;
 // The hand must rest within DWELL_MOVE_PX this long before the minimize/close ring starts filling.
 const PRE_HOVER_MS = 300;
 // Above this hand speed (screen widths/s) a closing fist is a swipe, not a grab.
 const GRAB_MAX_SPEED = 1.2;
 const COAST_FRAMES = 2;
 const DWELL_MOVE_PX = 60;
+// How long the last open-hand aim point stays the grab target while a fist forms.
+const AIM_HOLD_MS = 400;
+const RELEASE_CANCEL_GUARD_MS = 400;
 const SNAP_EDGE_PX = 24;
 const EMIT_GAP_MS = 16;
 const dwell = createDwell();
@@ -484,6 +515,18 @@ function queueProfileSave() {
   }, 2000);
 }
 
+// Pre-0.6.0 profile snapshots must not undo Rust's migrate_v060 defaults.
+const V060_KEYS = ["closeMode", "showWebs", "fxPreset", "hollowPurpleEnabled", "airVolumeEnabled", "airMediaEnabled", "airZoomEnabled", "airScrollEnabled", "ninjaShieldEnabled", "bodyTracking", "theme"];
+function profileSettings(saved) {
+  if (!saved) return {};
+  const copy = structuredClone(saved);
+  if (!copy.migratedV060) {
+    for (const key of V060_KEYS) delete copy[key];
+    copy.migratedV060 = true;
+  }
+  return copy;
+}
+
 function snapshotProfile() {
   if (!profiles || !state.settings) return;
   activeProfile(profiles).settings = structuredClone(state.settings);
@@ -496,7 +539,7 @@ async function switchProfile(id) {
   const next = activeProfile(profiles);
   state.settings = {
     ...fallbackSettings(),
-    ...(next.settings ? structuredClone(next.settings) : {}),
+    ...profileSettings(next.settings),
   };
   state.settings.bindings = migrateBindings(state.settings.bindings, state.settings);
   syncProfilesToStorage();
@@ -536,7 +579,7 @@ function wireProfiles() {
     const next = activeProfile(profiles);
     state.settings = {
       ...fallbackSettings(),
-      ...(next.settings ? structuredClone(next.settings) : {}),
+      ...profileSettings(next.settings),
     };
     state.settings.bindings = migrateBindings(state.settings.bindings, state.settings);
     syncProfilesToStorage();
@@ -570,11 +613,6 @@ async function boot() {
   state.settings = loaded?.unsupported ? fallbackSettings() : loaded;
   const defaults = fallbackSettings();
   state.settings = { ...defaults, ...state.settings };
-  if (state.settings.airVolumeToggle === undefined) state.settings.airVolumeToggle = state.settings.air_volume_enabled ?? true;
-  if (state.settings.airMediaToggle === undefined) state.settings.airMediaToggle = state.settings.air_media_enabled ?? true;
-  if (state.settings.ninjaShieldToggle === undefined) state.settings.ninjaShieldToggle = state.settings.ninja_shield_enabled ?? true;
-  if (state.settings.airZoomToggle === undefined) state.settings.airZoomToggle = state.settings.air_zoom_enabled ?? true;
-  if (state.settings.airScrollToggle === undefined) state.settings.airScrollToggle = state.settings.air_scroll_enabled ?? true;
   profiles = loadProfiles(localStorage);
   try {
     const remoteJson = await invoke("get_profiles");
@@ -585,7 +623,7 @@ async function boot() {
   } catch {}
   const startProfile = activeProfile(profiles);
   if (startProfile.settings) {
-    state.settings = { ...state.settings, ...startProfile.settings };
+    state.settings = { ...state.settings, ...profileSettings(startProfile.settings) };
     invoke("save_settings", { settings: state.settings }).catch(() => {});
   }
   if (state.settings) state.settings.bindings = migrateBindings(state.settings.bindings, state.settings);
@@ -674,11 +712,6 @@ function fallbackSettings() {
     theme: "minimal",
     sniperTarget: "gemini_web",
     smoothing: 0.75,
-    airVolumeToggle: true,
-    airMediaToggle: true,
-    ninjaShieldToggle: true,
-    airZoomToggle: true,
-    airScrollToggle: true,
   };
 }
 
@@ -784,13 +817,6 @@ async function toggleOverlay() {
 }
 
 async function persist() {
-  if (state.settings) {
-    state.settings.air_volume_enabled = state.settings.airVolumeToggle !== false;
-    state.settings.air_media_enabled = state.settings.airMediaToggle !== false;
-    state.settings.ninja_shield_enabled = state.settings.ninjaShieldToggle !== false;
-    state.settings.air_zoom_enabled = state.settings.airZoomToggle !== false;
-    state.settings.air_scroll_enabled = state.settings.airScrollToggle !== false;
-  }
   let saved = null;
   try {
     saved = await invoke("save_settings", { settings: state.settings });
@@ -801,14 +827,7 @@ async function persist() {
     render();
     return;
   }
-  if (saved?.settings) {
-    state.settings = saved.settings;
-    if (state.settings.airVolumeToggle === undefined) state.settings.airVolumeToggle = state.settings.air_volume_enabled ?? true;
-    if (state.settings.airMediaToggle === undefined) state.settings.airMediaToggle = state.settings.air_media_enabled ?? true;
-    if (state.settings.ninjaShieldToggle === undefined) state.settings.ninjaShieldToggle = state.settings.ninja_shield_enabled ?? true;
-    if (state.settings.airZoomToggle === undefined) state.settings.airZoomToggle = state.settings.air_zoom_enabled ?? true;
-    if (state.settings.airScrollToggle === undefined) state.settings.airScrollToggle = state.settings.air_scroll_enabled ?? true;
-  }
+  if (saved?.settings) state.settings = saved.settings;
   snapshotProfile();
   if (saved?.warnings?.length) setMessage("cameraMessage", t("hotkeyFail"));
   if (state.overlay?.visible) {
@@ -897,11 +916,19 @@ function startWorker(sources) {
       } else if (msg.type === "hands") {
         if (state.worker !== worker) return;
         state.inFlight = false;
-        state.world = msg.world;
+        let hands = msg.hands;
+        if (msg.landmarkFlat) {
+          hands = unpackFlatLandmarks(msg.landmarkFlat, landmarkPool, msg.numHands || 0);
+        }
+        if (msg.worldFlat) {
+          state.world = unpackFlatLandmarks(msg.worldFlat, worldLandmarkPool, msg.numHands || 0);
+        } else {
+          state.world = msg.world || [];
+        }
         if (msg.pose) state.pose = { landmarks: msg.pose, at: performance.now() };
         if (!state.stream) return;
         // Round trip, not just inference: what the user actually feels.
-        onHands(msg.hands, performance.now() - state.sentAt, msg.handedness, msg.time);
+        onHands(hands, performance.now() - state.sentAt, msg.handedness, msg.time);
       }
     };
     worker.postMessage({ type: "init", sources });
@@ -1008,11 +1035,28 @@ async function openStream(deviceId) {
   ];
   const rates = [
     { ideal: 60, min: 30 },
+    { ideal: 60 },
     { ideal: 30, min: 15 },
     { ideal: 30 },
   ];
   const deviceModes = deviceId ? [{ exact: deviceId }, { ideal: deviceId }] : [null];
   let lastError;
+
+  function negotiate60Fps(stream) {
+    if (!stream) return stream;
+    const track = stream.getVideoTracks?.()[0];
+    if (track) {
+      if (track.applyConstraints) {
+        track.applyConstraints({ frameRate: { ideal: 60, min: 30 } }).catch(() => {});
+      }
+      const settings = track.getSettings?.();
+      if (settings?.frameRate) {
+        state.cameraFps = settings.frameRate;
+      }
+    }
+    return stream;
+  }
+
   for (const devConstraint of deviceModes) {
     for (const size of sizes) {
       for (const rate of rates) {
@@ -1023,7 +1067,8 @@ async function openStream(deviceId) {
         if (devConstraint) videoConstraints.deviceId = devConstraint;
         else videoConstraints.facingMode = "user";
         try {
-          return await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
+          return negotiate60Fps(stream);
         } catch (error) {
           lastError = error;
         }
@@ -1031,10 +1076,14 @@ async function openStream(deviceId) {
     }
   }
 
-  // Universal fallback 1: Any resolution/FPS on the specified device
+  // Universal fallback 1: Any resolution/FPS on the specified device with 60 FPS preference
   if (deviceId) {
     try {
-      return await navigator.mediaDevices.getUserMedia({ audio: false, video: { deviceId: { ideal: deviceId } } });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { deviceId: { ideal: deviceId }, frameRate: { ideal: 60, min: 30 } },
+      });
+      return negotiate60Fps(stream);
     } catch (e) {
       lastError = e;
     }
@@ -1042,7 +1091,8 @@ async function openStream(deviceId) {
 
   // Universal fallback 2: Default system camera with zero constraints
   try {
-    return await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+    return negotiate60Fps(stream);
   } catch (e) {
     lastError = e;
   }
@@ -1442,12 +1492,15 @@ function onHands(hands, detectMs, handedness, frameTime) {
       if (!handState.grab && isInFaceDeadzone(landmarks) && action !== "cancel") action = null;
 
       const speed = handSpeed(handState.filter, 9);
-      const lead = leadMs(speed);
+      const lead = adaptiveLeadMs(speed, LEAD_CAP_MS);
       handState.lastSampleAt = performance.now();
       handState.leadMs = lead;
       const grabPoint = screenPoint(predictPalmAnchor(handState.filter, landmarks, lead));
       const aimPoint = screenPoint(predict(handState.filter, 8, landmarks[8], lead));
       handState.lastPoint = handState.grab ? grabPoint : aimPoint;
+      // The open-hand fingertip picks the target; it stays put while the fist curls so outline == grabbed window.
+      if (action !== "grab") handState.aim = { point: aimPoint, at: now };
+      const targetPoint = handState.aim && now - handState.aim.at < AIM_HOLD_MS ? handState.aim.point : aimPoint;
 
       if (handState.parked && now - handState.parked.at > MISS_GRACE_MS) {
         handState.parked = null;
@@ -1471,7 +1524,7 @@ function onHands(hands, detectMs, handedness, frameTime) {
           resumeGrab(i, grabPoint);
         } else if (handState.fistStreak >= GRAB_CONFIRM_FRAMES && speed <= GRAB_MAX_SPEED) {
           handState.lastPoint = grabPoint;
-          runActionForHand(i, "grab", grabPoint, true);
+          runActionForHand(i, "grab", targetPoint, true);
         }
       }
 
@@ -1501,6 +1554,8 @@ function onHands(hands, detectMs, handedness, frameTime) {
             if (now - (handState.lastFireAt || -Infinity) >= ACTION_COOLDOWN_MS) {
               handState.lastFireAt = now;
               runActionForHand(i, action, aimPoint, true);
+            } else {
+              dwell.reset(activeKey); // re-arm instead of latching a dropped action
             }
           }
         }
@@ -1508,12 +1563,14 @@ function onHands(hands, detectMs, handedness, frameTime) {
 
       // Other bound actions (cancel, custom poses) fire once on the pose edge.
       const edge = gesture !== handState.lastGesture;
-      if (edge && action && action !== "grab" && !dwellMs && !handState.grab && now - (handState.lastFireAt || -Infinity) >= ACTION_COOLDOWN_MS) {
+      // The palm that ends a grab must not "cancel" the throw it just launched.
+      const justReleased = action === "cancel" && now - (handState.releasedAt ?? -Infinity) < RELEASE_CANCEL_GUARD_MS;
+      if (edge && action && action !== "grab" && !dwellMs && !handState.grab && !justReleased && now - (handState.lastFireAt || -Infinity) >= ACTION_COOLDOWN_MS) {
         handState.lastFireAt = now;
         runActionForHand(i, action, aimPoint, true);
       }
 
-      if (!handState.grab && !handState.parked && !paused) hoverTarget(i, aimPoint);
+      if (!handState.grab && !handState.parked && !paused) hoverTarget(i, targetPoint);
       handState.lastGesture = gesture;
     }
 
@@ -1521,11 +1578,15 @@ function onHands(hands, detectMs, handedness, frameTime) {
   }
 
   const gap = nextGap(hands.length > 0, detectMs);
-  if (state.controlVisible && !document.hidden) {
-    drawCameraLandmarks(hands);
-    updateGestureHud(hands);
+  try {
+    if (state.controlVisible && !document.hidden) {
+      drawCameraLandmarks(hands);
+      updateGestureHud(hands);
+    }
+  } finally {
+    // A HUD error must never stop the detect loop (a held grab would never release).
+    scheduleDetect(gap);
   }
-  scheduleDetect(gap);
 }
 
 function drawCameraLandmarks(hands) {
@@ -1622,14 +1683,6 @@ function updateGestureHud(hands) {
   if (state.gesturesPaused) {
     ico = "⏸️";
     title = t("statusPaused");
-  } else if (hands.length >= 2) {
-    if (state.hands.every((h) => h.lastGesture === "finger_gun")) {
-      ico = "🎯";
-      title = t(ACTION_KEYS.ask_ai);
-    } else if (hollowPurpleReady(state.hands.map((h) => h.landmarks), state.hands.map((h) => h.lastGesture)) >= 0) {
-      ico = "🟣";
-      title = t(ACTION_KEYS.hollow_purple);
-    }
   }
   if (icon) icon.textContent = ico;
   if (name) name.textContent = title;
@@ -1977,7 +2030,7 @@ function startGrabLoop() {
         anyGrab = true;
         const elapsed = Math.min(36, Math.max(0, now - (hs.lastSampleAt || now)));
         if (elapsed > 4) {
-          const totalLead = Math.min(LEAD_CAP_MS, (hs.leadMs || 12) + elapsed * 0.85);
+          const totalLead = Math.min(LEAD_CAP_MS, (hs.leadMs || 16) + elapsed * 1.15);
           const interpPoint = screenPoint(predictPalmAnchor(hs.filter, hs.landmarks, totalLead));
           hs.lastPoint = interpPoint;
           moveGrab(i, interpPoint);
@@ -1995,29 +2048,27 @@ function startGrabLoop() {
 
 function flushMoveQueue(handIndex) {
   const handState = state.hands[handIndex];
-  if (handState.moving || !handState.pendingMove) return;
+  if (!handState || !handState.grab || !handState.pendingMove || handState.moving) return;
+
+  const next = handState.pendingMove;
+  handState.pendingMove = null;
   handState.moving = true;
-  (async () => {
-    try {
-      while (handState.pendingMove && handState.grab) {
-        const next = handState.pendingMove;
-        handState.pendingMove = null;
-        try {
-          const res = await invoke("move_window_fast", next);
-          if (res?.unsupported) {
-            await invoke("move_window", next);
-          }
-        } catch {
-          // Ignore transient Win32 errors during rapid dragging
-        }
+
+  invoke("move_window_fast", next)
+    .then((res) => {
+      if (res?.unsupported && handState.grab) {
+        return invoke("move_window", next).catch(() => {});
       }
-    } finally {
+    })
+    .catch(() => {
+      // Ignore transient Win32 errors during rapid dragging
+    })
+    .finally(() => {
       handState.moving = false;
       if (handState.pendingMove && handState.grab) {
         flushMoveQueue(handIndex);
       }
-    }
-  })();
+    });
 }
 
 async function moveGrab(handIndex, point) {
@@ -2117,7 +2168,8 @@ async function releaseGrab(handIndex) {
       playFling(Math.hypot(v.vx, v.vy) * 16);
       await invoke("place_window", { hwnd: grab.hwnd, ...dest });
       setMessage("shellBanner", "Pencere diğer ekrana atıldı.");
-    } else {
+    } else if (grab.winX !== grab.anchorWinX || grab.winY !== grab.anchorWinY) {
+      // A fist opened over an untouched window is not a drop; leave it exactly where it was.
       const snap = snapToEdge(state.monitors, win, SNAP_EDGE_PX);
       if (snap) await invoke("place_window", { hwnd: grab.hwnd, ...snap });
     }
