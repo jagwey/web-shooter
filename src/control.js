@@ -875,6 +875,9 @@ async function boot() {
   await listCameras();
   await refreshDesktop();
   offerUpdate();
+  import("@tauri-apps/api/app").then((m) => m.getVersion()).then((v) => {
+    document.getElementById("appVersion").textContent = `v${v}`;
+  }).catch(() => {});
   document.getElementById("checkUpdateBtn").addEventListener("click", manualUpdateCheck);
   listen("monitors-changed", (event) => {
     state.monitors = event.payload.monitors || [];

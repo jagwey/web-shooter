@@ -237,3 +237,7 @@ scripts\build.bat
 - filter.js 2. derece kinematik One Euro + `predictPalmAnchor`; control.js rAF grab döngüsü (kamera kareleri arası interpolasyon), HUD yalnız görünürken.
 - desktop.js BroadcastChannel hızlı IPC (Tauri event fallback + 15ms dedupe); overlay EASE_MS 6, tutulan pencere poll edilmiyor.
 - Worker: dinamik numHands + monoton timestamp; win32 `LAST_VALID_HWND` önbelleği. 100/100 test, challenger 21/21, build + cargo check OK.
+
+### v0.5.0 (hotfix, aynı sürüm)
+- Güncelle butonu aslında çalışıyordu: 0.5.0 indirildi/kuruldu (temp `*-0.5.0-updater-*`, /P /R ile yeniden açılış).
+- Başlığa aktif sürüm etiketi eklendi (`#appVersion`, `getVersion()`); v0.5.0 assetleri `--clobber` ile yenilendi.
