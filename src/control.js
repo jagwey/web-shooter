@@ -2,8 +2,9 @@ import { FilesetResolver, HandLandmarker, PoseLandmarker } from "@mediapipe/task
 import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, migrateBindings, removeBinding, upsertBinding } from "./bindings.js";
 import { DEFAULT_MODELS, OPENAI_PRESETS, autoTileWorkspace, chatWithAi, fetchOllamaModels, optimizeSettingsWithAi, sendAiGreeting, testAiConnection } from "./ai.js";
 import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen, adjustVolume, mediaPlayPause, mediaNextTrack, showDesktop, zoomDesktop, scrollWheel } from "./desktop.js";
-import { classifyGesture, hollowPurpleReady, isFingerExtended, isPeaceSign, isFingerGun, isPowerFist, isInFaceDeadzone, voteGesture, wristDepths, isAirKnobGrip, isAirMediaHold, isAirMediaFlick, isNinjaShield, isPinchZoom, isAirScroll } from "./gestures.js";
-import { createHandFilter, filterLandmarks, handSpeed, predict } from "./filter.js";
+import { FLICK_RELEASE_WINDOW_MS, classifyGesture, worldShape, fingerStates, isFlickRelease, hollowPurpleReady, isFingerGun, isPowerFist, isInFaceDeadzone, voteGesture, wristDepths, isAirKnobGrip, isAirMediaHold, isAirMediaFlick, isNinjaShield, isPinchZoom, isAirScroll } from "./gestures.js";
+import { cloneLandmarks, createHandFilter, filterLandmarks, handSpeed, predict } from "./filter.js";
+import { createAirModeLock, createDwell, alignHandSlots, resolvePinchIntent, trimHistory } from "./gesture-runtime.js";
 import { registerCustomLook } from "./effects.js";
 import { clientOf } from "./target.js";
 import { flickAim, flickImpulse, throwToMonitor } from "./throw.js";
@@ -58,6 +59,10 @@ const state = {
   hotkeyDraft: "",
   listening: false,
   activeTab: "all",
+  gesturesPaused: false,
+  practiceMode: false,
+  frameNow: 0,
+  slotLabels: [null, null],
 };
 
 const ACTION_KEYS = {
@@ -68,6 +73,10 @@ const ACTION_KEYS = {
   minimize: "actionMinimize",
   overlay_toggle: "actionOverlay",
   show_control: "actionShow",
+  close_tab: "actionCloseTab",
+  ask_ai: "actionAskAi",
+  scan_document: "actionScanDoc",
+  gestures_pause: "actionGesturesPause",
 };
 
 const GESTURE_KEYS = {
@@ -77,6 +86,10 @@ const GESTURE_KEYS = {
   flick: "gestureFlick",
   gojo: "gestureGojo",
   point: "gesturePoint",
+  peace: "gesturePeace",
+  finger_gun: "gestureGun",
+  custom: "gestureCustom",
+  pinch: "gesturePinch",
 };
 const ACTION_COOLDOWN_MS = 600;
 // Fast motion blurs the hand for a few frames; keep grabs alive instead of dropping the window.
@@ -90,6 +103,10 @@ const POSE_GAP_MS = 80;
 const POSE_FRESH_MS = 300;
 const WORKER_BOOT_MS = 4000;
 const SNIPER_HOLD_MS = 350;
+const DWELL_MS = { peace: 350, finger_gun: 400 };
+const SENSITIVE_WINDOW_RE = /github|gitlab|google docs|google sheets|sheets\.google|docs\.google|notion|figma|visual studio|code|vscode|jira|trello|bank|pay|checkout|save|unsaved|draft|taslak|kaydedilmedi/i;
+const lockAir = createAirModeLock({ releaseMs: 400 });
+const dwell = createDwell();
 const VIRTUAL_CAMERA = /droidcam|obs|virtual|manycam|xsplit|snap camera|iriun|epoccam|camo/i;
 
 export function isVirtualCamera(label) {
@@ -113,6 +130,11 @@ wireChrome();
 boot();
 
 function wireChrome() {
+  document.getElementById("gesturePauseBtn")?.addEventListener("click", toggleGesturesPause);
+  document.getElementById("practiceToggle")?.addEventListener("change", (e) => {
+    state.practiceMode = e.target.checked;
+    paintGestureStatus();
+  });
   document.getElementById("langTr").addEventListener("click", () => changeLang("tr"));
   document.getElementById("langEn").addEventListener("click", () => changeLang("en"));
   document.getElementById("welcomeNext").addEventListener("click", () => showStep("camera"));
@@ -755,7 +777,7 @@ async function switchProfile(id) {
     ...fallbackSettings(),
     ...(next.settings ? structuredClone(next.settings) : {}),
   };
-  state.settings.bindings = migrateBindings(state.settings.bindings);
+  state.settings.bindings = migrateBindings(state.settings.bindings, state.settings);
   syncProfilesToStorage();
   renderProfiles();
   applySettingsEffects();
@@ -795,7 +817,7 @@ function wireProfiles() {
       ...fallbackSettings(),
       ...(next.settings ? structuredClone(next.settings) : {}),
     };
-    state.settings.bindings = migrateBindings(state.settings.bindings);
+    state.settings.bindings = migrateBindings(state.settings.bindings, state.settings);
     syncProfilesToStorage();
     renderProfiles();
     applySettingsEffects();
@@ -845,7 +867,7 @@ async function boot() {
     state.settings = { ...state.settings, ...startProfile.settings };
     invoke("save_settings", { settings: state.settings }).catch(() => {});
   }
-  if (state.settings) state.settings.bindings = migrateBindings(state.settings.bindings);
+  if (state.settings) state.settings.bindings = migrateBindings(state.settings.bindings, state.settings);
   wireProfiles();
   applySettingsEffects();
   renderCustomGesturesList();
@@ -996,6 +1018,7 @@ function paintLang() {
   const lang = getLang();
   document.getElementById("langTr").setAttribute("aria-pressed", String(lang === "tr"));
   document.getElementById("langEn").setAttribute("aria-pressed", String(lang === "en"));
+  paintGestureStatus();
 }
 
 async function refreshDesktop() {
@@ -1154,7 +1177,7 @@ function startWorker(sources) {
         if (msg.pose) state.pose = { landmarks: msg.pose, at: performance.now() };
         if (!state.stream) return;
         // Round trip, not just inference: what the user actually feels.
-        onHands(msg.hands, performance.now() - state.sentAt);
+        onHands(msg.hands, performance.now() - state.sentAt, msg.handedness, msg.time);
       }
     };
     worker.postMessage({ type: "init", sources });
@@ -1393,6 +1416,7 @@ function stopCamera(user) {
   state.cameraPaused = !user && state.cameraWanted;
   cancelDetect();
   clearTimeout(state.idleTimer);
+  state.idleTimer = 0;
   stopTracks();
   for (let i = 0; i < state.hands.length; i += 1) {
     cancelGrab(i, false);
@@ -1491,25 +1515,212 @@ async function detectTick() {
     }
     state.inFlight = false;
     // onHands schedules the next tick via nextGap().
-    onHands(hands, detectMs);
+    const handedness = (result.handedness || result.handednesses || []).map((c) => c?.[0]?.categoryName || "");
+    onHands(hands, detectMs, handedness, now);
   } catch (err) {
     state.inFlight = false;
     scheduleDetect(50);
   }
 }
 
-function onHands(hands, detectMs) {
+const toDeg = (rad) => (rad * 180) / Math.PI;
+
+function airToast(text) {
+  emitTo("overlay", "overlay-toast", { text });
+}
+
+// Practice mode: toast what would have happened instead of doing it. Returns true when swallowed.
+function practiceGate(label) {
+  if (!state.practiceMode) return false;
+  airToast(`${t("toastPractice")}: ${label}`);
+  return true;
+}
+
+function armRing(id, x, y, progress, label) {
+  emitTo("overlay", "overlay-arm", { id, x, y, progress, label });
+}
+
+// Full slot reset: a different hand (or no hand) owns this slot now, so nothing may leak across.
+function resetHandSlot(i, ft) {
+  const hs = state.hands[i];
+  if (hs.grab) releaseGrab(i);
+  if (state.airOwner === i && lockAir.active()) {
+    lockAir.exit(ft);
+    state.airOwner = -1;
+  }
+  if (hs.armKey) {
+    dwell.reset(hs.armKey);
+    armRing(hs.armKey, 0, 0, -1);
+  }
+  Object.assign(hs, {
+    lastGesture: null,
+    filter: null,
+    votes: [],
+    samples: [],
+    history: [],
+    flickSamples: [],
+    flickFired: false,
+    releaseStreak: 0,
+    air: null,
+    armKey: null,
+    openAt: null,
+    releasedAt: ft,
+  });
+}
+
+// Air modes (scroll / knob / zoom / media) share one lock so two of them can never fire together.
+function updateAirModes(i, hs, pts, gesture, ar, ft, single) {
+  const cfg = state.settings || {};
+  const air = (hs.air ||= {});
+  const drop = () => {
+    if (lockAir.active() && state.airOwner === i) {
+      lockAir.exit(ft);
+      state.airOwner = -1;
+    }
+  };
+
+  // Scroll: one hand, Gojo sign held 150ms, vertical travel (deadzone keeps the remainder).
+  const scroll = cfg.airScrollToggle !== false && !hs.grab && single && gesture === "gojo"
+    ? isAirScroll(pts, { aspectRatio: ar, maxRatio: Infinity })
+    : null;
+  if (scroll?.active) {
+    air.scrollSince ||= ft;
+    if (ft - air.scrollSince >= 150 && lockAir.enter("scroll", ft)) {
+      state.airOwner = i;
+      const y = scroll.center.y;
+      if (air.lastScrollY == null) air.lastScrollY = y;
+      else if (Math.abs(y - air.lastScrollY) >= 0.003) {
+        air.scrollAcc = (air.scrollAcc || 0) - (y - air.lastScrollY) * 2400;
+        air.lastScrollY = y;
+        const notches = Math.trunc(air.scrollAcc / 120);
+        if (notches !== 0) {
+          air.scrollAcc -= notches * 120;
+          if (!state.practiceMode) scrollWheel(notches * 120).catch(() => {});
+        }
+      }
+    }
+  } else {
+    air.scrollSince = 0;
+    air.lastScrollY = null;
+    air.scrollAcc = 0;
+    if (lockAir.mode === "scroll") drop();
+  }
+
+  // Pinch family: a stable voted pinch locks an intent from its start pose (rotate = knob, spread/close = zoom).
+  const pinchOn = (cfg.airVolumeToggle !== false || cfg.airZoomToggle !== false) && !hs.grab;
+  const knob = isAirKnobGrip(pts, { aspectRatio: ar });
+  const zp = isPinchZoom(pts, { prevState: air.zoomState, aspectRatio: ar });
+  if (pinchOn && (gesture === "pinch" || knob.active || zp.active)) air.baseAt = ft;
+  const endPinch = () => {
+    air.pinch = null;
+    air.pinchSince = 0;
+    air.knobAngle = null;
+    air.dial = 0;
+    air.zoomState = null;
+    if (lockAir.mode === "knob" || lockAir.mode === "zoom") drop();
+  };
+  if (!air.pinch) {
+    if (pinchOn && gesture === "pinch" && knob.distance > 0 && !lockAir.active()) {
+      air.pinchSince ||= ft;
+      if (ft - air.pinchSince >= 250) {
+        air.pinch = { start: { angle: toDeg(knob.angle), distance: knob.distance }, intent: null };
+        air.baseAt = ft;
+      }
+    } else {
+      air.pinchSince = 0;
+    }
+  } else if (!pinchOn || ft - (air.baseAt ?? 0) >= 200) {
+    endPinch();
+  } else if (!air.pinch.intent) {
+    const intent = resolvePinchIntent(air.pinch.start, { angle: toDeg(knob.angle), distance: knob.distance });
+    if (intent) {
+      if (lockAir.enter(intent, ft)) {
+        air.pinch.intent = intent;
+        state.airOwner = i;
+      } else {
+        endPinch();
+      }
+    }
+  }
+  const intent = air.pinch?.intent;
+  if (intent === "knob" && cfg.airVolumeToggle !== false && knob.active) {
+    if (air.knobAngle != null) {
+      let d = knob.angle - air.knobAngle;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      air.dial = (air.dial || 0) + d;
+      const STEP = (15 * Math.PI) / 180;
+      const steps = Math.trunc(air.dial / STEP);
+      if (steps !== 0) {
+        air.dial -= steps * STEP;
+        const label = `${steps > 0 ? t("toastVolumeUp") : t("toastVolumeDown")} ${Math.abs(steps)}`;
+        if (!practiceGate(label)) {
+          adjustVolume(steps).catch(() => {});
+          airToast(label);
+        }
+      }
+    }
+    air.knobAngle = knob.angle;
+  } else if (intent === "knob") {
+    air.knobAngle = null;
+  }
+  if (intent === "zoom" && cfg.airZoomToggle !== false && zp.active) {
+    if (ft - (air.lastZoomAt || 0) >= 260) {
+      const dir = zp.isClosed && air.zoomState === "open" ? false : zp.isOpen && air.zoomState === "closed" ? true : null;
+      if (dir !== null) {
+        air.lastZoomAt = ft;
+        const label = dir ? t("toastZoomIn") : t("toastZoomOut");
+        if (!practiceGate(label)) {
+          zoomDesktop(dir).catch(() => {});
+          airToast(label);
+        }
+      }
+    }
+    air.zoomState = zp.isClosed ? "closed" : zp.isOpen ? "open" : air.zoomState;
+  } else if (intent === "zoom") {
+    air.zoomState = null;
+  }
+
+  // Media: steady open palm toggles play/pause, a sideways flick skips. Never while another air mode is active.
+  if (cfg.airMediaToggle !== false && !hs.grab && gesture === "palm" && !lockAir.suppressDiscrete(ft) && ft - (hs.releasedAt ?? -Infinity) >= 1500) {
+    if (isAirMediaHold(pts, hs.history, { now: ft })) {
+      if (!air.holdFired && ft - (air.lastHoldAt || -Infinity) > 1500) {
+        air.holdFired = true;
+        air.lastHoldAt = ft;
+        if (!practiceGate(t("toastMediaToggle"))) {
+          mediaPlayPause().catch(() => {});
+          airToast(t("toastMediaToggle"));
+        }
+      }
+    } else if (air.holdFired && ft - (air.lastHoldAt || -Infinity) > 1500) {
+      air.holdFired = false;
+    }
+    if (isAirMediaFlick(pts, hs.history, { now: ft, mirrored: state.cameraMirrored }) && ft - (air.lastFlickAt || -Infinity) > 800) {
+      air.lastFlickAt = ft;
+      if (!practiceGate(t("toastNextTrack"))) {
+        mediaNextTrack().catch(() => {});
+        airToast(t("toastNextTrack"));
+      }
+    }
+  } else if (gesture !== "palm") {
+    air.holdFired = false;
+  }
+}
+
+function onHands(hands, detectMs, handedness, frameTime) {
   state.detectMs = detectMs;
   const msEl = document.getElementById("msValue");
   if (msEl) msEl.textContent = `${Math.round(detectMs)}ms`;
 
   drawCameraLandmarks(hands);
   updateGestureHud(hands);
+  const badge = document.getElementById("gestureBadge");
 
   if (!hands || hands.length === 0) {
     state.missStreak += 1;
     document.getElementById("handValue").textContent = t("handNo");
     const now = performance.now();
+    badge?.style.setProperty("--arm", 0);
     // Motion-blur coasting: if a hand is mid-sweep while holding a window, extrapolate for up to 4 frames (~100ms)
     if (state.missStreak <= 4) {
       for (let i = 0; i < state.hands.length; i += 1) {
@@ -1534,17 +1745,8 @@ function onHands(hands, detectMs) {
     }
     if (now - (state.lastHandAt || 0) > MISS_GRACE_MS) {
       for (let i = 0; i < state.hands.length; i += 1) {
-        if (state.hands[i].grab) releaseGrab(i);
-        state.hands[i].lastGesture = null;
-        state.hands[i].filter = null;
-        state.hands[i].votes = [];
-        state.hands[i].history = [];
-        state.hands[i].releaseStreak = 0;
-        state.hands[i].lastKnobAngle = null;
-        state.hands[i].dialAccumulator = 0;
-        state.hands[i].pinchState = null;
-        state.hands[i].lastScrollY = null;
-        state.hands[i].scrollAccumulator = 0;
+        resetHandSlot(i, state.frameNow || now);
+        state.slotLabels[i] = null;
       }
     }
     armIdleRelease();
@@ -1553,14 +1755,31 @@ function onHands(hands, detectMs) {
     state.lastHandAt = performance.now();
     if (profiles && recordMs(activeProfile(profiles), detectMs)) queueProfileSave();
     clearTimeout(state.idleTimer);
+    state.idleTimer = 0;
     document.getElementById("handValue").textContent = hands.length >= 2 ? t("handBoth") : t("handOne");
 
+    const ft = Number.isFinite(frameTime) ? frameTime : performance.now();
+    state.frameNow = ft;
+    const paused = state.gesturesPaused;
     const maxHands = state.settings?.dualHands === false ? 1 : Math.min(hands.length, 2);
-    for (let i = 0; i < maxHands; i += 1) {
-      const rawLandmarks = hands[i];
-      const handState = state.hands[i];
+    const aligned = alignHandSlots(state.slotLabels, hands, handedness);
+    for (const s of aligned.resetSlots) resetHandSlot(s, ft);
+    const present = [0, 1].map((s) => aligned.slots[s] != null && aligned.slots[s] < maxHands);
+    const single = present.filter(Boolean).length === 1;
+    let armMax = 0;
 
-      const now = performance.now();
+    for (let i = 0; i < 2; i += 1) {
+      if (!present[i]) {
+        const hs = state.hands[i];
+        if (state.slotLabels[i] || hs.lastGesture || hs.grab) resetHandSlot(i, ft);
+        state.slotLabels[i] = null;
+        continue;
+      }
+      const rawLandmarks = hands[aligned.slots[i]];
+      const handState = state.hands[i];
+      state.slotLabels[i] = { label: handedness?.[aligned.slots[i]] || "", wrist: { x: rawLandmarks[0].x, y: rawLandmarks[0].y } };
+
+      const now = ft;
       // Higher smoothing setting = more responsive, so it scales the filter's resting cutoff.
       handState.filter ||= createHandFilter();
       const smoothing = state.settings?.smoothing || 0.65;
@@ -1571,162 +1790,53 @@ function onHands(hands, detectMs) {
       });
 
       handState.landmarks = landmarks;
+      handState.rawIndex = aligned.slots[i];
 
-      // Maintain rolling history for trajectory-based gestures (1.6s window)
+      // Rolling history (1.6s) for trajectory gestures; the filter reuses its output array, so clone.
       handState.history ||= [];
-      handState.history.push({ t: now, points: landmarks });
-      while (handState.history.length > 0 && now - handState.history[0].t > 1600) {
-        handState.history.shift();
-      }
+      handState.history.push({ t: now, points: cloneLandmarks(landmarks) });
+      trimHistory(handState.history, now, 1600);
 
       const ar = (video?.videoWidth && video?.videoHeight) ? (video.videoWidth / video.videoHeight) : (16 / 9);
       // 3D world shape + 3-of-5 frame vote: one noisy frame can neither fire nor drop a pose.
-      const raw = classifyGesture(landmarks, state.world?.[i], state.settings?.customGestures || [], {
-        wasActive: handState.lastGesture === "web",
+      const raw = classifyGesture(landmarks, state.world?.[aligned.slots[i]], state.settings?.customGestures || [], {
+        lastGesture: handState.lastGesture,
         aspectRatio: ar,
       });
       handState.votes ||= [];
       const gesture = voteGesture(handState.votes, raw, handState.lastGesture);
       const bound = actionFor(state.settings.bindings, "gesture", gesture);
-      const flickOwned = gesture === "flick" && (bound == null || bound === "minimize");
-      let action = bound === "hollow_purple" || flickOwned ? null : bound;
+      // Release happens after the pose already left "flick", so gate on a recent flick vote, not the current one.
+      if (gesture === "flick") handState.lastFlickAt = now;
+      const recentFlick = now - (handState.lastFlickAt ?? -Infinity) <= FLICK_RELEASE_WINDOW_MS;
+      const flickBound = actionFor(state.settings.bindings, "gesture", "flick");
+      const flickAction = recentFlick && flickBound !== "hollow_purple" ? (flickBound ?? "minimize") : null;
+      let action = bound === "hollow_purple" || gesture === "flick" ? null : bound;
 
       // Chin / Face resting deadzone guard (bypassed while actively dragging a window so bottom-screen drags never drop):
       const restingInFace = !handState.grab && isInFaceDeadzone(landmarks);
-      // Transition guard: A grab is ONLY allowed if the hand was previously open (palm/web) or already holding.
-      if (gesture === "palm" || gesture === "web" || handState.grab) {
-        handState.wasOpen = true;
-      } else if (gesture !== "fist") {
-        handState.wasOpen = false;
-      }
+      // Transition guard: a grab is ONLY allowed if the hand was open (palm/web) in the last 900ms or already holding.
+      if (gesture === "palm" || gesture === "web" || handState.grab) handState.openAt = now;
+      const wasOpen = now - (handState.openAt ?? -Infinity) <= 900;
       const validPowerGrip = gesture === "fist" ? (Boolean(handState.grab) || isPowerFist(landmarks)) : true;
 
-      if (action === "grab") {
-        if (restingInFace || !handState.wasOpen || !validPowerGrip) {
-          action = null;
+      if (action === "grab" && (restingInFace || !wasOpen || !validPowerGrip)) action = null;
+      if (restingInFace && action === "close_tab") action = null;
+
+      if (paused) {
+        // Paused: classify for the HUD only. Nothing may fire and no air mode may hold the lock.
+        if (state.airOwner === i && lockAir.active()) {
+          lockAir.exit(now);
+          state.airOwner = -1;
         }
-      }
-      if (restingInFace && action === "close_tab") {
+        handState.air = null;
         action = null;
-      }
-
-      // --- 5 NEW GESTURE CONTROLS & ANTI-COLLISION ENGINE ---
-
-      // 1. Air Scroll: Parallel index + middle finger vertical motion
-      let airScrollActive = false;
-      if (state.settings?.airScrollToggle !== false && !handState.grab) {
-        const scroll = isAirScroll(landmarks, { aspectRatio: ar });
-        if (scroll.active) {
-          airScrollActive = true;
-          action = null; // Collision prevention: suppress peace sign (close_tab)
-          if (handState.lastScrollY != null) {
-            const dy = scroll.center.y - handState.lastScrollY;
-            const WHEEL_DELTA = 120;
-            handState.scrollAccumulator = (handState.scrollAccumulator || 0) + (-dy * 2400);
-            if (Math.abs(handState.scrollAccumulator) >= WHEEL_DELTA) {
-              const notches = Math.trunc(handState.scrollAccumulator / WHEEL_DELTA);
-              if (notches !== 0) {
-                scrollWheel(notches * WHEEL_DELTA).catch(() => {});
-                handState.scrollAccumulator -= notches * WHEEL_DELTA;
-              }
-            }
-          }
-          handState.lastScrollY = scroll.center.y;
-        } else {
-          handState.lastScrollY = null;
-          handState.scrollAccumulator = 0;
-        }
       } else {
-        handState.lastScrollY = null;
-        handState.scrollAccumulator = 0;
+        updateAirModes(i, handState, landmarks, gesture, ar, now, single);
+        // Never drop a window this hand is already holding because the other hand entered an air mode.
+        if (lockAir.suppressDiscrete(now) && !handState.grab) action = null;
       }
-
-      // 2. DJ Air Knob: Virtual dial rotation with thumb & index
-      if (state.settings?.airVolumeToggle !== false && !handState.grab && !airScrollActive) {
-        const knob = isAirKnobGrip(landmarks, { aspectRatio: ar });
-        if (knob.active) {
-          if (handState.lastKnobAngle != null) {
-            let dtheta = knob.angle - handState.lastKnobAngle;
-            while (dtheta > Math.PI) dtheta -= 2 * Math.PI;
-            while (dtheta < -Math.PI) dtheta += 2 * Math.PI;
-            handState.dialAccumulator = (handState.dialAccumulator || 0) + dtheta;
-            const STEP_RAD = (15 * Math.PI) / 180;
-            if (Math.abs(handState.dialAccumulator) >= STEP_RAD) {
-              const steps = Math.trunc(handState.dialAccumulator / STEP_RAD);
-              if (steps !== 0) {
-                adjustVolume(steps).catch(() => {});
-                emitTo("overlay", "overlay-toast", {
-                  text: steps > 0 ? `🔊 Ses +${steps}` : `🔉 Ses ${steps}`,
-                });
-                handState.dialAccumulator -= steps * STEP_RAD;
-                handState.pinchState = null; // Collision prevention with pinch zoom
-              }
-            }
-          }
-          handState.lastKnobAngle = knob.angle;
-        } else {
-          handState.lastKnobAngle = null;
-          handState.dialAccumulator = 0;
-        }
-      } else {
-        handState.lastKnobAngle = null;
-        handState.dialAccumulator = 0;
-      }
-
-      // 3. Pinch-to-Zoom Desktop: Magnifier zoom across deadband [0.32, 0.62]
-      if (state.settings?.airZoomToggle !== false && !handState.grab && !airScrollActive) {
-        const pinch = isPinchZoom(landmarks, {
-          prevState: handState.pinchState,
-          aspectRatio: ar,
-        });
-        if (pinch.active) {
-          if (pinch.isClosed) {
-            if (handState.pinchState === "open" && now - (handState.lastZoomAt || 0) >= 260) {
-              zoomDesktop(false).catch(() => {});
-              emitTo("overlay", "overlay-toast", { text: "🔍 Uzaklaştır (Zoom -)" });
-              handState.lastZoomAt = now;
-              handState.dialAccumulator = 0; // Collision prevention with knob dial
-            }
-            handState.pinchState = "closed";
-          } else if (pinch.isOpen) {
-            if (handState.pinchState === "closed" && now - (handState.lastZoomAt || 0) >= 260) {
-              zoomDesktop(true).catch(() => {});
-              emitTo("overlay", "overlay-toast", { text: "🔍 Yakınlaştır (Zoom +)" });
-              handState.lastZoomAt = now;
-              handState.dialAccumulator = 0; // Collision prevention with knob dial
-            }
-            handState.pinchState = "open";
-          }
-        } else {
-          handState.pinchState = null;
-        }
-      } else {
-        handState.pinchState = null;
-      }
-
-      // 4. Air Media Control: Open palm steady hold 1.0s (Play/Pause) & flick right (Next Track)
-      if (state.settings?.airMediaToggle !== false && !handState.grab && gesture === "palm") {
-        if (isAirMediaHold(landmarks, handState.history, { now })) {
-          if (!handState.mediaHoldFired && now - (handState.lastMediaHoldAt || 0) > 1500) {
-            handState.mediaHoldFired = true;
-            handState.lastMediaHoldAt = now;
-            mediaPlayPause().catch(() => {});
-            emitTo("overlay", "overlay-toast", { text: "⏯️ Medya Oynat / Duraklat" });
-          }
-        } else if (handState.mediaHoldFired && now - (handState.lastMediaHoldAt || 0) > 1500) {
-          handState.mediaHoldFired = false;
-        }
-
-        if (isAirMediaFlick(landmarks, handState.history, { now, mirrored: state.cameraMirrored })) {
-          if (now - (handState.lastMediaFlickAt || 0) > 800) {
-            handState.lastMediaFlickAt = now;
-            mediaNextTrack().catch(() => {});
-            emitTo("overlay", "overlay-toast", { text: "⏭️ Sonraki Parça" });
-          }
-        }
-      } else if (gesture !== "palm") {
-        handState.mediaHoldFired = false;
-      }
+      const blocked = paused || lockAir.suppressDiscrete(now);
 
       const edge = gesture !== handState.lastGesture;
       // Adaptive velocity lead: scales from 14ms at rest up to 42ms during rapid hand sweeps to cancel camera pipeline lag.
@@ -1739,6 +1849,38 @@ function onHands(hands, detectMs) {
       };
       const grabPoint = screenPoint(predict(handState.filter, 9, palmAnchor, leadMs));
       const aimPoint = screenPoint(predict(handState.filter, 8, landmarks[8], leadMs));
+
+      // Dwell gestures (peace, finger gun) arm with a visible ring before firing.
+      const dwellMs = DWELL_MS[gesture];
+      const dwellAction = dwellMs && action && action !== "grab" && action !== "shoot" ? action : null;
+      if (dwellAction) action = null;
+      const otherGun = !single && state.hands[1 - i].lastGesture === "finger_gun";
+      const activeKey = dwellAction && !(gesture === "finger_gun" && otherGun) ? `${gesture}-${i}` : null;
+      if (handState.armKey && handState.armKey !== activeKey) {
+        dwell.reset(handState.armKey);
+        armRing(handState.armKey, 0, 0, -1);
+      }
+      handState.armKey = activeKey;
+      if (activeKey) {
+        const p = dwell.update(activeKey, true, now, dwellMs);
+        if (p > 0) {
+          armMax = Math.max(armMax, p);
+          armRing(activeKey, aimPoint.nx, aimPoint.ny, p, t(ACTION_KEYS[dwellAction] || ""));
+        }
+        if (p >= 1 && now - (handState.lastFireAt || -Infinity) >= ACTION_COOLDOWN_MS) {
+          handState.lastFireAt = now;
+          runActionForHand(i, dwellAction, aimPoint, true);
+        }
+      }
+
+      // Flick fires once, only when the circle actually opens (isFlickRelease).
+      if (flickAction && !blocked && !handState.flickFired && isFlickRelease(handState.history, { now, ar }) && now - (handState.lastFireAt || -Infinity) >= ACTION_COOLDOWN_MS) {
+        handState.flickFired = true;
+        handState.lastFireAt = now;
+        runActionForHand(i, flickAction, aimPoint, true);
+      } else if (!recentFlick) {
+        handState.flickFired = false;
+      }
 
       // Web and grab are holds: the webbed tab follows the hand until the pose ends.
       const holds = action === "grab" || action === "shoot";
@@ -1757,7 +1899,7 @@ function onHands(hands, detectMs) {
       } else if (holds && !edge) {
         handState.releaseStreak = 0;
         moveGrab(i, grabPoint);
-      } else if (edge && (action === "grab" || !(now - (handState.lastFireAt || 0) < ACTION_COOLDOWN_MS))) {
+      } else if (edge && (action === "grab" || !(now - (handState.lastFireAt || -Infinity) < ACTION_COOLDOWN_MS))) {
         handState.releaseStreak = 0;
         if (action && action !== "grab") handState.lastFireAt = now;
         if (handState.grab && holds) {
@@ -1768,27 +1910,14 @@ function onHands(hands, detectMs) {
         }
       }
       handState.lastGesture = gesture;
-      if (raw === "flick") trackFlick(i, landmarks, now, flickOwned && gesture === "flick");
-      else if (gesture !== "flick") {
-        handState.flickSamples = [];
-        handState.flickFired = false;
-      }
     }
 
-    for (let i = maxHands; i < state.hands.length; i += 1) {
-      if (state.hands[i].grab) releaseGrab(i);
-      state.hands[i].lastGesture = null;
-      state.hands[i].votes = [];
-      state.hands[i].history = [];
-      state.hands[i].lastKnobAngle = null;
-      state.hands[i].dialAccumulator = 0;
-      state.hands[i].pinchState = null;
-      state.hands[i].lastScrollY = null;
-      state.hands[i].scrollAccumulator = 0;
-    }
-    checkPurpleStance(maxHands);
-    checkSniperStance(maxHands);
-    checkNinjaShieldStance(maxHands);
+    badge?.style.setProperty("--arm", armMax);
+    const count = present[0] && present[1] ? 2 : 1;
+    const combos = paused ? 0 : count;
+    checkPurpleStance(combos);
+    checkSniperStance(combos);
+    checkNinjaShieldStance(combos);
   }
 
   const gap = nextGap(hands.length > 0, detectMs);
@@ -1804,29 +1933,34 @@ function checkSniperStance(handCount) {
     return;
   }
   const hands = state.hands.slice(0, handCount);
-  const now = performance.now();
+  const now = state.frameNow || performance.now();
   const points = hands.map((h) => h.landmarks);
   if (!points[0] || !points[1]) return;
-  const isGun0 = isFingerGun(points[0]);
-  const isGun1 = isFingerGun(points[1]);
-  if (!isGun0 || !isGun1) {
+  const ar = video?.videoWidth && video?.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9;
+  if (!isFingerGun(points[0], { ar, stay: hands[0].lastGesture === "finger_gun" }) || !isFingerGun(points[1], { ar, stay: hands[1].lastGesture === "finger_gun" })) {
+    if (state.sniperSince) armRing("sniper", 0, 0, -1);
     state.sniperSince = 0;
     state.sniperFired = false;
     return;
   }
   state.sniperSince ||= now;
-  if (state.sniperFired || now - state.sniperSince < SNIPER_HOLD_MS) return;
-  state.sniperFired = true;
-
   const tip0 = points[0][8];
   const tip1 = points[1][8];
   const midPoint = {
     x: (tip0.x + tip1.x) / 2,
     y: (tip0.y + tip1.y) / 2,
   };
+  if (state.sniperFired) return;
+  const progress = Math.min(1, (now - state.sniperSince) / SNIPER_HOLD_MS);
+  armRing("sniper", midPoint.x, midPoint.y, progress, t("actionAskAi"));
+  if (progress < 1) return;
+  state.sniperFired = true;
+  armRing("sniper", 0, 0, -1);
+
   const targetPoint = screenPoint(midPoint);
   targetPoint.nx = midPoint.x;
   targetPoint.ny = midPoint.y;
+  if (practiceGate(t(ACTION_KEYS.ask_ai))) return;
   askAiAt(targetPoint);
 }
 
@@ -1834,20 +1968,27 @@ function checkSniperStance(handCount) {
 // Fires once per stance, and only at a webbed tab (held by the back hand, or released moments ago).
 function checkPurpleStance(handCount) {
   const hands = state.hands.slice(0, handCount);
-  const now = performance.now();
+  const now = state.frameNow || performance.now();
   const points = hands.map((h) => h.landmarks);
   const pose = state.settings?.bodyTracking && now - (state.pose?.at || 0) < POSE_FRESH_MS ? state.pose.landmarks : null;
   const front = handCount === 2 ? hollowPurpleReady(points, hands.map((h) => h.lastGesture), wristDepths(points, pose)) : -1;
   const grabbing = state.hands.some((h) => h.grab);
   // Both hands must hold the Gojo sign, one closer to the lens. A grab is not the combo.
   if (front < 0 || grabbing) {
+    if (state.purpleSince) armRing("purple", 0, 0, -1);
     state.purpleSince = 0;
     state.purpleFired = false;
     return;
   }
   state.purpleSince ||= now;
-  if (state.purpleFired || now - state.purpleSince < PURPLE_HOLD_MS) return;
+  if (state.purpleFired) return;
+  const progress = Math.min(1, (now - state.purpleSince) / PURPLE_HOLD_MS);
+  const mid = { x: (points[0][9].x + points[1][9].x) / 2, y: (points[0][9].y + points[1][9].y) / 2 };
+  armRing("purple", mid.x, mid.y, progress, t(ACTION_KEYS.hollow_purple));
+  if (progress < 1) return;
   state.purpleFired = true;
+  armRing("purple", 0, 0, -1);
+  if (practiceGate(t(ACTION_KEYS.hollow_purple))) return;
 
   let webbed = null;
   for (const h of state.hands) {
@@ -1861,16 +2002,17 @@ function checkPurpleStance(handCount) {
 // Ninja / Boss Shield stance: dual open palms downward flick with 1200ms anti-rebound cooldown.
 function checkNinjaShieldStance(handCount) {
   if (handCount < 2 || state.settings?.ninjaShieldToggle === false) return;
-  const now = performance.now();
-  if (now - (state.lastNinjaShieldAt || 0) < 1200) return;
+  const now = state.frameNow || performance.now();
+  if (now - (state.lastNinjaShieldAt || -Infinity) < 1200) return;
   const h0 = state.hands[0];
   const h1 = state.hands[1];
   if (!h0?.landmarks || !h1?.landmarks) return;
   const dualHistory = [h0.history || [], h1.history || []];
   if (isNinjaShield(h0.landmarks, h1.landmarks, dualHistory, { now })) {
     state.lastNinjaShieldAt = now;
+    if (practiceGate(t("toastShowDesktop"))) return;
     showDesktop().catch(() => {});
-    emitTo("overlay", "overlay-toast", { text: "🥷 Ninja Kalkanı · Masaüstü" });
+    airToast(t("toastShowDesktop"));
   }
 }
 
@@ -1954,32 +2096,33 @@ function updateGestureHud(hands) {
   }
 
   if (liveDot) liveDot.style.background = "#22c55e";
-  const primaryHand = hands[0];
-  const gesture = classifyGesture(primaryHand);
+  // Show the VOTED gesture of the primary slot (what the dispatcher acts on), not a raw per-frame guess.
+  const primary = state.hands.find((h) => h.lastGesture) || state.hands[0];
+  const gesture = primary?.lastGesture || "";
 
   const ICONS = {
-    web: { icon: "🕸️", title: "AĞ ATIŞI (Spider-Man)" },
-    fist: { icon: "✊", title: "PENCERE TUTMA (Yumruk)" },
-    palm: { icon: "🖐️", title: "SERBEST BIRAK / İPTAL" },
-    flick: { icon: "👌", title: "FİSKE — GÖREV ÇUBUĞU" },
-    peace: { icon: "✌️", title: "SEKME KAPAT (Makas / V)" },
-    gun: { icon: "👉", title: "NİŞAN AL (AI Soru)" },
-    gojo: { icon: "🤌", title: "GOJO İŞARETİ" },
-    point: { icon: "👆", title: "HEDEFLEME (İşaret)" },
+    web: "🕸️", fist: "✊", palm: "🖐️", flick: "👌", peace: "✌️", finger_gun: "👉",
+    gojo: "🤌", point: "👆", pinch: "🤏", custom: "⭐",
   };
 
-  let info = ICONS[gesture] || { icon: "👋", title: "El Algılandı" };
-  if (hands.length >= 2) {
-    if (isFingerGun(hands[0]) && isFingerGun(hands[1])) {
-      info = { icon: "🎯", title: "AI SNIPER (Çift El Nişan)" };
-    } else if (hollowPurpleReady(hands, hands.map((hand) => classifyGesture(hand))) >= 0) {
-      info = { icon: "🟣", title: "HOLLOW PURPLE" };
+  let ico = ICONS[gesture] || "👋";
+  let title = GESTURE_KEYS[gesture] ? t(GESTURE_KEYS[gesture]) : t("handOne");
+  if (state.gesturesPaused) {
+    ico = "⏸️";
+    title = t("statusPaused");
+  } else if (hands.length >= 2) {
+    if (state.hands.every((h) => h.lastGesture === "finger_gun")) {
+      ico = "🎯";
+      title = t(ACTION_KEYS.ask_ai);
+    } else if (hollowPurpleReady(state.hands.map((h) => h.landmarks), state.hands.map((h) => h.lastGesture)) >= 0) {
+      ico = "🟣";
+      title = t(ACTION_KEYS.hollow_purple);
     }
   }
-  if (icon) icon.textContent = info.icon;
-  if (name) name.textContent = info.title;
+  if (icon) icon.textContent = ico;
+  if (name) name.textContent = title;
 
-  updateFingerPills(primaryHand);
+  updateFingerPills(primary?.landmarks || hands[0]);
 }
 
 function updateFingerPills(landmarks) {
@@ -1991,19 +2134,9 @@ function updateFingerPills(landmarks) {
     return;
   }
 
-  const wrist = landmarks[0];
-  const extended = [
-    isFingerExtended(landmarks[4], landmarks[2], wrist),
-    isFingerExtended(landmarks[8], landmarks[6], wrist),
-    isFingerExtended(landmarks[12], landmarks[10], wrist),
-    isFingerExtended(landmarks[16], landmarks[14], wrist),
-    isFingerExtended(landmarks[20], landmarks[18], wrist),
-  ];
-
-  pills.forEach((pill, idx) => {
-    if (extended[idx]) pill.classList.add("active");
-    else pill.classList.remove("active");
-  });
+  const f = fingerStates(landmarks);
+  const extended = [f.thumb, f.index, f.middle, f.ring, f.pinky];
+  pills.forEach((pill, idx) => pill.classList.toggle("active", Boolean(extended[idx])));
 }
 
 function nextGap(hand, detectMs) {
@@ -2039,8 +2172,35 @@ function screenPoint(landmark) {
   };
 }
 
+const PRACTICE_EXEMPT = new Set(["gestures_pause", "overlay_toggle", "show_control"]);
+
+function paintGestureStatus() {
+  const chip = document.getElementById("gestureStatusChip");
+  if (chip) {
+    const key = state.gesturesPaused ? "Paused" : state.practiceMode ? "Practice" : "Active";
+    chip.dataset.state = key.toLowerCase();
+    chip.textContent = t(`status${key}`);
+  }
+  const btn = document.getElementById("gesturePauseBtn");
+  if (btn) btn.textContent = t(state.gesturesPaused ? "resumeGestures" : "pauseGestures");
+}
+
+function toggleGesturesPause() {
+  state.gesturesPaused = !state.gesturesPaused;
+  paintGestureStatus();
+  airToast(t(state.gesturesPaused ? "toastPaused" : "toastResumed"));
+}
+
 function runActionForHand(handIndex, action, point, edge) {
   if (!action || !edge) return;
+  if (action === "gestures_pause") {
+    toggleGesturesPause();
+    return;
+  }
+  if (state.practiceMode && !PRACTICE_EXEMPT.has(action)) {
+    airToast(`${t("toastPractice")}: ${t(ACTION_KEYS[action] || "")}`);
+    return;
+  }
   if (action === "shoot" && point) {
     if (profiles) {
       recordShot(activeProfile(profiles));
@@ -2092,7 +2252,7 @@ function runActionForHand(handIndex, action, point, edge) {
         clearTimeout(timer);
       }
       state.pendingCloses.clear();
-      setMessage("shellBanner", "Kapatma iptal edildi / Cancelled.");
+      setMessage("shellBanner", t("toastCloseCancelled"));
     }
     return;
   }
@@ -2119,14 +2279,12 @@ async function triggerHollowPurple(point, knownWin, opts = {}) {
   }
 
   if (!targetWin || targetWin.unsupported || !targetWin.hwnd) {
-    if (opts.closeWindow) setMessage("shellBanner", "Mor at hedef pencere bulamadı.");
+    if (opts.closeWindow) setMessage("shellBanner", t("bannerPurpleNoTarget"));
     return;
   }
 
-  const sensitiveRegex =
-    /github|gitlab|google docs|google sheets|sheets\.google|docs\.google|notion|figma|visual studio|code|vscode|jira|trello|bank|pay|checkout|save|unsaved|draft|taslak|kaydedilmedi/i;
 
-  if (state.settings.safetyGuard !== false && sensitiveRegex.test(targetWin.title)) {
+  if (state.settings.safetyGuard !== false && SENSITIVE_WINDOW_RE.test(targetWin.title)) {
     playInfinityShield();
     emitTo("overlay", "overlay-safety-shield", {
       x: point.nx,
@@ -2152,19 +2310,6 @@ async function triggerHollowPurple(point, knownWin, opts = {}) {
   }
 
   executeClose(targetWin, { forceWindow: Boolean(opts.closeWindow) });
-}
-
-function trackFlick(handIndex, landmarks, now, armed) {
-  const handState = state.hands[handIndex];
-  const wrist = screenPoint(landmarks[0]);
-  handState.flickSamples ||= [];
-  handState.flickSamples.push({ t: now, x: wrist.sx, y: wrist.sy });
-  if (handState.flickSamples.length > 10) handState.flickSamples.shift();
-  if (!armed || handState.flickFired) return;
-  if (now - (handState.lastFireAt || 0) < ACTION_COOLDOWN_MS) return;
-  handState.flickFired = true;
-  handState.lastFireAt = now;
-  minimizeAt(wrist.sx, wrist.sy);
 }
 
 async function minimizeAt(x, y) {
@@ -2211,9 +2356,7 @@ async function closeActiveTabAt(x, y) {
     setMessage("shellBanner", "Kapatılacak aktif pencere / sekme bulunamadı.");
     return;
   }
-  const sensitiveRegex =
-    /github|gitlab|google docs|google sheets|sheets\.google|docs\.google|notion|figma|visual studio|code|vscode|jira|trello|bank|pay|checkout|save|unsaved|draft|taslak|kaydedilmedi/i;
-  if (state.settings?.safetyGuard !== false && sensitiveRegex.test(found.title)) {
+  if (state.settings?.safetyGuard !== false && SENSITIVE_WINDOW_RE.test(found.title)) {
     setMessage("shellBanner", `🛡️ Hassas Koruma: "${found.title}" açık, kapatma engellendi.`);
     return;
   }
@@ -2329,17 +2472,22 @@ function saveCurrentCustomGesture(name, action) {
     setMessage("shellBanner", "Lütfen hareket için bir isim giriniz.");
     return;
   }
-  const hand = state.hands.find((h) => h.landmarks && h.landmarks.length >= 21);
+  const hi = state.hands.findIndex((h) => h.landmarks && h.landmarks.length >= 21);
+  const hand = state.hands[hi];
   if (!hand) {
     setMessage("shellBanner", "Kamerada el algılanamadı. Elinizi kadrajda tutun.");
     return;
   }
   state.settings.customGestures ||= [];
-  const points = hand.landmarks.map((p) => ({ x: p.x, y: p.y, z: p.z || 0 }));
-  state.settings.customGestures.push({
-    name: name.trim(),
+  // Record in the same space classifyGesture matches in: metric world shape when available.
+  const points = worldShape(state.world?.[hand.rawIndex]) || hand.landmarks.map((p) => ({ x: p.x, y: p.y, z: p.z || 0 }));
+  const gname = name.trim();
+  state.settings.customGestures.push({ name: gname, action: action || "close_tab", points });
+  // Dispatch goes through bindings by gesture name.
+  state.settings.bindings = upsertBinding(state.settings.bindings, {
+    id: `b-custom-${gname}`,
     action: action || "close_tab",
-    points,
+    input: { kind: "gesture", value: gname },
   });
   persist();
   renderCustomGesturesList();
@@ -2365,7 +2513,8 @@ function renderCustomGesturesList() {
     row.style.borderBottom = "1px solid rgba(255,255,255,0.06)";
     row.innerHTML = `<span>✨ ${item.name} (${item.action})</span><button type="button" class="btn ghost danger" style="padding:2px 6px; font-size:0.7rem;">Sil</button>`;
     row.querySelector("button").addEventListener("click", () => {
-      state.settings.customGestures.splice(idx, 1);
+      const [gone] = state.settings.customGestures.splice(idx, 1);
+      state.settings.bindings = removeBinding(state.settings.bindings, `b-custom-${gone.name}`);
       persist();
       renderCustomGesturesList();
     });
@@ -2503,6 +2652,7 @@ async function releaseGrab(handIndex) {
   const handState = state.hands[handIndex];
   const grab = handState.grab;
   handState.grab = null;
+  handState.releasedAt = state.frameNow;
   handState.pendingMove = null;
   handState.moving = false;
   handState.releaseStreak = 0;

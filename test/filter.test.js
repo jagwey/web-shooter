@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createHandFilter, filterLandmarks, predict } from "../src/filter.js";
+import { cloneLandmarks, createHandFilter, filterLandmarks, predict } from "../src/filter.js";
+
+test("cloneLandmarks detaches from the pooled output", () => {
+  const f = createHandFilter();
+  const pooled = filterLandmarks(f, Array.from({ length: 21 }, () => ({ x: 0.2, y: 0.2, z: 0 })), 0);
+  const copy = cloneLandmarks(pooled);
+  assert.notEqual(copy, pooled);
+  assert.notEqual(copy[0], pooled[0]);
+  assert.deepEqual(copy, pooled);
+  filterLandmarks(f, Array.from({ length: 21 }, () => ({ x: 0.8, y: 0.8, z: 0 })), 16);
+  assert.equal(copy[0].x, 0.2);
+  assert.deepEqual(cloneLandmarks(null), []);
+});
 
 const hand = (x, y) => Array.from({ length: 21 }, () => ({ x, y, z: 0 }));
 

@@ -1,6 +1,12 @@
-export const BUILTIN_ACTIONS = ["shoot", "grab", "cancel", "minimize", "close_tab", "ask_ai", "scan_document", "maximize_restore", "hollow_purple", "overlay_toggle", "show_control"];
+export const BUILTIN_ACTIONS = ["shoot", "grab", "cancel", "minimize", "close_tab", "ask_ai", "scan_document", "hollow_purple", "overlay_toggle", "show_control", "gestures_pause"];
 
-export const GESTURES = ["web", "fist", "palm", "flick", "peace", "finger_gun", "gojo", "point", "custom"];
+export const GESTURES = ["web", "fist", "palm", "flick", "peace", "finger_gun", "gojo", "point", "pinch", "custom"];
+
+const PAUSE_BINDING = {
+  id: "b-pause",
+  action: "gestures_pause",
+  input: { kind: "hotkey", value: "CommandOrControl+Alt+P" },
+};
 
 export function defaultBindings() {
   return [
@@ -21,6 +27,7 @@ export function defaultBindings() {
       action: "show_control",
       input: { kind: "hotkey", value: "CommandOrControl+Alt+K" },
     },
+    { ...PAUSE_BINDING, input: { ...PAUSE_BINDING.input } },
   ];
 }
 
@@ -46,10 +53,10 @@ export function removeBinding(bindings, id) {
 }
 
 /** Old builds named the Gojo sign "flick". That name is now the OK-hand minimize. */
-export function migrateBindings(bindings) {
+export function migrateBindings(bindings, settings = null) {
   if (!bindings || bindings.length === 0) return defaultBindings();
   let renamed = false;
-  const next = bindings.map((binding) => {
+  const next = bindings.filter((binding) => binding.action !== "maximize_restore").map((binding) => {
     const input = binding.input;
     if (binding.action === "hollow_purple" && input?.kind === "gesture" && input.value === "flick") {
       renamed = true;
@@ -60,6 +67,12 @@ export function migrateBindings(bindings) {
   const hasFlick = next.some((binding) => binding.input?.kind === "gesture" && binding.input?.value === "flick");
   if (renamed && !hasFlick) {
     next.push({ id: "b-flick", action: "minimize", input: { kind: "gesture", value: "flick" } });
+  }
+  // One-time add: a deleted pause binding stays deleted; never duplicate an already-used hotkey.
+  if (!settings?.migratedPause) {
+    const taken = next.some((b) => b.action === "gestures_pause" || (b.input?.kind === "hotkey" && b.input.value === PAUSE_BINDING.input.value));
+    if (!taken) next.push({ ...PAUSE_BINDING, input: { ...PAUSE_BINDING.input } });
+    if (settings) settings.migratedPause = true;
   }
   return next;
 }

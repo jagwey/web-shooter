@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyGesture, countExtendedFingers, isFlickPose, isWebSign, isPeaceSign, isFingerGun, isPowerFist, isInFaceDeadzone, matchCustomGesture, jointAngle, voteGesture } from "../src/gestures.js";
+import { normalizeHandShape, fingerStates, isPinchPose, isFlickRelease, classifyGesture, countExtendedFingers, isFlickPose, isWebSign, isPeaceSign, isFingerGun, isPowerFist, isInFaceDeadzone, matchCustomGesture, jointAngle, voteGesture } from "../src/gestures.js";
 
 function makeHand({ index, middle, ring, pinky }) {
   const points = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.82, z: 0 }));
@@ -71,8 +71,14 @@ test("open palm, fist, and point stay distinct", () => {
   // Fingers open but parallel, thumb tucked: a relaxed hand, not a cancel.
   assert.equal(classifyGesture(makeHand({ index: true, middle: true, ring: true, pinky: true })), null);
   assert.equal(classifyGesture(makeHand({ index: false, middle: false, ring: false, pinky: false })), "fist");
-  assert.equal(classifyGesture(makeHand({ index: true, middle: false, ring: false, pinky: false })), "point");
-  assert.equal(classifyGesture(makeHand({ index: true, middle: true, ring: false, pinky: false })), "gojo");
+  // Thumb must be clearly tucked to count as point (thumb/palm < 0.60); the fixture's default thumb sits in the finger_gun hysteresis band.
+  const pointHand = makeHand({ index: true, middle: false, ring: false, pinky: false });
+  pointHand[4] = { x: 0.42, y: 0.72, z: 0 };
+  assert.equal(classifyGesture(pointHand), "point");
+  // Gojo needs index/middle tips together (gap/palm < 0.30); the default fixture gap (0.33) is now in the peace/gojo dead band.
+  const gojoHand = makeHand({ index: true, middle: true, ring: false, pinky: false });
+  gojoHand[12] = { x: 0.42, y: 0.28, z: 0 };
+  assert.equal(classifyGesture(gojoHand), "gojo");
   assert.equal(isWebSign(makeHand({ index: true, middle: true, ring: true, pinky: true })), false);
 });
 
@@ -199,4 +205,81 @@ test("custom gesture template matching recognizes learned poses", () => {
   const diffPose = makeHand({ index: false, middle: false, ring: false, pinky: false });
   assert.equal(matchCustomGesture(samePose, template), true);
   assert.equal(matchCustomGesture(diffPose, template), false);
+});
+
+// ---- G1: hysteresis, pinch, normalized custom match, finger states, flick release ----
+
+function twoUp(gapX) {
+  const h = makeHand({ index: true, middle: true, ring: false, pinky: false });
+  h[8] = { x: 0.46 - gapX / 2, y: 0.28, z: 0 };
+  h[12] = { x: 0.46 + gapX / 2, y: 0.28, z: 0 };
+  return h;
+}
+
+test("peace/gojo hysteresis: ambiguous gap holds the last gesture, else null", () => {
+  // breadth (5-17) = 0.24; gap 0.108 -> ratio 0.45: between gojo stay 0.38 and peace enter 0.50
+  const mid = twoUp(0.108);
+  assert.equal(classifyGesture(mid), null);
+  assert.equal(classifyGesture(mid, null, [], { lastGesture: "peace" }), "peace");
+  // ratio 0.45 is above gojo stay (0.38): gojo does not hold
+  assert.equal(classifyGesture(mid, null, [], { lastGesture: "gojo" }), null);
+  assert.equal(classifyGesture(twoUp(0.14)), "peace");
+  assert.equal(classifyGesture(twoUp(0.05)), "gojo");
+  // ratio 0.35: gojo stay passes, enter fails
+  assert.equal(classifyGesture(twoUp(0.084)), null);
+  assert.equal(classifyGesture(twoUp(0.084), null, [], { lastGesture: "gojo" }), "gojo");
+});
+
+test("finger_gun vs point thumb hysteresis", () => {
+  const h = makeHand({ index: true, middle: false, ring: false, pinky: false });
+  h[4] = { x: 0.12, y: 0.7, z: 0 }; // far out: ratio > 0.80
+  assert.equal(classifyGesture(h), "finger_gun");
+  h[4] = { x: 0.2, y: 0.7, z: 0 }; // ratio 0.75: band
+  assert.equal(classifyGesture(h), null);
+  assert.equal(classifyGesture(h, null, [], { lastGesture: "finger_gun" }), "finger_gun");
+  assert.equal(classifyGesture(h, null, [], { lastGesture: "point" }), null);
+  h[4] = { x: 0.42, y: 0.72, z: 0 };
+  assert.equal(classifyGesture(h), "point");
+});
+
+test("pinch pose is its own label and disjoint from flick/fist", () => {
+  const h = makeHand({ index: false, middle: false, ring: false, pinky: false });
+  h[6] = { x: 0.38, y: 0.58, z: 0 };
+  h[7] = { x: 0.4, y: 0.5, z: 0 };
+  h[8] = { x: 0.42, y: 0.46, z: 0 };
+  h[4] = { x: 0.43, y: 0.47, z: 0 };
+  assert.equal(isPinchPose(h), true);
+  assert.equal(classifyGesture(h), "pinch");
+  assert.equal(isPinchPose(makeHand({ index: false, middle: false, ring: false, pinky: false })), false);
+});
+
+test("normalizeHandShape: custom match is translation, scale and roll invariant", () => {
+  const base = makeHand({ index: true, middle: false, ring: false, pinky: true });
+  const moved = rotate(base, 40).map((p) => ({ x: (p.x - 0.5) * 0.6 + 0.2, y: (p.y - 0.82) * 0.6 + 0.3, z: 0 }));
+  assert.equal(matchCustomGesture(moved, base), true);
+  assert.equal(matchCustomGesture(makeHand({ index: false, middle: false, ring: false, pinky: false }), base), false);
+  assert.equal(normalizeHandShape(base)[0].x, 0);
+});
+
+test("custom templates are a fallback and cannot shadow built-ins", () => {
+  const fist = makeHand({ index: false, middle: false, ring: false, pinky: false });
+  assert.equal(classifyGesture(fist, null, [{ name: "mine", points: fist }]), "fist");
+  const odd = makeHand({ index: true, middle: true, ring: false, pinky: true });
+  assert.equal(classifyGesture(odd, null, [{ name: "mine", points: odd }]), "mine");
+});
+
+test("fingerStates reports per-finger extension", () => {
+  const f = fingerStates(makeHand({ index: true, middle: false, ring: false, pinky: true }));
+  assert.deepEqual([f.index, f.middle, f.ring, f.pinky], [true, false, false, true]);
+});
+
+test("isFlickRelease: OK held then index snaps open", () => {
+  const ok = okFlick();
+  const open = makeHand({ index: true, middle: true, ring: true, pinky: true });
+  open[4] = { x: 0.2, y: 0.68, z: 0 };
+  const hist = [];
+  for (let t = 0; t <= 200; t += 40) hist.push({ t, points: ok });
+  hist.push({ t: 260, points: open });
+  assert.equal(isFlickRelease(hist, { now: 260 }), true);
+  assert.equal(isFlickRelease(hist.slice(-2), { now: 260 }), false); // not held long enough
 });

@@ -1,6 +1,11 @@
 // One Euro filter (Casiez et al. 2012): low jitter while the hand rests, low lag while it moves fast.
 const alpha = (cutoff, dt) => 1 / (1 + 1 / (2 * Math.PI * cutoff * dt));
 
+// filterLandmarks returns a POOLED array reused every frame, so callers that keep frames must copy them.
+export function cloneLandmarks(points) {
+  return points ? points.map((p) => ({ ...p })) : [];
+}
+
 export function createHandFilter() {
   return { t: 0, x: null, dx: null };
 }

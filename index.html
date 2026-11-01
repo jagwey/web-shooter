@@ -88,7 +88,14 @@
                     <span class="gesture-icon">✨</span>
                     <span class="gesture-name" data-i18n="noGesture">El Bekleniyor...</span>
                   </div>
+                  <span id="gestureStatusChip" class="status-chip" data-state="active" data-i18n="statusActive">Aktif</span>
                 </div>
+              </div>
+
+              <div class="gesture-controls">
+                <label class="practice-toggle"><input type="checkbox" id="practiceToggle" aria-describedby="practiceHint"><span data-i18n="practiceMode">Deneme modu</span></label>
+                <button type="button" id="gesturePauseBtn" class="btn-pause" data-i18n="pauseGestures">Duraklat</button>
+                <small id="practiceHint" class="practice-hint" data-i18n="practiceModeHint">Hareketler algılanır ama komut çalışmaz; sadece ne yapılacağı gösterilir.</small>
               </div>
 
               <!-- Fingers Status Bar -->

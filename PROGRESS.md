@@ -207,3 +207,24 @@ scripts\build.bat
 - Fix: `state.settings?.customGestures` + `boot()` içinde ayarlar yüklenince listeyi yeniden çiz. `npm test` 83/83, dev konsol temiz, worker GPU inference OK.
 - v0.4.3 build + GitHub release yayınlandı (Latest, setup.exe + .sig + latest.json). Gerçek kamerayla el algılama henüz doğrulanmadı.
 - Buton taraması (87 buton tıklandı): aiTileBtn ve aiSniperBtn için sessiz hata guard'ı eklendi; kalan hata yok.
+
+## 2026-11-01 — özel hareket + flick + i18n fix
+- Özel hareket artık world shape olarak kaydediliyor (eşleşme uzayıyla aynı) ve kayıtta `gesture` binding'i oluşturuluyor/siliniyor (eylem gerçekten çalışıyor).
+- Flick: yeniden bağlanan eylem (örn. close_tab) artık tetikleniyor; varsayılan minimize.
+- i18n: `screensOpen` TR/EN eklendi. npm test + vite build OK.
+
+## Gesture fix pass (4 issues)
+- Air media: releasedAt guard (1500ms) after grab release/slot reset; isAirMediaFlick requires all recent frames open palm.
+- onHands: lockAir suppression no longer nulls action of a hand that holds a grab.
+- migrateBindings(bindings, settings): pause hotkey added once (settings.migratedPause), no duplicate hotkey; defaultBindings copies PAUSE_BINDING.
+- Custom gesture save uses hand.rawIndex for state.world. npm test 99/99, vite build OK.
+
+## 5 verified fix (2026-11-01)
+- settings.rs: `migrated_pause` (serde default) eklendi; Ctrl+Alt+P bağlaması silinince geri gelmez.
+- control.js: flick artık son 250ms içindeki flick oyuna göre kapılanıyor (yavaş worker'da kaçmaz); sniper `isFingerGun` ar/stay ile; HUD purple-ready slot sırasında.
+- i18n: `bannerPurpleNoTarget` TR/EN. vite build OK.
+
+## v0.4.4 — Hareket elden geçirme (2026-11-01)
+- Gesture overhaul: histerezis, pinch etiketi, flick bırakmada, dwell halkaları, el slotları handedness'e göre; history kopyası (hız tabanlı hareketler tekrar çalışıyor).
+- Yeni: Ctrl+Alt+P duraklat/sürdür + durum çipi, deneme (dry-run) modu. i18n/guide senkron. 99/99 test.
+- Gerçek kamerayla doğrulama bekliyor.

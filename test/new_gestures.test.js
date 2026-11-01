@@ -180,10 +180,10 @@ test("DJ Air Knob: rejected when grip distance is outside [0.08, 0.65] L_palm", 
 test("Air Media Hold: open palm held steady within radius for >=1.0s triggers hold", () => {
   const palm = makeOpenPalm();
   const history = [];
-  for (let t = 0; t <= 1200; t += 50) {
+  for (let t = 0; t <= 1400; t += 50) { // hold needs >= 1300 ms
     history.push({ t, points: palm });
   }
-  const holdActive = isAirMediaHold(palm, history, { now: 1200 });
+  const holdActive = isAirMediaHold(palm, history, { now: 1400 });
   assert.equal(holdActive, true);
 });
 
@@ -335,19 +335,20 @@ test("Ninja Shield: rejected if either hand is not an open palm", () => {
   assert.equal(isNinjaShield(h0_end, h1_end, history, { now: 140 }), false);
 });
 
-test("Ninja Shield: rejected when synchronicity gap between hands exceeds 75ms", () => {
+test("Ninja Shield: rejected when synchronicity gap between hands exceeds 150ms", () => {
   const base = makeOpenPalm();
-  // Hand 0 flicks at t=0..120ms; Hand 1 flicks at t=120..240ms (gap 120ms > 75ms)
+  // Hand 0 flicks at t=0..120ms; Hand 1 flicks at t=240..360ms (peak gap 240ms > 150ms)
   const history = [
     { t: 0, hand0: translateHand(base, -0.2, -0.10), hand1: translateHand(base, 0.2, -0.10) },
     { t: 120, hand0: translateHand(base, -0.2, 0.10), hand1: translateHand(base, 0.2, -0.10) },
-    { t: 240, hand0: translateHand(base, -0.2, 0.10), hand1: translateHand(base, 0.2, 0.10) },
+    { t: 240, hand0: translateHand(base, -0.2, 0.10), hand1: translateHand(base, 0.2, -0.10) },
+    { t: 360, hand0: translateHand(base, -0.2, 0.10), hand1: translateHand(base, 0.2, 0.10) },
   ];
 
   const h0_end = translateHand(base, -0.2, 0.10);
   const h1_end = translateHand(base, 0.2, 0.10);
 
-  assert.equal(isNinjaShield(h0_end, h1_end, history, { now: 240 }), false);
+  assert.equal(isNinjaShield(h0_end, h1_end, history, { now: 360 }), false);
 });
 
 test("Ninja Shield: rejected on excessive horizontal drift", () => {

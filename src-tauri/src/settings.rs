@@ -80,6 +80,8 @@ pub struct Settings {
     pub custom_gestures: Option<serde_json::Value>,
     #[serde(default = "default_smoothing")]
     pub smoothing: f32,
+    #[serde(default)]
+    pub migrated_pause: bool,
 }
 
 fn default_smoothing() -> f32 {
@@ -159,6 +161,7 @@ impl Default for Settings {
             sniper_target: "gemini_web".into(),
             custom_gestures: None,
             smoothing: 0.75,
+            migrated_pause: false,
         }
     }
 }

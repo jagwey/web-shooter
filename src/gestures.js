@@ -214,65 +214,107 @@ export function isFist(points) {
   return FINGERS.every((finger) => isFingerClosed(points[finger.tip], points[finger.pip], wrist, points[finger.pip - 1]));
 }
 
-export function isOpenPalm(points) {
+export function isOpenPalm(points, { stay = false } = {}) {
   if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
   const wrist = points[0];
   if (!FINGERS.every((finger) => isFingerExtended(points[finger.tip], points[finger.pip], wrist, points[finger.pip - 1]))) return false;
   // A deliberate "stop" hand: fingers fanned and thumb out. A relaxed, loosely open hand is not a cancel.
+  // Stay thresholds are looser so a held palm does not flicker at the edge.
   const palm = span(points[5], points[17]);
-  return span(points[8], points[20]) > palm * 1.25 && span(points[4], points[5]) > palm * 0.6;
+  return span(points[8], points[20]) > palm * (stay ? 1.10 : 1.25) && span(points[4], points[5]) > palm * (stay ? 0.50 : 0.6);
 }
 
-export function isPoint(points) {
+export function isPoint(points, { ar = 1.0, stay = false } = {}) {
   if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
+  // Thumb tucked: separates point from finger_gun (hysteresis band 0.60..0.72).
+  return indexOnly(points, ar) && thumbRatio(points, ar) < (stay ? POINT_STAY_THUMB : POINT_ENTER_THUMB);
+}
+
+// Index + middle up, ring + pinky folded: shared by gojo (fingers together) and peace (V shape).
+function twoFingerUp(points, ar = 1.0) {
   const wrist = points[0];
   return (
-    isFingerExtended(points[8], points[6], wrist, points[5]) &&
-    isFingerClosed(points[12], points[10], wrist, points[9]) &&
-    isFingerClosed(points[16], points[14], wrist, points[13]) &&
-    isFingerClosed(points[20], points[18], wrist, points[17])
+    isFingerExtended(points[8], points[6], wrist, points[5], { ar }) &&
+    isFingerExtended(points[12], points[10], wrist, points[9], { ar }) &&
+    isFingerClosed(points[16], points[14], wrist, points[13], { ar }) &&
+    isFingerClosed(points[20], points[18], wrist, points[17], { ar })
   );
+}
+
+// Index-to-middle tip gap over palm breadth, on the same point set as the rest of the evaluation.
+function twoFingerGap(points, ar = 1.0) {
+  const breadth = spanMetric(points[5], points[17], ar);
+  return breadth < 1e-6 ? 0 : spanMetric(points[8], points[12], ar) / breadth;
 }
 
 /**
  * Satoru Gojo: Kūshiki / Hollow Purple gesture or finger gun / snap:
  * Index + middle fingers extended together, ring + pinky folded.
  * Distinct from Web sign (which has middle closed & pinky open).
+ * Gap rule: enter below GOJO_ENTER_GAP_RATIO, stay below GOJO_STAY_GAP_RATIO.
  */
-export function isGojoSign(points) {
+export function isGojoSign(points, { ar = 1.0, stay = false } = {}) {
   if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
-  const wrist = points[0];
-  const indexOpen = isFingerExtended(points[8], points[6], wrist, points[5]);
-  const middleOpen = isFingerExtended(points[12], points[10], wrist, points[9]);
-  const ringClosed = isFingerClosed(points[16], points[14], wrist, points[13]);
-  const pinkyClosed = isFingerClosed(points[20], points[18], wrist, points[17]);
-  return indexOpen && middleOpen && ringClosed && pinkyClosed;
+  if (!twoFingerUp(points, ar)) return false;
+  return twoFingerGap(points, ar) < (stay ? GOJO_STAY_GAP_RATIO : GOJO_ENTER_GAP_RATIO);
 }
 
 /** ✌️ Peace / Scissors sign: index + middle extended in a clear V shape, ring + pinky folded. */
-export function isPeaceSign(points) {
+export function isPeaceSign(points, { ar = 1.0, stay = false } = {}) {
   if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
+  if (!twoFingerUp(points, ar)) return false;
+  return twoFingerGap(points, ar) > (stay ? PEACE_SIGN_STAY_GAP_RATIO : PEACE_SIGN_MIN_GAP_RATIO);
+}
+
+// Thumb tip to index MCP over palm breadth (span 5-17): thumb out vs tucked.
+function thumbRatio(points, ar = 1.0) {
+  const breadth = spanMetric(points[5], points[17], ar);
+  return breadth < 1e-6 ? 0 : spanMetric(points[4], points[5], ar) / breadth;
+}
+
+function indexOnly(points, ar = 1.0) {
   const wrist = points[0];
-  const indexOpen = isFingerExtended(points[8], points[6], wrist, points[5]);
-  const middleOpen = isFingerExtended(points[12], points[10], wrist, points[9]);
-  const ringClosed = isFingerClosed(points[16], points[14], wrist, points[13]);
-  const pinkyClosed = isFingerClosed(points[20], points[18], wrist, points[17]);
-  if (!indexOpen || !middleOpen || !ringClosed || !pinkyClosed) return false;
-  const palm = span(points[5], points[17]);
-  return span(points[8], points[12]) > palm * 0.42;
+  return (
+    isFingerExtended(points[8], points[6], wrist, points[5], { ar }) &&
+    isFingerClosed(points[12], points[10], wrist, points[9], { ar }) &&
+    isFingerClosed(points[16], points[14], wrist, points[13], { ar }) &&
+    isFingerClosed(points[20], points[18], wrist, points[17], { ar })
+  );
 }
 
 /** 👉 Finger gun: index extended, thumb extended upward, middle/ring/pinky folded. */
-export function isFingerGun(points) {
+export function isFingerGun(points, { ar = 1.0, stay = false } = {}) {
   if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
+  if (!indexOnly(points, ar)) return false;
+  return thumbRatio(points, ar) > (stay ? FINGER_GUN_STAY_THUMB : FINGER_GUN_ENTER_THUMB);
+}
+
+/**
+ * Thumb-index pinch: tips touching, index not curled into the palm, the other three folded.
+ * Disjoint from flick (needs middle/ring/pinky extended) and fist (needs index closed).
+ */
+export function isPinchPose(points, { ar = 1.0, stay = false } = {}) {
+  if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
+  const palm = palmReferenceScale(points, ar);
+  if (palm < 1e-4) return false;
   const wrist = points[0];
-  const indexOpen = isFingerExtended(points[8], points[6], wrist, points[5]);
-  const middleClosed = isFingerClosed(points[12], points[10], wrist, points[9]);
-  const ringClosed = isFingerClosed(points[16], points[14], wrist, points[13]);
-  const pinkyClosed = isFingerClosed(points[20], points[18], wrist, points[17]);
-  if (!indexOpen || !middleClosed || !ringClosed || !pinkyClosed) return false;
-  const palm = span(points[5], points[17]);
-  return span(points[4], points[5]) > palm * 0.75;
+  if (spanMetric(points[4], points[8], ar) / palm > (stay ? PINCH_POSE_STAY : PINCH_POSE_ENTER)) return false;
+  if (isFingerClosed(points[8], points[6], wrist, points[5], { ar })) return false;
+  if (spanMetric(points[8], points[5], ar) / palm <= 0.40) return false;
+  return (
+    isFingerClosed(points[12], points[10], wrist, points[9], { ar }) &&
+    isFingerClosed(points[16], points[14], wrist, points[13], { ar }) &&
+    isFingerClosed(points[20], points[18], wrist, points[17], { ar })
+  );
+}
+
+/** Per-finger extended flags (true = extended), for HUD finger pills. */
+export function fingerStates(points, { ar = 1.0 } = {}) {
+  if (!points || points.length < 21) return { thumb: false, index: false, middle: false, ring: false, pinky: false };
+  const wrist = points[0];
+  const [index, middle, ring, pinky] = FINGERS.map((f) =>
+    isFingerExtended(points[f.tip], points[f.pip], wrist, points[f.pip - 1], { ar }));
+  return { thumb: thumbRatio(points, ar) > 0.65, index, middle, ring, pinky };
 }
 
 /** True deliberate power fist: thumb locks over knuckles, not a loose hand resting under the chin. */
@@ -290,15 +332,33 @@ export function isInFaceDeadzone(points) {
   return wrist.y < 0.36 && knuckle.y < 0.40;
 }
 
-/** Metric Euclidean distance against user-trained custom gesture template. */
-export function matchCustomGesture(points, template, maxError = 0.075) {
+/**
+ * Wrist at origin, palm length (0->9) = 1, hand rolled so 0->9 points to -y.
+ * Makes templates independent of where the hand is, how far, and how it is rolled.
+ */
+export function normalizeHandShape(points) {
+  const w = points[0];
+  const len = span(w, points[9]) || 1;
+  const vx = (points[9].x - w.x) / len;
+  const vy = (points[9].y - w.y) / len;
+  const delta = Math.hypot(vx, vy) > 1e-4 ? -Math.PI / 2 - Math.atan2(vy, vx) : 0;
+  const c = Math.cos(delta);
+  const s = Math.sin(delta);
+  return points.map((p) => {
+    const x = (p.x - w.x) / len;
+    const y = (p.y - w.y) / len;
+    return { x: x * c - y * s, y: x * s + y * c, z: ((p.z || 0) - (w.z || 0)) / len };
+  });
+}
+
+/** Mean per-landmark distance (normalized units) against a user-trained custom gesture template. */
+export function matchCustomGesture(points, template, maxError = 0.12) {
   if (!points || !template || points.length !== 21 || template.length !== 21) return false;
+  const a = normalizeHandShape(points);
+  const b = normalizeHandShape(template);
   let totalDist = 0;
   for (let i = 0; i < 21; i += 1) {
-    const dx = points[i].x - template[i].x;
-    const dy = points[i].y - template[i].y;
-    const dz = (points[i].z || 0) - (template[i].z || 0);
-    totalDist += Math.hypot(dx, dy, dz);
+    totalDist += Math.hypot(a[i].x - b[i].x, a[i].y - b[i].y, a[i].z - b[i].z);
   }
   return totalDist / 21 < maxError;
 }
@@ -352,19 +412,60 @@ export function hollowPurpleReady(hands, gestures, depths = null) {
  * wrist shows up as that circle sitting off the finger axis.
  * Motion (a real flick) is checked separately — a still OK hand is not a flick.
  */
-export function isFlickPose(points) {
+export function isFlickPose(points, { ar = 1.0 } = {}) {
   if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return false;
   const wrist = points[0];
   const palm = span(points[5], points[17]);
   if (palm < 1e-4) return false;
   const pinch = span(points[4], points[8]);
   if (!(pinch < palm * 0.55)) return false;
-  if (isFingerExtended(points[8], points[6], wrist)) return false;
-  const middle = isFingerExtended(points[12], points[10], wrist);
-  const ring = isFingerExtended(points[16], points[14], wrist);
-  const pinky = isFingerExtended(points[20], points[18], wrist);
+  if (isFingerExtended(points[8], points[6], wrist, points[5], { ar })) return false;
+  const middle = isFingerExtended(points[12], points[10], wrist, points[9], { ar });
+  const ring = isFingerExtended(points[16], points[14], wrist, points[13], { ar });
+  const pinky = isFingerExtended(points[20], points[18], wrist, points[17], { ar });
   if (!middle || !ring || !pinky) return false;
   return pinchOffAxis(points, palm);
+}
+
+export const FLICK_RELEASE_MIN_HOLD_MS = 120;
+export const FLICK_RELEASE_WINDOW_MS = 250;
+export const FLICK_RELEASE_MIN_SPEED = 3.0; // palm units / s
+
+/**
+ * The flick fires on the release, not the pose: OK circle held >= 120 ms, then the index snaps open.
+ * history: [{ t(ms), points }] oldest first, newest last (copies, not pooled arrays).
+ */
+export function isFlickRelease(history, { now, ar = 1.0 } = {}) {
+  if (!Array.isArray(history) || history.length < 2) return false;
+  const newest = history[history.length - 1];
+  const t1 = now ?? newest.t;
+  const pts = newest.points;
+  if (!pts || pts.length < 21) return false;
+  const palm = palmReferenceScale(pts, ar);
+  if (palm < 1e-4) return false;
+  // (c) circle opened: index extended and tips apart
+  if (!isFingerExtended(pts[8], pts[6], pts[0], pts[5], { ar })) return false;
+  if (spanMetric(pts[4], pts[8], ar) / palm <= 0.90) return false;
+
+  // (a)+(b) latest contiguous OK run inside [now-600, now-30]
+  let run = null;
+  let best = null;
+  for (const h of history) {
+    if (!h.points || h.t < t1 - 600 || h.t > t1 - 30) continue;
+    if (isFlickPose(h.points, { ar })) {
+      run = run ? { start: run.start, end: h } : { start: h, end: h };
+      if (run.end.t - run.start.t >= FLICK_RELEASE_MIN_HOLD_MS) best = run;
+    } else {
+      run = null;
+    }
+  }
+  if (!best || t1 - best.end.t > FLICK_RELEASE_WINDOW_MS) return false;
+
+  // (d) index tip speed from the last OK frame to now
+  const dt = (newest.t - best.end.t) / 1000;
+  if (dt <= 0) return false;
+  const speed = spanMetric(best.end.points[8], pts[8], ar) / palm / dt;
+  return speed >= FLICK_RELEASE_MIN_SPEED;
 }
 
 function pinchOffAxis(points, palm) {
@@ -419,7 +520,7 @@ export function worldShape(world) {
  */
 export function classifyGesture(points, world = null, customTemplates = [], options = {}) {
   let templates = customTemplates;
-  let opts = options;
+  let opts = options || {};
   if (customTemplates && !Array.isArray(customTemplates) && typeof customTemplates === "object") {
     opts = customTemplates;
     templates = [];
@@ -427,25 +528,34 @@ export function classifyGesture(points, world = null, customTemplates = [], opti
   if (!points || points.length < 21 || handSpan(points) < MIN_SPAN) return null;
   const shape = worldShape(world);
   const evalPoints = shape || points;
+  // Aspect ratio only corrects image-space x; world shape is already metric.
+  const ar = shape ? 1.0 : (Number(opts.aspectRatio || opts.ar) || 1.0);
+  const last = opts.lastGesture ?? (opts.wasActive ? "web" : null);
+  const o = (name) => ({ ar, stay: last === name });
+
+  // 1. Built-in poses, with hysteresis on the previously held gesture.
+  const webOptions = { ...opts, aspectRatio: ar, wasActive: last === "web", world: shape ? null : (opts.world || world) };
+  if (isWebSign(evalPoints, webOptions)) return "web";
+  if (isPeaceSign(evalPoints, o("peace"))) return "peace";
+  if (isGojoSign(evalPoints, o("gojo"))) return "gojo";
+  // Gap between gojo and peace: keep the held one, otherwise say nothing instead of guessing.
+  if (twoFingerUp(evalPoints, ar)) return null;
+  // Touching thumb+index is more specific than a finger gun with the thumb "out".
+  if (isPinchPose(evalPoints, o("pinch"))) return "pinch";
+  if (isFingerGun(evalPoints, o("finger_gun"))) return "finger_gun";
+  if (isPoint(evalPoints, o("point"))) return "point";
+  // Index-only hand in the thumb hysteresis band: undecided, so no trigger.
+  if (indexOnly(evalPoints, ar)) return null;
+  if (isFlickPose(evalPoints, { ar })) return "flick";
+  if (isFist(evalPoints)) return "fist";
+  if (isOpenPalm(evalPoints, { stay: last === "palm" })) return "palm";
+
+  // 2. Custom templates are only a fallback so they cannot shadow built-ins.
   if (templates && templates.length > 0) {
     for (const t of templates) {
-      if (t.points && matchCustomGesture(evalPoints, t.points)) {
-        return t.name || "custom";
-      }
+      if (t.points && matchCustomGesture(evalPoints, t.points, t.maxError)) return t.name || "custom";
     }
   }
-  const webOptions = {
-    ...opts,
-    world: shape ? null : (opts.world || world),
-  };
-  if (isWebSign(evalPoints, webOptions)) return "web";
-  if (isPeaceSign(evalPoints)) return "peace";
-  if (isFingerGun(evalPoints)) return "finger_gun";
-  if (isFlickPose(evalPoints)) return "flick";
-  if (isGojoSign(evalPoints)) return "gojo";
-  if (isPoint(evalPoints)) return "point";
-  if (isFist(evalPoints)) return "fist";
-  if (isOpenPalm(evalPoints)) return "palm";
   return null;
 }
 
@@ -472,24 +582,35 @@ export function voteGesture(votes, raw, last) {
 export const AIR_KNOB_MIN_GRIP = 0.08;
 export const AIR_KNOB_MAX_GRIP = 0.65;
 
-export const AIR_MEDIA_HOLD_RADIUS = 0.045;
-export const AIR_MEDIA_HOLD_MAX_VELOCITY = 0.12;
-export const AIR_MEDIA_HOLD_MIN_DURATION = 1000;
+// Motion thresholds are in palm units (displacement / palm length, speed in palm lengths per second),
+// so a far-away small hand and a close big hand behave the same.
+export const AIR_MEDIA_HOLD_RADIUS = 0.25;
+export const AIR_MEDIA_HOLD_MAX_VELOCITY = 0.7;
+export const AIR_MEDIA_HOLD_MIN_DURATION = 1300;
 
-export const AIR_MEDIA_FLICK_MIN_DX = 0.12;
-export const AIR_MEDIA_FLICK_MIN_VX = 0.65;
+export const AIR_MEDIA_FLICK_MIN_DX = 0.9;
+export const AIR_MEDIA_FLICK_MIN_VX = 4.0;
 export const AIR_MEDIA_FLICK_MAX_DRIFT = 0.50;
 
-export const NINJA_SHIELD_MIN_DY = 0.14;
-export const NINJA_SHIELD_MIN_VY = 0.85;
-export const NINJA_SHIELD_MAX_SYNC_MS = 75;
+export const NINJA_SHIELD_MIN_DY = 1.0;
+export const NINJA_SHIELD_MIN_VY = 5.0;
+export const NINJA_SHIELD_MAX_SYNC_MS = 150;
 export const NINJA_SHIELD_MAX_DRIFT = 0.55;
 
 export const PINCH_ZOOM_CLOSED = 0.32;
 export const PINCH_ZOOM_OPEN = 0.62;
 
 export const AIR_SCROLL_MAX_GAP_RATIO = 0.32;
-export const PEACE_SIGN_MIN_GAP_RATIO = 0.42;
+export const PEACE_SIGN_MIN_GAP_RATIO = 0.50; // enter
+export const PEACE_SIGN_STAY_GAP_RATIO = 0.40;
+export const GOJO_ENTER_GAP_RATIO = 0.30;
+export const GOJO_STAY_GAP_RATIO = 0.38;
+export const FINGER_GUN_ENTER_THUMB = 0.80;
+export const FINGER_GUN_STAY_THUMB = 0.65;
+export const POINT_ENTER_THUMB = 0.60;
+export const POINT_STAY_THUMB = 0.72;
+export const PINCH_POSE_ENTER = 0.35;
+export const PINCH_POSE_STAY = 0.45;
 
 /**
  * DJ Air Knob: Thumb tip (4) and Index tip (8) circular/angular rotation in the air.
@@ -551,6 +672,12 @@ function extractPointSample(item) {
   return null;
 }
 
+// Palm length of the current hand: converts image-unit motion into palm units.
+function motionScale(points) {
+  const k = palmReferenceScale(points, 1.0);
+  return k > 1e-4 ? k : 0.15;
+}
+
 function buildTrajectory(points, history = [], options = {}) {
   const trajectory = [];
   if (Array.isArray(history)) {
@@ -590,7 +717,7 @@ function buildTrajectory(points, history = [], options = {}) {
 /**
  * Air Media Hold: Open palm held steady in the air for 1 second.
  * - isOpenPalm(points) must be satisfied.
- * - Palm center p9 held steady within spatial radius R <= 0.045 with velocity v < 0.12 s^-1 for duration >= 1000 ms.
+ * - Palm center p9 held steady within R <= 0.25 palm lengths, v < 0.7 palm/s, for >= 1300 ms.
  * - Returns boolean.
  */
 export function isAirMediaHold(points, history = [], options = {}) {
@@ -600,7 +727,8 @@ export function isAirMediaHold(points, history = [], options = {}) {
   const maxRadius = options.maxRadius ?? options.radius ?? AIR_MEDIA_HOLD_RADIUS;
   const maxVelocity = options.maxVelocity ?? options.velocity ?? AIR_MEDIA_HOLD_MAX_VELOCITY;
 
-  const trajectory = buildTrajectory(points, history, options);
+  const k = motionScale(points);
+  const trajectory = buildTrajectory(points, history, options).map((s) => ({ ...s, x: s.x / k, y: s.y / k }));
   if (trajectory.length < 2) return false;
 
   const tEnd = trajectory[trajectory.length - 1].t;
@@ -647,7 +775,7 @@ export function isAirMediaHold(points, history = [], options = {}) {
 /**
  * Air Media Flick: Open palm flick to the right for Next Track.
  * - isOpenPalm(points) must be satisfied.
- * - Rapid horizontal displacement to the right: Delta x >= +0.12, vx >= 0.65 s^-1, |vy| <= 0.50 * vx.
+ * - Rapid horizontal displacement to the right: dx >= 0.9 palm, vx >= 4 palm/s, |vy| <= 0.50 * vx.
  * - Returns boolean.
  */
 export function isAirMediaFlick(points, history = [], options = {}) {
@@ -659,11 +787,20 @@ export function isAirMediaFlick(points, history = [], options = {}) {
   const mirrored = Boolean(options.mirrored);
   const dir = mirrored ? -1 : 1;
 
-  const trajectory = buildTrajectory(points, history, options);
+  const windowMs = options.windowMs ?? 400;
+  // Every recent frame must be an open palm, so a fist throw/release can't read as a skip.
+  const tNow = options.now ?? options.t ?? options.time ?? options.timestamp ?? history?.[history.length - 1]?.t;
+  if (Array.isArray(history) && Number.isFinite(tNow)) {
+    for (const h of history) {
+      if (h?.points && tNow - h.t <= windowMs && !isOpenPalm(h.points)) return false;
+    }
+  }
+
+  const k = motionScale(points);
+  const trajectory = buildTrajectory(points, history, options).map((s) => ({ ...s, x: s.x / k, y: s.y / k }));
   if (trajectory.length < 2) return false;
 
   const tLatest = trajectory[trajectory.length - 1].t;
-  const windowMs = options.windowMs ?? 400;
   const recent = trajectory.filter((s) => tLatest - s.t <= windowMs);
   if (recent.length < 2) return false;
 
@@ -760,8 +897,8 @@ function findDownwardStroke(traj, minDy, minVy, maxDriftRatio, windowMs) {
 /**
  * Ninja / Boss Shield: Two open palms flicked downward simultaneously.
  * - Both hands must satisfy isOpenPalm.
- * - Downward displacement Delta y >= 0.14, downward velocity vy >= 0.85 s^-1 on both hands.
- * - Synchronicity |t0 - t1| <= 75 ms.
+ * - Downward displacement >= 1.0 palm, vy >= 5 palm/s on both hands.
+ * - Synchronicity |t0 - t1| <= 150 ms.
  * - Rejects any motion with excessive horizontal drift.
  * - Returns boolean.
  */
@@ -775,9 +912,13 @@ export function isNinjaShield(hand0, hand1, history = [], options = {}) {
   const maxDriftRatio = options.maxDriftRatio ?? NINJA_SHIELD_MAX_DRIFT;
   const windowMs = options.windowMs ?? 400;
 
-  const [traj0, traj1] = extractDualTrajectories(hand0, hand1, history, options);
-  const stroke0 = findDownwardStroke(traj0, minDy, minVy, maxDriftRatio, windowMs);
-  const stroke1 = findDownwardStroke(traj1, minDy, minVy, maxDriftRatio, windowMs);
+  const [raw0, raw1] = extractDualTrajectories(hand0, hand1, history, options);
+  const scaled = (traj, pts) => {
+    const k = motionScale(pts);
+    return traj.map((s) => ({ ...s, x: s.x / k, y: s.y / k }));
+  };
+  const stroke0 = findDownwardStroke(scaled(raw0, hand0), minDy, minVy, maxDriftRatio, windowMs);
+  const stroke1 = findDownwardStroke(scaled(raw1, hand1), minDy, minVy, maxDriftRatio, windowMs);
 
   if (!stroke0 || !stroke1) return false;
 

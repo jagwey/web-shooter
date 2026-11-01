@@ -68,7 +68,8 @@ function loop(now) {
       if (!win.grabbed) targetWindows.delete(id);
     }
   }
-  const busy = fx.hasWork() || tethers.size > 0 || targetWindows.size > 0 || Boolean(activeToast && now < activeToast.until);
+  pruneRings(now);
+  const busy = fx.hasWork() || rings.size > 0 || tethers.size > 0 || targetWindows.size > 0 || Boolean(activeToast && now < activeToast.until);
   if (!busy) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     running = false;
@@ -100,6 +101,7 @@ function loop(now) {
       drawTether(line.cur);
     }
   }
+  drawRings(now);
   if (activeToast && now < activeToast.until) {
     drawToast(now);
   } else if (activeToast) {
@@ -119,6 +121,48 @@ function loop(now) {
     }
   }
   requestAnimationFrame(loop);
+}
+
+// Dwell arm rings keyed by id; a ring not refreshed within RING_TTL_MS (lost hand) expires.
+const rings = new Map();
+const RING_TTL_MS = 300;
+const RING_FLASH_MS = 150;
+
+function pruneRings(now) {
+  for (const [id, ring] of rings) {
+    if (ring.flashUntil ? now >= ring.flashUntil : now - ring.seen > RING_TTL_MS) rings.delete(id);
+  }
+}
+
+function drawRings(now) {
+  if (!rings.size) return;
+  const color = getThemeColor();
+  ctx.save();
+  ctx.lineCap = "round";
+  for (const ring of rings.values()) {
+    const cx = ring.x * canvas.width;
+    const cy = ring.y * canvas.height;
+    const full = Boolean(ring.flashUntil);
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.arc(cx, cy, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = full ? Math.max(0, (ring.flashUntil - now) / RING_FLASH_MS) : 1;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 28, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (full ? 1 : Math.min(1, ring.progress)));
+    ctx.stroke();
+    if (ring.label) {
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = color;
+      ctx.font = "bold 11px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(ring.label, cx, cy + 46);
+    }
+  }
+  ctx.restore();
 }
 
 function ease(cur, target, k, keys) {
@@ -467,6 +511,19 @@ listen("overlay-shot", (event) => {
 listen("overlay-purple", (event) => {
   const { x, y } = event.payload;
   fx.triggerPurple(x * canvas.width, y * canvas.height);
+  kick();
+});
+
+listen("overlay-arm", (event) => {
+  const { id, x, y, progress, label } = event.payload || {};
+  if (id === undefined || !(progress >= 0)) {
+    rings.delete(id);
+    return;
+  }
+  const now = performance.now();
+  const prev = rings.get(id);
+  if (prev?.flashUntil) return;
+  rings.set(id, { x, y, progress, label, seen: now, flashUntil: progress >= 1 ? now + RING_FLASH_MS : 0 });
   kick();
 });
 

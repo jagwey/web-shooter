@@ -22,43 +22,79 @@ Görünmüyorsa: "Özellikler" kartında "Ağ efektleri" açık mı, overlay aç
 Çift el: "Özellikler > İki el" açıksa iki elle iki pencereyi aynı anda tutabilirsin.`,
   },
   {
-    keys: ["birak", "firlat", "fling", "snap", "kenara", "avuc", "palm", "open hand"],
-    text: `🖐️ Bırakma / fırlatma: Pencere tutuluyken avucunu aç. Yavaş açarsan olduğu yere bırakır; hızlı savurarak açarsan fırlatır ve ekran kenarına yapıştırır (yarım ekran snap).`,
+    keys: ["birak", "firlat", "fling", "snap", "kenara", "avuc", "palm", "open hand", "oynat", "sonraki parca", "muzik", "medya"],
+    text: `🖐️ Açık avuç:
+• Pencere tutuluyken: aç → bırak. Hızlı savurarak açarsan fırlatır ve ekran kenarına yapıştırır.
+• Tutma yokken avuç SABİT → oynat/duraklat.
+• Avuç yana SAVUR → sonraki parça.
+• Bekleyen sekme kapatma / AI sorusu varsa açık avuç iptal eder.`,
   },
   {
-    keys: ["sekme kapat", "kapat", "gojo", "purple", "mor", "close tab", "hollow"],
-    text: `🟣 Gojo "Hollow Purple" ile pencere kapatma (bilgisayarı KAPATMAZ):
-1. "Gojo" kartında "Mor kapatma" açık olsun.
-2. İki eli de Gojo işaretine al: işaret + orta parmak açık, yüzük + serçe kapalı.
-3. Bir eli kameraya yaklaştır (ekranda diğerinden belirgin büyük, ~1.5 kat), diğerini geride tut.
-4. Duruşu ~0.4 saniye bozmadan tut. Tek atış. Yumrukla pencere tutarken mor atılmaz.
-5. Kapanan hedef: son 3 saniyede ağladığın pencere; o yoksa öndeki elin gösterdiği pencere. Windows'a WM_CLOSE gider (sekme Ctrl+W değil).
-6. Hedef yoksa hiçbir şey kapanmaz. "Test et" yalnız efekti dener.
+    keys: ["sekme kapat", "kapat", "peace", "zafer", "makas", "v isareti", "close tab"],
+    text: `✌️ Sekme kapatma (Ctrl+W):
+1. İşaret + orta parmağı V gibi AYRIK aç, yüzük + serçe kapalı.
+2. Pozu tut: rozetteki halka dolarken beklemeye devam et; dolunca aktif sekme kapanır.
+3. Vazgeçmek için eli indir ya da avucunu aç (kapatma iptal edilir).
+Parmaklar bitişikse bu Gojo'dur (kaydırma), sekme kapanmaz.`,
+  },
+  {
+    keys: ["gojo", "purple", "mor", "hollow", "kaydir", "scroll", "bitisik"],
+    text: `🟣 Gojo = iki parmak BİTİŞİK (işaret + orta), yüzük + serçe kapalı.
+• Tek el: eli yukarı/aşağı oynat → sayfa kaydırma.
+• İki el: biri kameraya belirgin yakın (~1.5 kat büyük) ~0.4 sn tut → Hollow Purple, vurulan pencereyi kapatır (bilgisayarı KAPATMAZ).
+Kapanan hedef: son 3 sn içinde ağladığın pencere, yoksa öndeki elin gösterdiği pencere. Hedef yoksa hiçbir şey kapanmaz.
 Yanlışlıkla kapatmayı "Infinity Shield" engeller (bkz. "kalkan nedir"). İptal: açık avuç.`,
+  },
+  {
+    keys: ["pinch", "cimdik", "ses", "volume", "zoom", "yakinlas", "uzaklas", "ses nasil"],
+    text: `🤏 Çimdik (başparmak + işaret): 
+• Bileği çevir → ses artar/azalır (sağa = +, sola = −).
+• Parmakları aç-kapa → yakınlaştır / uzaklaştır (zoom).
+Çimdik pozundayken diğer komutlar kilitlenir, yanlışlıkla sekme kapanmaz.`,
+  },
+  {
+    keys: ["tabanca", "finger gun", "nisan", "sniper", "ask ai", "ai sor", "yapay zekaya sor"],
+    text: `🎯 Tabanca: işaret açık, başparmak BELİRGİN dışarıda, diğerleri kapalı.
+• Tek el: pozu tut (halka dolar) → ekrandaki hedefi yapay zekaya sorar.
+• İki el tabanca: nişan (sniper) kombinasyonu, hedefi seçip AI'ya gönderir.
+Başparmak içerideyse bu tabanca değil, sadece "işaret" olur.`,
+  },
+  {
+    keys: ["duraklat", "durdur", "surdur", "pause", "resume", "hareketleri kapat", "ctrl+alt+p", "duraklatirim"],
+    text: `⏸️ Hareketleri duraklat/sürdür: kamera kartındaki "Duraklat" düğmesi ya da Ctrl+Alt+P. Duraklatılmışken kamera izlenir ama hiçbir komut çalışmaz; durum rozeti "Duraklatıldı" der. Tekrar basınca sürer.`,
+  },
+  {
+    keys: ["deneme modu", "deneme", "practice", "dry run", "dene", "pratik"],
+    text: `🧪 Deneme modu: kamera kartındaki "Deneme modu" kutusu. Hareketler algılanır ama komut ÇALIŞMAZ; sadece "yapılacaktı" bildirimi görürsün. Yeni hareketleri güvenle öğrenmek için ideal. Kapatınca normale döner. Oturuma özeldir, kaydedilmez.`,
   },
   {
     keys: ["fiske", "flick", "ok isareti", "kucult", "minimize", "gorev cubugu", "taskbar"],
     text: `👌 Fiske = görev çubuğuna indir (pencereyi KAPATMAZ):
 1. Başparmak ile işaret parmağı bir halka yapsın (OK), orta, yüzük ve serçe açık kalsın.
-2. Eli hedef pencereye / sekmeye doğru hızla savur. Duran bir OK eli bir şey indirmez.
+2. Sonra işaret parmağını halkadan hızla fırlat (fiske). Sadece OK pozu bir şey indirmez; hareket gerekir.
 3. Windows pencereyi görev çubuğuna alır (SW_MINIMIZE). WM_CLOSE gitmez.
 Hollow Purple ayrıdır: iki el Gojo işareti pencereyi kapatır.`,
   },
   {
-    keys: ["kalkan", "shield", "infinity", "guvenlik", "yanlislikla", "safety"],
-    text: `🛡️ Infinity Shield: Gojo kartındaki "Güvenlik" anahtarı. Açıkken kod editörü, doküman ve form pencerelerinde kapatma jestini engeller; ekranda kalkan efekti çıkar. Yanlışlıkla kaydedilmemiş işi kapatmamak için açık tut.`,
+    keys: ["kalkan", "shield", "infinity", "guvenlik", "yanlislikla", "safety", "ninja", "masaustu"],
+    text: `🛡️ Infinity Shield: Gojo kartındaki "Güvenlik" anahtarı. Açıkken kod editörü, doküman ve form pencerelerinde kapatma jestini engeller; ekranda kalkan efekti çıkar. Kaydedilmemiş işi kaybetmemek için açık tut.
+🥷 Ninja kalkanı: iki açık avucu birlikte aşağı indir → masaüstünü göster.`,
   },
   {
-    keys: ["jest", "hareket", "gesture", "el hareketleri", "hangi hareket", "komutlar listesi", "ne yapabilir"],
+    keys: ["jest", "hareket", "gesture", "el hareketleri", "hangi hareket", "komutlar listesi", "ne yapabilir", "hotkey", "ctrl+alt"],
     text: `✋ Tüm el hareketleri:
 • 🤟 İşaret + serçe → ağ at
-• ☝️ Yalnız işaret → nişan al (hedef pencere seçilir)
 • ✊ Yumruk → pencereyi tut
-• 🖐️ Açık avuç → bırak / fırlat (kenara yapışır)
-• 👌 Başparmak + işaret halka, diğer parmaklar açık, hedefe doğru savur → görev çubuğuna indir (fiske, kapatmaz)
-• 🟣 İki el Gojo işareti (işaret+orta), biri önde ~0.4 sn → vurulan pencereyi kapat (Hollow Purple)
-Her jest ~0.1 sn sabit tutulunca algılanır, aynı aksiyon 0.6 sn bekleme ile tekrar eder.
-"Ayarlar & Güç > Komutlar" kısmından aksiyonlara kendi jest veya klavye kısayolunu bağlayabilirsin.`,
+• 🖐️ Açık avuç → bırak/fırlat; tutma yokken sabit = oynat/duraklat, savur = sonraki parça
+• 👌 OK yap, işaret parmağını fırlat → görev çubuğuna indir (kapatmaz)
+• ✌️ V (parmaklar ayrık), halka dolana dek tut → sekmeyi kapat
+• 🤞 İki parmak bitişik → kaydır; iki elle → Hollow Purple (pencere kapat)
+• 🎯 Tabanca (başparmak dışarıda), tut → AI'ya sor; iki elle → sniper
+• 🤏 Çimdik → bileği çevir = ses, aç/kapa = zoom
+• 🥷 İki avuç aşağı → masaüstü
+• ☝️ Yalnız işaret → sadece gösterge (komut yok)
+Kısayollar: Ctrl+Alt+J / Ctrl+Alt+K (komut kısayolları), Ctrl+Alt+P (hareketleri duraklat/sürdür).
+Çoğu komut ~0.1 sn sabit tutulunca algılanır. "Deneme modu" ile komut çalıştırmadan dene."Ayarlar & Güç > Komutlar" kısmından aksiyonlara kendi jest veya klavye kısayolunu bağlayabilirsin.`,
   },
   {
     keys: ["komut ekle", "kisayol", "shortcut", "binding", "tus ata", "klavye"],
@@ -102,7 +138,7 @@ Her jest ~0.1 sn sabit tutulunca algılanır, aynı aksiyon 0.6 sn bekleme ile t
   {
     keys: ["monitor", "ekran sec", "ikinci ekran", "multi monitor", "display", "diger ekran", "throw"],
     text: `🖥️ İkinci ekran: Ağ işaretiyle pencereyi tut, eli diğer monitöre doğru hızlı savur. Pencere o ekrana oturur (site oraya gider). Yavaş bırakırsan yerinde kalır. Tek monitörde savurma eski kenar yaslamasını kullanır.
-👌 Fiske (OK işareti) küçültür, kapatmaz. 🟣 Hollow Purple pencereyi kapatır.`,
+👌 Fiske (OK yapıp işaret parmağını fırlat) küçültür, kapatmaz. 🟣 Hollow Purple pencereyi kapatır.`,
   },
   {
     keys: ["tema", "theme", "renk", "gorunum", "sakura", "miles", "symbiote", "neon"],
@@ -213,11 +249,14 @@ export const GUIDE_TOPICS = [
   "Pencere nasıl taşınır?",
   "Yapay zeka nasıl eklenir?",
   "Jest algılanmıyor",
+  "Hareketleri nasıl duraklatırım?",
+  "Deneme modu nedir?",
 ];
 
 export const GUIDE_HELP = `Bana uygulamayla ilgili her şeyi sorabilirsin. Örnek:
-• Ağ nasıl atılır? · Pencere nasıl taşınır? · Sekme nasıl kapatılır?
+• Ağ nasıl atılır? · Pencere nasıl taşınır? · Sekme nasıl kapatılır? · Ses nasıl açılır? · Pinch
 • Jest algılanmıyor / kamera siyah · Telefonu kamera yapma
+• Hareketleri duraklat · Deneme modu
 • Tema ve özel efekt · Kendi kısayolunu ekleme · Güncelleme
 • Yapay zeka nasıl eklenir? (Gemini, Ollama, Özel API)
 Komut da verebilirsin: "optimize et", "pencereleri hizala".`;

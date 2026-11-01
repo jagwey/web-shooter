@@ -40,3 +40,16 @@ test("old Gojo flick binding becomes gojo, and OK flick minimizes", () => {
 test("effect presets include the performance mode", () => {
   assert.deepEqual(FX_PRESETS, ["classic", "mint", "neon", "low"]);
 });
+
+test("migrate drops maximize_restore and adds the pause hotkey once", () => {
+  const old = [
+    { id: "b-max", action: "maximize_restore", input: { kind: "gesture", value: "point" } },
+    { id: "b-web", action: "shoot", input: { kind: "gesture", value: "web" } },
+  ];
+  const once = migrateBindings(old);
+  assert.equal(once.some((b) => b.action === "maximize_restore"), false);
+  assert.equal(actionFor(once, "hotkey", "CommandOrControl+Alt+P"), "gestures_pause");
+  const twice = migrateBindings(once);
+  assert.equal(twice.filter((b) => b.action === "gestures_pause").length, 1);
+  assert.equal(actionFor(defaultBindings(), "hotkey", "CommandOrControl+Alt+P"), "gestures_pause");
+});

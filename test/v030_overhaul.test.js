@@ -5,13 +5,13 @@ import test from "node:test";
 import { createHandFilter, filterLandmarks, handSpeed, predict } from "../src/filter.js";
 import { activeProfile, createProfile, loadProfiles, recordMs, recordShot, sanitizeProfiles } from "../src/profiles.js";
 
-test("v0.4.3 version parity across package.json, Cargo.toml, and tauri.conf.json", () => {
+test("v0.4.4 version parity across package.json, Cargo.toml, and tauri.conf.json", () => {
   const pkg = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf8"));
   const tauriConf = JSON.parse(fs.readFileSync(path.resolve("src-tauri/tauri.conf.json"), "utf8"));
   const cargoToml = fs.readFileSync(path.resolve("src-tauri/Cargo.toml"), "utf8");
-  assert.equal(pkg.version, "0.4.3");
-  assert.equal(tauriConf.version, "0.4.3");
-  assert.match(cargoToml, /version\s*=\s*"0.4.3"/);
+  assert.equal(pkg.version, "0.4.4");
+  assert.equal(tauriConf.version, "0.4.4");
+  assert.match(cargoToml, /version\s*=\s*"0.4.4"/);
 });
 
 test("v0.3.0 desktop.toml grants permissions for move_window_fast and profile commands", () => {

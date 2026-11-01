@@ -120,6 +120,8 @@ self.onmessage = async (event) => {
         world: result.worldLandmarks || [],
         pose: body,
         ms: performance.now() - started,
+        handedness: (result.handedness || result.handednesses || []).map((c) => (c && c[0] && c[0].categoryName) || ""),
+        time: time ?? performance.now(),
       });
     } catch (error) {
       self.postMessage({ type: "hands", hands: [], world: [], pose: null, ms: performance.now() - started, failed: String(error?.message || error) });
