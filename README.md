@@ -6,7 +6,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-0.4.0-emerald?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-0.4.1-emerald?style=for-the-badge)
 ![Tauri 2](https://img.shields.io/badge/Tauri_2-Rust_%2B_Vite-blue?style=for-the-badge)
 ![MediaPipe](https://img.shields.io/badge/MediaPipe_Hands-120_FPS_Float16-orange?style=for-the-badge)
 ![Filter](https://img.shields.io/badge/Filter-1_Euro_%2B_14--42ms_Adaptive_Lead-cyan?style=for-the-badge)

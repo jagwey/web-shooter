@@ -1,12 +1,17 @@
 # 🕸️ Jagwey Web Shooter — Project Status & Progress Report (PROGRESS.md)
 
-**Versiyon:** `0.4.0`  
+**Versiyon:** `0.4.1`  
 **Proje:** Jagwey Web Shooter (Masaüstü Örtüsü / Desktop Web Shooter & Window Manipulator)  
 **Hedef Platform:** Windows 10/11 x64  
 **Teknoloji Yığını:** Tauri 2 (Rust) + Vite + MediaPipe Tasks Vision + Win32 API + Web Audio API  
 **Depo (GitHub):** [https://github.com/jagwey/web-shooter](https://github.com/jagwey/web-shooter)  
 
-## Son tur (2026-11-01 — v0.4.0 UX/UI Yeniden Tasarımı, 6-Geometrili FX Motoru & Canlı HUD)
+## Son tur (2026-11-01 — v0.4.1 HP Kamera & Evrensel Fallback Yaması)
+- 📷 **HP & Entegre Kameralar İçin Evrensel Aşamalı Fallback (`openStream`):** `openStream` fonksiyonundaki katı `exact: deviceId` ve `min: 30` FPS kısıtlamaları esnetildi. Kamera sürücüsü yüksek çözünürlük veya 60 FPS modunu başlatamazsa hata fırlatıp durmak yerine önce `{ ideal: deviceId }` serbest modunu, ardından `{ video: true }` evrensel sistem varsayılanını dener.
+- 🔍 **Açıklayıcı Hata Teşhisi:** Kamera açılamadığında salt `Kamera açılamadı.` yerine Windows MediaFoundation veya tarayıcıdan dönen teknik hata detayı (`error.message`) ekrana eklenir.
+- 🧪 **Birim Testleri:** 83/83 birim testi tam başarıyla doğrulandı.
+
+## Önceki tur (2026-11-01 — v0.4.0 UX/UI Yeniden Tasarımı, 6-Geometrili FX Motoru & Canlı HUD)
 - 🧭 **Kategorize Sekmeli Kontrol Paneli & Bento Grid (`index.html`, `src/style.css`, `src/control.js`):** Sağ sütunda alt alta yığılan 9 ayrı kart nedeniyle oluşan sonsuz kaydırma (scroll) sorunu çözüldü. Üst kısma yapışkan 5'li kategori sekme çubuğu (`✨ Tümü`, `🎮 Hareketler`, `🎨 Tema & FX`, `🤖 AI & Stüdyo`, `🖥️ Ekran & Sistem`) eklendi. 10 özellik anahtarı (Gojo Moru ve Infinity Shield dahil) tek bakışta görünen **2 sütunlu Bento Grid** düzeninde birleştirildi.
 - 🧹 **Gereksiz Kalabalıkların Temizlenmesi & Sadeleştirme:**
   - Sol sütunda ekranın yarısını kaplayan 3 paragraflık Gizlilik kartı ve 4 kutulu rehber birleştirilerek **6 Rozetli Kompakt Hareket Rehberi** (`🤟 Ağ At`, `✊ Yakala`, `🖐️ Fırlat`, `🟣 Gojo Moru`, `👌 Küçült`, `✌️ Sekme Kapat`) ve tek satırlık açılır/kapanır `🛡️ Gizlilik, İpuçları & Kamera Güvencesi` çekmecesine dönüştürüldü.

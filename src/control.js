@@ -1246,7 +1246,7 @@ async function ensureLandmarker() {
 
 async function openStream(deviceId) {
   // Configure video constraints for ideal resolution 640x360 (16:9 widescreen) at 30-60 FPS
-  // with fallback to 640x480 (4:3) if overconstrained.
+  // with fallback to 640x480 (4:3) and universal { video: true } fallback if overconstrained or busy.
   const sizes = [
     { width: { ideal: 640, max: 1280 }, height: { ideal: 360, max: 720 } },
     { width: { ideal: 640 }, height: { ideal: 360 } },
@@ -1272,11 +1272,27 @@ async function openStream(deviceId) {
           return await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
         } catch (error) {
           lastError = error;
-          if (error?.name !== "OverconstrainedError" && error?.name !== "NotFoundError") throw error;
         }
       }
     }
   }
+
+  // Universal fallback 1: Any resolution/FPS on the specified device
+  if (deviceId) {
+    try {
+      return await navigator.mediaDevices.getUserMedia({ audio: false, video: { deviceId: { ideal: deviceId } } });
+    } catch (e) {
+      lastError = e;
+    }
+  }
+
+  // Universal fallback 2: Default system camera with zero constraints
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+  } catch (e) {
+    lastError = e;
+  }
+
   throw lastError;
 }
 
@@ -1348,8 +1364,9 @@ async function startCamera() {
     await describeHolders();
     const key = cameraErrorKey(error);
     const extra = key === "cameraBusy" ? holderSuffix() : "";
-    setMessage("cameraMessage", `${t(key)} ${extra}`.trim());
-    setMessage("onboardCameraMessage", `${t(key)} ${extra}`.trim());
+    const detail = error?.message ? ` (${error.message})` : "";
+    setMessage("cameraMessage", `${t(key)} ${extra}${detail}`.trim());
+    setMessage("onboardCameraMessage", `${t(key)} ${extra}${detail}`.trim());
     document.getElementById("cameraRetry").hidden = false;
     render();
     return false;

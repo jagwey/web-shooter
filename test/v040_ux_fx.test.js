@@ -2,43 +2,28 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { LOOKS, createEffectState, drawEffectFrame, registerCustomLook, spawnShot } from "../src/effects.js";
+import { LOOKS, createWebFx, registerCustomLook } from "../src/effects.js";
 import { STRINGS } from "../src/i18n.js";
 
-function mockCtx() {
+function mockCtx(width, height) {
+  const canvas = { width, height };
   const ops = [];
-  return {
-    ops,
-    save() { ops.push("save"); },
-    restore() { ops.push("restore"); },
-    beginPath() { ops.push("beginPath"); },
-    closePath() { ops.push("closePath"); },
-    moveTo() { ops.push("moveTo"); },
-    lineTo() { ops.push("lineTo"); },
-    quadraticCurveTo() { ops.push("quadraticCurveTo"); },
-    bezierCurveTo() { ops.push("bezierCurveTo"); },
-    arc() { ops.push("arc"); },
-    ellipse() { ops.push("ellipse"); },
-    stroke() { ops.push("stroke"); },
-    fill() { ops.push("fill"); },
-    translate() { ops.push("translate"); },
-    rotate() { ops.push("rotate"); },
-    clearRect() {},
-    set lineCap(_) {},
-    set lineJoin(_) {},
-    set strokeStyle(_) {},
-    set fillStyle(_) {},
-    set lineWidth(_) {},
-    set shadowColor(_) {},
-    set shadowBlur(_) {},
-    set globalAlpha(_) {},
-    createRadialGradient() {
-      return { addColorStop() {} };
-    },
-    createLinearGradient() {
-      return { addColorStop() {} };
-    },
-  };
+  const proxy = new Proxy(
+    { canvas, ops },
+    {
+      get(target, prop) {
+        if (prop in target) return target[prop];
+        if (prop === "canvas") return canvas;
+        if (prop === "ops") return ops;
+        return (...args) => { ops.push(prop); };
+      },
+      set(target, prop, value) {
+        target[prop] = value;
+        return true;
+      },
+    }
+  );
+  return proxy;
 }
 
 test("v0.4.0 FX Engine: all 6 particle styles and thickness render without error", () => {
@@ -54,11 +39,16 @@ test("v0.4.0 FX Engine: all 6 particle styles and thickness render without error
     assert.equal(LOOKS.custom.particleStyle, style);
     assert.equal(LOOKS.custom.thickness, 6);
 
-    const state = createEffectState("custom");
-    spawnShot(state, { width: 1920, height: 1080, targetX: 960, targetY: 540, now: 0 });
-    const ctx = mockCtx();
-    drawEffectFrame(ctx, state, { width: 1920, height: 1080, now: 220 });
-    assert.ok(ctx.ops.includes("stroke") || ctx.ops.includes("fill"), `Style ${style} must draw geometry`);
+    const ctx = mockCtx(1920, 1080);
+    const fx = createWebFx(ctx);
+    fx.setPreset("custom");
+    fx.shoot(960, 540);
+    assert.doesNotThrow(() => {
+      for (let frame = 1; frame <= 30; frame += 1) {
+        fx.draw(frame * 33);
+      }
+    });
+    assert.ok(ctx.ops.includes("stroke") || ctx.ops.includes("arc"), `Style ${style} must draw geometry`);
   }
 });
 

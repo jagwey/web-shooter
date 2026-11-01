@@ -13,7 +13,7 @@ const FRAME_MS = 33;
 
 export const FX_PRESETS = ["classic", "mint", "neon", "low"];
 
-const LOOKS = {
+export const LOOKS = {
   spiderman: {
     quality: "full",
     trail: [255, 60, 60],
