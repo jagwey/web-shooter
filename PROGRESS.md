@@ -205,4 +205,5 @@ scripts\build.bat
 ## 2026-11-01 — v0.4.2 açılış çökmesi fix
 - `control.js`: `wireChrome()` → `renderCustomGesturesList()` ayarlar yüklenmeden `state.settings.customGestures` okuyup TypeError atıyordu; modül çöküyor, `boot()` hiç çalışmıyor, çoğu buton bağlanmıyordu.
 - Fix: `state.settings?.customGestures` + `boot()` içinde ayarlar yüklenince listeyi yeniden çiz. `npm test` 83/83, dev konsol temiz, worker GPU inference OK.
-- Exe'ye yansıması için `npm run desktop:build` gerekli; gerçek kamerayla el algılama henüz doğrulanmadı.
+- v0.4.3 build + GitHub release yayınlandı (Latest, setup.exe + .sig + latest.json). Gerçek kamerayla el algılama henüz doğrulanmadı.
+- Buton taraması (87 buton tıklandı): aiTileBtn ve aiSniperBtn için sessiz hata guard'ı eklendi; kalan hata yok.

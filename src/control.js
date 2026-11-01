@@ -621,7 +621,8 @@ function wireAi() {
       appendAiChat("user", "🗂️ Pencereleri ekrana yerleştir");
       const windows = await invoke("list_windows").catch(() => []);
       const snap = await invoke("desktop_snapshot").catch(() => ({}));
-      const res = await autoTileWorkspace(state.settings, windows, snap?.monitors || state.monitors);
+      const res = await autoTileWorkspace(state.settings, windows, snap?.monitors || state.monitors)
+        .catch((err) => ({ message: `Yerleştirilemedi: ${err?.message || err}` }));
       appendAiChat("bot", res.message);
     });
   }
@@ -2249,7 +2250,7 @@ async function askAiAt(point) {
 
   if (state.settings?.sniperTarget === "gemini_web") {
     try {
-      navigator.clipboard?.writeText?.(prompt);
+      navigator.clipboard?.writeText?.(prompt)?.catch(() => {});
       window.open("https://gemini.google.com/app", "_blank");
       setMessage("shellBanner", "🚀 Gemini açıldı ve hedef bilgi panoya kopyalandı!");
     } catch {

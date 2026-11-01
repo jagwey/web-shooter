@@ -271,7 +271,7 @@ export function optimizeSettingsWithAi(currentSettings, hardware = {}) {
  * Smart Workspace Auto-Tiler
  */
 export async function autoTileWorkspace(settings, windows, monitors) {
-  if (!windows || windows.length === 0) return { count: 0, message: "Açık pencere bulunamadı." };
+  if (!Array.isArray(windows) || windows.length === 0) return { count: 0, message: "Açık pencere bulunamadı." };
 
   const primaryMon = monitors?.find((m) => m.primary) || monitors?.[0] || {
     x: 0,
