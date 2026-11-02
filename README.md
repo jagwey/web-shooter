@@ -179,9 +179,9 @@ flowchart TD
 ### 4. 🪟 Akıllı Pencere Client Alanı & Win32 Yönetimi
 Ağ veya yumrukla pencere tutulduğunda, tarayıcı veya uygulamanın sayfa yüzeyine (`Chrome_RenderWidgetHostHWND` / native HWND) doğrudan bağlanır; başlık çubuğu veya ofset kayması oluşmaz. `SWP_ASYNCWINDOWPOS | SWP_NOSENDCHANGING` ile asenkron taşınır ve CPU/GPU kilitlenmesi yaşanmaz.
 
-### 5. 🎨 Soft Modern (Glassmorphism) Tasarım & Temalar
+### 5. 🎨 Soft Modern (Glassmorphism) Tasarım & 7 Anime Modu (`Anime Edition`)
 - **Buzlu Cam Efekti:** Paneller `backdrop-filter: blur(16px)` ve yumuşak kenar ışıması ile masaüstünüze şık bir hava katar.
-- **Tema & Efekt Seçici:** Minimal (Koyu) ve Anime temaları arasında anında geçiş imkanı, isteğe bağlı kapatılabilen parçacık efektleri.
+- **7 Farklı Anime Modu:** **Satoru** (*Sonsuzluk Büyücüsü*), **Akari** (*Neon Kunoichi*), **Kuro** (*Yıldırım Shinobi*), **Tanjiro** (*Güneş Nefesi*), **Jin-Woo** (*Gölge Hükümdarı*), **Naruto** (*Kurama Bilge Modu*) ve **Eva-01** (*Siber Mecha*) modları; her biri kendi özel SVG karakter çizimi, dinamik UI renk paleti, masaüstü efekt stili ve canlı hareket replikleriyle gelir.
 - **Yenilenen Butonlar:** Metin ve toggle mandalları (`knob`) ayrıştırılmış, asla çakışmayan ferah kart tasarımı.
 
 ### 6. 👤 Yerel Kullanıcı Profilleri & Skor Tablosu (`src/profiles.js`)

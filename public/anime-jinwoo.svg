@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <defs>
+    <radialGradient id="bgJinwoo" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#2e1065"/>
+      <stop offset="60%" stop-color="#0f0728"/>
+      <stop offset="100%" stop-color="#05020d"/>
+    </radialGradient>
+    <linearGradient id="shadowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="50%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#c084fc"/>
+    </linearGradient>
+    <filter id="glowMonarch" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <circle cx="120" cy="120" r="114" fill="url(#bgJinwoo)" stroke="url(#shadowGrad)" stroke-width="4"/>
+
+  <!-- Shadow Monarch Aura Flames -->
+  <path d="M38 175 Q52 95 82 135 Q120 40 158 135 Q188 95 202 175" fill="none" stroke="#8b5cf6" stroke-width="4.5" opacity="0.6" filter="url(#glowMonarch)"/>
+  <circle cx="52" cy="84" r="5" fill="#38bdf8" filter="url(#glowMonarch)"/>
+  <circle cx="188" cy="78" r="6" fill="#c084fc" filter="url(#glowMonarch)"/>
+
+  <!-- Monarch Dark Coat -->
+  <path d="M44 226 C54 174 82 158 120 158 C158 158 186 174 196 226 Z" fill="#090514" stroke="#8b5cf6" stroke-width="2.5"/>
+  <path d="M88 158 L120 198 L152 158" fill="none" stroke="#38bdf8" stroke-width="2.5" filter="url(#glowMonarch)"/>
+
+  <!-- Neck & Sharp Face -->
+  <rect x="107" y="138" width="26" height="30" rx="10" fill="#e2cbb8"/>
+  <path d="M82 84 C82 60 158 60 158 84 C158 122 143 148 120 154 C97 148 82 122 82 84 Z" fill="#f3dfd0"/>
+
+  <!-- Glowing Monarch Blue/Violet Eyes with Energy Trail -->
+  <ellipse cx="101" cy="106" rx="9" ry="5.5" fill="#090514"/>
+  <circle cx="101" cy="106" r="4.5" fill="#38bdf8" filter="url(#glowMonarch)"/>
+  <path d="M92 106 Q80 96 72 84" fill="none" stroke="#38bdf8" stroke-width="2.5" filter="url(#glowMonarch)"/>
+
+  <ellipse cx="139" cy="106" rx="9" ry="5.5" fill="#090514"/>
+  <circle cx="139" cy="106" r="4.5" fill="#a855f7" filter="url(#glowMonarch)"/>
+  <path d="M148 106 Q160 96 168 84" fill="none" stroke="#a855f7" stroke-width="2.5" filter="url(#glowMonarch)"/>
+
+  <!-- Confident Expression -->
+  <path d="M112 135 L128 133" fill="none" stroke="#475569" stroke-width="2.3" stroke-linecap="round"/>
+
+  <!-- Jet-Black Swept Anime Hair -->
+  <path d="M74 102 L62 72 L84 68 L78 40 L106 54 L120 26 L136 52 L162 38 L156 68 L178 72 L166 102 C158 76 142 64 120 64 C98 64 82 76 74 102 Z" fill="#090d16" stroke="#8b5cf6" stroke-width="1.5"/>
+  <path d="M88 64 L98 98 M116 60 L120 96 M146 64 L136 98" stroke="#090d16" stroke-width="5" stroke-linecap="round"/>
+</svg>

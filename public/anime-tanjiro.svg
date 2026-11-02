@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <defs>
+    <radialGradient id="bgTanjiro" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#7c2d12"/>
+      <stop offset="55%" stop-color="#3b0d0c"/>
+      <stop offset="100%" stop-color="#140707"/>
+    </radialGradient>
+    <linearGradient id="hairTanjiro" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#991b1b"/>
+      <stop offset="50%" stop-color="#450a0a"/>
+      <stop offset="100%" stop-color="#1c0404"/>
+    </linearGradient>
+    <linearGradient id="fireGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ef4444"/>
+      <stop offset="55%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#fde047"/>
+    </linearGradient>
+    <filter id="glowFire" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <circle cx="120" cy="120" r="114" fill="url(#bgTanjiro)" stroke="url(#fireGrad)" stroke-width="4"/>
+
+  <!-- Sun Breathing Fire Aura -->
+  <path d="M28 165 Q48 100 72 130 Q95 60 120 110 Q150 55 170 125 Q196 95 212 165" fill="none" stroke="url(#fireGrad)" stroke-width="5" opacity="0.65" filter="url(#glowFire)"/>
+  <circle cx="48" cy="72" r="5" fill="#fde047" filter="url(#glowFire)"/>
+  <circle cx="192" cy="68" r="6" fill="#f97316" filter="url(#glowFire)"/>
+  <circle cx="176" cy="175" r="4" fill="#fde047" filter="url(#glowFire)"/>
+
+  <!-- Checkered Haori & Uniform -->
+  <path d="M46 226 C55 178 82 162 120 162 C158 162 185 178 194 226 Z" fill="#0f172a" stroke="#10b981" stroke-width="2.5"/>
+  <path d="M52 226 L75 176 L98 226 Z" fill="#10b981" opacity="0.75"/>
+  <path d="M142 226 L165 176 L188 226 Z" fill="#10b981" opacity="0.75"/>
+
+  <!-- Neck & Face -->
+  <rect x="106" y="138" width="28" height="30" rx="10" fill="#fbdbc8"/>
+  <path d="M80 86 C80 62 160 62 160 86 C160 122 145 148 120 153 C95 148 80 122 80 86 Z" fill="#fde4d2"/>
+
+  <!-- Demon Slayer Forehead Scar / Mark -->
+  <path d="M90 78 Q98 72 104 82 Q96 86 92 92 Q86 84 90 78 Z" fill="#991b1b" opacity="0.85"/>
+
+  <!-- Hanafuda Earrings -->
+  <rect x="73" y="122" width="8" height="18" rx="2" fill="#ffffff" stroke="#ef4444" stroke-width="1.5"/>
+  <circle cx="77" cy="128" r="2.5" fill="#ef4444"/>
+  <rect x="159" y="122" width="8" height="18" rx="2" fill="#ffffff" stroke="#ef4444" stroke-width="1.5"/>
+  <circle cx="163" cy="128" r="2.5" fill="#ef4444"/>
+
+  <!-- Burgundy Crimson Eyes -->
+  <ellipse cx="101" cy="108" rx="9" ry="7" fill="#ffffff"/>
+  <circle cx="101" cy="108" r="5.5" fill="#991b1b"/>
+  <circle cx="101" cy="108" r="2.5" fill="#f97316"/>
+  <circle cx="99" cy="106" r="1.8" fill="#ffffff"/>
+
+  <ellipse cx="139" cy="108" rx="9" ry="7" fill="#ffffff"/>
+  <circle cx="139" cy="108" r="5.5" fill="#991b1b"/>
+  <circle cx="139" cy="108" r="2.5" fill="#f97316"/>
+  <circle cx="137" cy="106" r="1.8" fill="#ffffff"/>
+
+  <!-- Eyebrows & Smile -->
+  <path d="M89 96 Q101 92 111 97" fill="none" stroke="#450a0a" stroke-width="2.8" stroke-linecap="round"/>
+  <path d="M129 97 Q139 92 151 96" fill="none" stroke="#450a0a" stroke-width="2.8" stroke-linecap="round"/>
+  <path d="M111 134 Q120 140 129 134" fill="none" stroke="#9a3412" stroke-width="2.4" stroke-linecap="round"/>
+
+  <!-- Spiky Burgundy Hair -->
+  <path d="M70 102 L54 76 L78 72 L66 44 L96 56 L112 28 L126 54 L152 32 L150 60 L180 48 L166 76 L186 86 L162 104 C156 76 142 66 120 66 C98 66 84 76 70 102 Z" fill="url(#hairTanjiro)" stroke="#f97316" stroke-width="1.5"/>
+</svg>

@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <defs>
+    <radialGradient id="bgNaruto" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#78350f"/>
+      <stop offset="60%" stop-color="#451a03"/>
+      <stop offset="100%" stop-color="#180902"/>
+    </radialGradient>
+    <linearGradient id="chakraGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="50%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#ea580c"/>
+    </linearGradient>
+    <filter id="glowChakra" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <circle cx="120" cy="120" r="114" fill="url(#bgNaruto)" stroke="url(#chakraGrad)" stroke-width="4"/>
+
+  <!-- Rasengan Energy Sphere -->
+  <circle cx="188" cy="168" r="22" fill="#38bdf8" opacity="0.85" filter="url(#glowChakra)"/>
+  <circle cx="188" cy="168" r="12" fill="#e0f2fe"/>
+
+  <!-- Six Paths / Kurama Chakra Cloak -->
+  <path d="M46 226 C56 176 84 160 120 160 C156 160 184 176 194 226 Z" fill="#ea580c" stroke="#fef08a" stroke-width="3"/>
+  <circle cx="96" cy="192" r="5" fill="#180902"/>
+  <circle cx="120" cy="196" r="5" fill="#180902"/>
+  <circle cx="144" cy="192" r="5" fill="#180902"/>
+
+  <!-- Neck & Face -->
+  <rect x="106" y="138" width="28" height="30" rx="10" fill="#fbd7ba"/>
+  <path d="M80 86 C80 62 160 62 160 86 C160 122 145 148 120 153 C95 148 80 122 80 86 Z" fill="#fde2ca"/>
+
+  <!-- Shinobi Headband -->
+  <rect x="78" y="72" width="84" height="18" rx="4" fill="#1e293b" stroke="#f59e0b" stroke-width="1.5"/>
+  <rect x="98" y="75" width="44" height="12" rx="3" fill="#cbd5e1"/>
+
+  <!-- Sage Kurama Golden Eyes -->
+  <ellipse cx="101" cy="107" rx="9" ry="6" fill="#fef08a"/>
+  <rect x="99.5" y="102" width="3" height="10" rx="1" fill="#dc2626"/>
+  <rect x="96" y="105.5" width="10" height="3" rx="1" fill="#dc2626"/>
+
+  <ellipse cx="139" cy="107" rx="9" ry="6" fill="#fef08a"/>
+  <rect x="137.5" y="102" width="3" height="10" rx="1" fill="#dc2626"/>
+  <rect x="134" y="105.5" width="10" height="3" rx="1" fill="#dc2626"/>
+
+  <!-- Whisker Marks -->
+  <path d="M84 118 L94 120 M83 124 L94 125 M85 130 L95 130" stroke="#9a3412" stroke-width="2" stroke-linecap="round"/>
+  <path d="M156 118 L146 120 M157 124 L146 125 M155 130 L145 130" stroke="#9a3412" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Grin -->
+  <path d="M108 134 Q120 142 132 134" fill="none" stroke="#9a3412" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- Spiky Golden Hair -->
+  <path d="M68 84 L50 58 L78 58 L66 30 L96 48 L120 18 L144 48 L174 30 L162 58 L190 58 L172 84 Z" fill="url(#chakraGrad)" stroke="#fef08a" stroke-width="1.5" filter="url(#glowChakra)"/>
+</svg>

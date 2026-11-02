@@ -286,7 +286,7 @@ function wireChrome() {
   }
 
   document.getElementById("themeSelect")?.addEventListener("change", (e) => {
-    state.settings.theme = applyUiTheme(e.target.value);
+    state.settings.theme = applyUiTheme(e.target.value, state.settings.animeCharacter);
     emitTo("overlay", "overlay-preset", overlayLook());
     persist();
   });
@@ -294,8 +294,8 @@ function wireChrome() {
   document.getElementById("quickAnimeBtn")?.addEventListener("click", () => {
     if (!state.settings) return;
     const nextTheme = state.settings.theme === "anime" ? "minimal" : "anime";
-    state.settings.theme = applyUiTheme(nextTheme);
     state.settings.animeCharacter ||= "satoru";
+    state.settings.theme = applyUiTheme(nextTheme, state.settings.animeCharacter);
     emitTo("overlay", "overlay-preset", overlayLook());
     persist();
     render();
@@ -306,7 +306,7 @@ function wireChrome() {
       const charId = btn.dataset.animeChar;
       if (!charId || !ANIME_CHARACTERS[charId] || !state.settings) return;
       state.settings.animeCharacter = charId;
-      state.settings.theme = applyUiTheme("anime");
+      state.settings.theme = applyUiTheme("anime", charId);
       emitTo("overlay", "overlay-preset", overlayLook());
       persist();
       render();
@@ -513,7 +513,7 @@ function applySettingsEffects() {
   if (state.settings.customFx) {
     registerCustomLook(state.settings.customFx);
   }
-  state.settings.theme = applyUiTheme(state.settings.theme);
+  state.settings.theme = applyUiTheme(state.settings.theme, state.settings.animeCharacter);
   setAudioEnabled(state.settings.soundEnabled !== false);
   emitTo("overlay", "overlay-preset", overlayLook());
   emitTo("overlay", "overlay-settings", {
@@ -549,6 +549,11 @@ function profileSettings(saved) {
   if (!copy.migratedV060) {
     for (const key of V060_KEYS) delete copy[key];
     copy.migratedV060 = true;
+  }
+  if (!copy.migratedBodyOff) {
+    copy.bodyTracking = false;
+    copy.dualHands = true;
+    copy.migratedBodyOff = true;
   }
   return copy;
 }
@@ -944,18 +949,20 @@ function startWorker(sources) {
         if (state.worker !== worker) return;
         state.inFlight = false;
         let hands = msg.hands;
-        if (msg.landmarkFlat) {
+        if (!Array.isArray(hands) && msg.landmarkFlat) {
           hands = unpackFlatLandmarks(msg.landmarkFlat, landmarkPool, msg.numHands || 0);
         }
-        if (msg.worldFlat) {
+        if (Array.isArray(msg.world)) {
+          state.world = msg.world;
+        } else if (msg.worldFlat) {
           state.world = unpackFlatLandmarks(msg.worldFlat, worldLandmarkPool, msg.numHands || 0);
         } else {
-          state.world = msg.world || [];
+          state.world = [];
         }
         if (msg.pose) state.pose = { landmarks: msg.pose, at: performance.now() };
         if (!state.stream) return;
         // Round trip, not just inference: what the user actually feels.
-        onHands(hands, performance.now() - state.sentAt, msg.handedness, msg.time);
+        onHands(hands || [], performance.now() - state.sentAt, msg.handedness, msg.time);
       }
     };
     worker.postMessage({ type: "init", sources });
@@ -1281,10 +1288,8 @@ async function detectTick() {
     // One frame in flight; the worker's reply runs onHands, which schedules the next tick.
     state.inFlight = true;
     try {
-      // Downscaled to 640px wide before transfer; the model input is smaller than that anyway.
-      const vw = video.videoWidth || 640;
-      const vh = video.videoHeight || 360;
-      const bitmap = await createImageBitmap(video, { resizeWidth: 640, resizeHeight: Math.round((640 * vh) / vw), resizeQuality: "low" });
+      // Full-resolution bitmap is transferred (not copied); the GPU path rescales it for the model.
+      const bitmap = await createImageBitmap(video);
       if (!state.worker) {
         bitmap.close();
         state.inFlight = false;
@@ -1292,7 +1297,7 @@ async function detectTick() {
       }
       state.sentAt = performance.now();
       state.worker.postMessage(
-        { type: "frame", bitmap, time: state.sentAt, body: Boolean(state.settings?.bodyTracking), numHands: state.settings?.dualHands === true ? 2 : 1 },
+        { type: "frame", bitmap, time: state.sentAt, body: Boolean(state.settings?.bodyTracking), numHands: state.settings?.dualHands === false ? 1 : 2 },
         [bitmap]
       );
     } catch {
@@ -2431,7 +2436,7 @@ function paintLiveStatus() {
 function render() {
   if (!state.settings) return;
   paintLang();
-  const uiTheme = applyUiTheme(state.settings.theme);
+  const uiTheme = applyUiTheme(state.settings.theme, state.settings.animeCharacter);
   const themeSelect = document.getElementById("themeSelect");
   if (themeSelect) themeSelect.value = uiTheme;
   renderAnimeCompanion();
@@ -2574,11 +2579,14 @@ function triggerAnimeReaction(kind) {
   }, 3200);
 }
 
-// Overlay look: effects off = outline only; accent follows the UI theme.
+// Overlay look: effects off = outline only; accent follows the UI theme & selected Anime Mode.
 function overlayLook() {
   const s = state.settings || {};
-  const preset = s.showWebs && s.fxPreset && s.fxPreset !== "off" ? s.fxPreset : "off";
-  return { preset, accent: s.theme === "anime" ? "#ff4fa3" : "#ffffff" };
+  const charData = ANIME_CHARACTERS[s.animeCharacter] || ANIME_CHARACTERS.satoru;
+  const activePreset = s.theme === "anime" ? (charData.fxPreset || "classic") : (s.fxPreset || "classic");
+  const preset = s.showWebs && s.fxPreset && s.fxPreset !== "off" ? activePreset : "off";
+  const accent = s.theme === "anime" ? (charData.accent || "#ff4fa3") : "#ffffff";
+  return { preset, accent };
 }
 
 function fxOff() {

@@ -87,6 +87,91 @@
   --font-head: "Baloo 2", "Varela Round", "Segoe UI Variable Display", cursive, sans-serif;
 }
 
+[data-theme="anime"][data-anime-char="satoru"] {
+  --bg: #110b22;
+  --bg-gradient: radial-gradient(circle at 50% 0%, #2e1559 0%, #110b22 80%);
+  --accent: #c084fc;
+  --accent-2: #38bdf8;
+  --accent-gradient: linear-gradient(135deg, #a855f7 0%, #38bdf8 100%);
+  --accent-soft: rgba(168, 85, 247, 0.18);
+  --accent-glow: 0 0 22px rgba(168, 85, 247, 0.45);
+}
+
+[data-theme="anime"][data-anime-char="kuro"] {
+  --bg: #081224;
+  --bg-gradient: radial-gradient(circle at 50% 0%, #112a54 0%, #081224 80%);
+  --panel: rgba(15, 26, 48, 0.80);
+  --panel-sunken: rgba(9, 16, 32, 0.72);
+  --line: rgba(56, 189, 248, 0.16);
+  --line-strong: rgba(56, 189, 248, 0.28);
+  --muted: #93c5fd;
+  --accent: #38bdf8;
+  --accent-2: #facc15;
+  --accent-gradient: linear-gradient(135deg, #38bdf8 0%, #6366f1 100%);
+  --accent-soft: rgba(56, 189, 248, 0.18);
+  --accent-glow: 0 0 22px rgba(56, 189, 248, 0.45);
+}
+
+[data-theme="anime"][data-anime-char="tanjiro"] {
+  --bg: #1a0908;
+  --bg-gradient: radial-gradient(circle at 50% 0%, #45120e 0%, #1a0908 80%);
+  --panel: rgba(38, 16, 16, 0.80);
+  --panel-sunken: rgba(24, 9, 9, 0.72);
+  --line: rgba(251, 146, 60, 0.18);
+  --line-strong: rgba(251, 146, 60, 0.30);
+  --muted: #fdba74;
+  --accent: #fb923c;
+  --accent-2: #ef4444;
+  --accent-gradient: linear-gradient(135deg, #f97316 0%, #ef4444 100%);
+  --accent-soft: rgba(249, 115, 22, 0.18);
+  --accent-glow: 0 0 22px rgba(249, 115, 22, 0.45);
+}
+
+[data-theme="anime"][data-anime-char="jinwoo"] {
+  --bg: #090516;
+  --bg-gradient: radial-gradient(circle at 50% 0%, #1f0d47 0%, #090516 80%);
+  --panel: rgba(18, 12, 38, 0.82);
+  --panel-sunken: rgba(10, 6, 22, 0.75);
+  --line: rgba(139, 92, 246, 0.18);
+  --line-strong: rgba(139, 92, 246, 0.32);
+  --muted: #c4b5fd;
+  --accent: #a78bfa;
+  --accent-2: #38bdf8;
+  --accent-gradient: linear-gradient(135deg, #7c3aed 0%, #2563eb 100%);
+  --accent-soft: rgba(139, 92, 246, 0.20);
+  --accent-glow: 0 0 24px rgba(139, 92, 246, 0.50);
+}
+
+[data-theme="anime"][data-anime-char="naruto"] {
+  --bg: #190e04;
+  --bg-gradient: radial-gradient(circle at 50% 0%, #422006 0%, #190e04 80%);
+  --panel: rgba(38, 22, 10, 0.80);
+  --panel-sunken: rgba(24, 13, 5, 0.72);
+  --line: rgba(251, 191, 36, 0.18);
+  --line-strong: rgba(251, 191, 36, 0.30);
+  --muted: #fde68a;
+  --accent: #fbbf24;
+  --accent-2: #f97316;
+  --accent-gradient: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%);
+  --accent-soft: rgba(245, 158, 11, 0.18);
+  --accent-glow: 0 0 22px rgba(245, 158, 11, 0.45);
+}
+
+[data-theme="anime"][data-anime-char="eva"] {
+  --bg: #0e061a;
+  --bg-gradient: radial-gradient(circle at 50% 0%, #2e1065 0%, #062814 55%, #0e061a 90%);
+  --panel: rgba(26, 14, 46, 0.82);
+  --panel-sunken: rgba(14, 8, 26, 0.75);
+  --line: rgba(74, 222, 128, 0.20);
+  --line-strong: rgba(168, 85, 247, 0.35);
+  --muted: #bbf7d0;
+  --accent: #4ade80;
+  --accent-2: #a855f7;
+  --accent-gradient: linear-gradient(135deg, #4ade80 0%, #9333ea 100%);
+  --accent-soft: rgba(74, 222, 128, 0.16);
+  --accent-glow: 0 0 22px rgba(74, 222, 128, 0.45);
+}
+
 * { box-sizing: border-box; }
 
 html:not(.overlay-page), body:not(.overlay) {

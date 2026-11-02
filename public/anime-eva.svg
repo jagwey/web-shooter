@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <defs>
+    <radialGradient id="bgEva" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#3b0764"/>
+      <stop offset="60%" stop-color="#14532d"/>
+      <stop offset="100%" stop-color="#090414"/>
+    </radialGradient>
+    <linearGradient id="evaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4ade80"/>
+      <stop offset="50%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#f97316"/>
+    </linearGradient>
+    <filter id="glowEva" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <circle cx="120" cy="120" r="114" fill="url(#bgEva)" stroke="url(#evaGrad)" stroke-width="4"/>
+
+  <!-- Octagonal AT-Field Halo -->
+  <polygon points="120,26 178,50 202,108 178,166 120,190 62,166 38,108 62,50" fill="none" stroke="#f97316" stroke-width="2.5" opacity="0.65" filter="url(#glowEva)"/>
+
+  <!-- Unit-01 Cyber Plugsuit & Shoulder Pylons -->
+  <path d="M42 226 L56 150 L78 162 L92 226 Z" fill="#581c87" stroke="#4ade80" stroke-width="2.5"/>
+  <path d="M198 226 L184 150 L162 162 L148 226 Z" fill="#581c87" stroke="#4ade80" stroke-width="2.5"/>
+  <path d="M68 226 C76 178 96 164 120 164 C144 164 164 178 172 226 Z" fill="#3b0764" stroke="#4ade80" stroke-width="2.5"/>
+
+  <!-- Mecha Horn & Crest -->
+  <polygon points="120,18 110,72 130,72" fill="#4ade80" stroke="#a855f7" stroke-width="2" filter="url(#glowEva)"/>
+  <path d="M74 88 L120 62 L166 88 L154 148 L120 164 L86 148 Z" fill="#581c87" stroke="#4ade80" stroke-width="2.5"/>
+
+  <!-- Glowing Cyber Visor Eyes -->
+  <polygon points="86,104 114,112 92,120" fill="#4ade80" filter="url(#glowEva)"/>
+  <polygon points="154,104 126,112 148,120" fill="#4ade80" filter="url(#glowEva)"/>
+
+  <!-- Core Jawline -->
+  <polygon points="104,136 120,148 136,136 120,142" fill="#f97316" filter="url(#glowEva)"/>
+</svg>

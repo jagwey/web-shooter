@@ -20,17 +20,17 @@ let landmarker = null;
 let pose = null;
 let poseLoading = false;
 let poseAt = 0;
-let currentNumHands = 1;
+let currentNumHands = 2;
 let lastTimestampMs = 0;
 
 async function createHands(vision, model, delegate) {
   const options = {
     baseOptions: { modelAssetPath: model, delegate },
     runningMode: "VIDEO",
-    numHands: 1,
+    numHands: 2,
     minHandDetectionConfidence: 0.4,
-    minHandPresenceConfidence: 0.28,
-    minTrackingConfidence: 0.28,
+    minHandPresenceConfidence: 0.35,
+    minTrackingConfidence: 0.35,
   };
   if (delegate === "GPU") {
     // When delegate === "GPU", pass options.canvas = new OffscreenCanvas(1, 1)
@@ -79,7 +79,7 @@ self.onmessage = async (event) => {
           for (const delegate of ["GPU", "CPU"]) {
             try {
               landmarker = await createHands(vision, src.model, delegate);
-              currentNumHands = 1;
+              currentNumHands = 2;
               if (landmarker) {
                 console.log(`[hands-worker] HandLandmarker initialized successfully (${delegate}, ${src.tag})`);
                 self.postMessage({ type: "ready", delegate, tag: src.tag });
@@ -169,8 +169,8 @@ self.onmessage = async (event) => {
         landmarkFlat,
         worldFlat,
         numHands: numDetected,
-        hands: numDetected === 0 ? [] : null,
-        world: worldFlat ? null : (result.worldLandmarks || []),
+        hands: result.landmarks || [],
+        world: result.worldLandmarks || [],
         pose: body,
         ms: performance.now() - started,
         handedness: (result.handedness || result.handednesses || []).map((c) => (c && c[0] && c[0].categoryName) || ""),

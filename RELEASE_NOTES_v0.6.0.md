@@ -36,10 +36,19 @@
   - OK pozisyonundan işaret parmağınızı hızla fiskelediğinizde Win32 `AttachThreadInput` + `SendInput(Ctrl+W)` ile 60ms uyku gecikmesi olmadan aktif sekme anında kapanır.
 - 🚀 **Çok Hızlı Hareketlerde Kesintisiz Yan Ekrana Fırlatma:**
   - Elinizi çok hızlı savurduğunuzda kamera bulanıklığı veya elin kadrajdan çıkması nedeniyle pencerenin yarı yolda durması sorunu (`parkGrab`) tamamen giderildi. Hız vektörü yan ekranı işaret ediyorsa pencere anında diğer monitöre uçar. Negatif koordinatlı (sol/üst) ikinci monitör desteği (`SM_XVIRTUALSCREEN`) eklendi.
-- 🌸 **Gerçek Anime Karakter Teması (`Anime Edition`):**
-  - Üst çubuktaki **🌸 Anime Modu** butonu ve Görünüm sekmesiyle aktifleşen özel Anime teması!
-  - Seçilebilir 3 özel anime karakter eşlikçisi: **Satoru Ren (Sonsuzluk Büyücüsü)**, **Akari Kumo (Neon Örümcek Kunoichi)** ve **Raiden Kuro (Yıldırım Shinobi)**.
-  - Karakterler yaptığınız el hareketlerine (pencere tutma, yan ekrana fırlatma, fiske, alkış) canlı konuşma balonu replikleriyle tepki verir.
+- 🌸 **7 Farklı Anime Modu & Karakter Eşlikçisi (`Anime Edition`):**
+  - Üst çubuktaki **🌸 Anime Modu** butonu ve Görünüm sekmesiyle aktifleşen özel Anime teması ve 7 farklı karakter modu!
+  - Seçilebilir **7 özel anime modu** (her biri kendine özgü renk paleti, SVG avatarı, masaüstü efekt stili ve canlı konuşma replikleriyle):
+    1. **🟣 Satoru • Sonsuzluk Büyücüsü** (*Mor Boşluk / Hollow Purple* teması & parçacıkları)
+    2. **🌸 Akari • Neon Örümcek Kunoichi** (*Sakura & Neon Pembe* teması & yaprakları)
+    3. **⚡ Kuro • Yıldırım Shinobi** (*Elektrik Mavisi / Chidori* teması & kıvılcımları)
+    4. **🔥 Tanjiro • Güneş Nefesi (Hinokami)** (*Kızıl Alev* teması & ateş parçacıkları)
+    5. **🌑 Jin-Woo • Gölge Hükümdarı** (*Monarch Mor-Siyah* teması & gölge aurası)
+    6. **🦊 Naruto • Kurama Bilge Modu** (*Çakra Turuncusu* teması & alev/rasengan efektleri)
+    7. **🤖 Eva-01 • Siber Mecha Modu** (*Neon Yeşil & Mor* mecha HUD teması & yıldız tozu)
+  - Karakterler yaptığınız el hareketlerine (pencere tutma, yan ekrana fırlatma, fiske, alkış) kendi ses/replik tarzlarıyla canlı konuşma balonunda tepki verir.
+- 🖐️ **%100 Kararlı ve Hızlı El Algılama Onarımı:**
+  - Kamera karesi okuma (`createImageBitmap`), çift el (`numHands: 2`) WebGL2 başlatması ve `PoseLandmarker` WebGL çakışması giderilerek el algılama hızı ve kararlılığı maksimum seviyeye çıkarıldı.
 - 🛡️ **Kusursuz Buton & Metin Hizalaması:**
   - Kamera üst çubuğundaki (`Ayna`, `Büyüt`), hareket kontrollerindeki ve tüm kartlardaki buton sabitlikleri güçlendirildi; hiçbir ekran boyutunda yazılar taşmaz veya butonların yeri şaşmaz.
 - 🧪 **131/131 Test Başarısı:**

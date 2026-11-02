@@ -48,6 +48,8 @@ pub struct Settings {
     pub custom_fx: Option<serde_json::Value>,
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default = "default_anime_character")]
+    pub anime_character: String,
     #[serde(default)]
     pub hollow_purple_enabled: bool,
     #[serde(default = "default_close_mode")]
@@ -62,17 +64,17 @@ pub struct Settings {
     pub ai_endpoint: String,
     #[serde(default = "default_ai_model")]
     pub ai_model: String,
-    #[serde(default)]
+    #[serde(default, alias = "airVolumeToggle")]
     pub air_volume_enabled: bool,
-    #[serde(default)]
+    #[serde(default = "default_true", alias = "airMediaToggle")]
     pub air_media_enabled: bool,
-    #[serde(default)]
+    #[serde(default, alias = "ninjaShieldToggle")]
     pub ninja_shield_enabled: bool,
-    #[serde(default)]
+    #[serde(default, alias = "airZoomToggle")]
     pub air_zoom_enabled: bool,
-    #[serde(default)]
+    #[serde(default, alias = "airScrollToggle")]
     pub air_scroll_enabled: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub body_tracking: bool,
     #[serde(default = "default_sniper_target")]
     pub sniper_target: String,
@@ -84,6 +86,8 @@ pub struct Settings {
     pub migrated_pause: bool,
     #[serde(default)]
     pub migrated_v060: bool,
+    #[serde(default)]
+    pub migrated_body_off: bool,
 }
 
 fn default_smoothing() -> f32 {
@@ -126,6 +130,10 @@ fn default_theme() -> String {
     "minimal".into()
 }
 
+fn default_anime_character() -> String {
+    "satoru".into()
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -147,6 +155,7 @@ impl Default for Settings {
             dual_hands: true,
             custom_fx: None,
             theme: "minimal".into(),
+            anime_character: "satoru".into(),
             hollow_purple_enabled: false,
             close_mode: "window".into(),
             safety_guard: true,
@@ -155,16 +164,17 @@ impl Default for Settings {
             ai_endpoint: "http://localhost:11434".into(),
             ai_model: "gemini-2.5-flash".into(),
             air_volume_enabled: false,
-            air_media_enabled: false,
+            air_media_enabled: true,
             ninja_shield_enabled: false,
             air_zoom_enabled: false,
             air_scroll_enabled: false,
-            body_tracking: true,
+            body_tracking: false,
             sniper_target: "gemini_web".into(),
             custom_gestures: None,
             smoothing: 0.75,
             migrated_pause: false,
             migrated_v060: true,
+            migrated_body_off: true,
         }
     }
 }
@@ -206,6 +216,12 @@ impl Settings {
         if !matches!(self.theme.as_str(), "minimal" | "anime") {
             self.theme = "minimal".into();
         }
+        if !matches!(
+            self.anime_character.as_str(),
+            "satoru" | "akari" | "kuro" | "tanjiro" | "jinwoo" | "naruto" | "eva"
+        ) {
+            self.anime_character = "satoru".into();
+        }
         if !matches!(self.close_mode.as_str(), "tab" | "window") {
             self.close_mode = "window".into();
         }
@@ -239,13 +255,14 @@ impl Settings {
         self.fx_preset = "off".into();
         self.hollow_purple_enabled = false;
         self.air_volume_enabled = false;
-        self.air_media_enabled = false;
+        self.air_media_enabled = true;
         self.air_zoom_enabled = false;
         self.air_scroll_enabled = false;
         self.ninja_shield_enabled = false;
-        self.body_tracking = true;
+        self.body_tracking = false;
         self.theme = "minimal".into();
         self.migrated_v060 = true;
+        self.migrated_body_off = true;
         self
     }
 }
@@ -263,14 +280,20 @@ pub fn load_settings(app: &AppHandle) -> Settings {
     let Ok(text) = fs::read_to_string(path) else {
         return Settings::default();
     };
-    let Ok(settings) = serde_json::from_str::<Settings>(&text).map(Settings::normalize) else {
+    let Ok(mut settings) = serde_json::from_str::<Settings>(&text).map(Settings::normalize) else {
         return Settings::default();
     };
-    if settings.migrated_v060 {
+    if !settings.migrated_v060 {
+        settings = settings.migrate_v060();
+        let _ = store_settings(app, &settings);
         return settings;
     }
-    let settings = settings.migrate_v060();
-    let _ = store_settings(app, &settings);
+    if !settings.migrated_body_off {
+        settings.body_tracking = false;
+        settings.dual_hands = true;
+        settings.migrated_body_off = true;
+        let _ = store_settings(app, &settings);
+    }
     settings
 }
 
