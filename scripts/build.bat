@@ -7,4 +7,5 @@ set /p TAURI_SIGNING_PRIVATE_KEY=<"%USERPROFILE%\.tauri\web-shooter.key"
 set TAURI_SIGNING_PRIVATE_KEY_PASSWORD=
 cd /d "%~dp0.."
 call npm run desktop:build || exit /b 1
-node scripts\make-latest-json.mjs
+node scripts\make-latest-json.mjs || exit /b 1
+node scripts\verify-release.mjs || exit /b 1
