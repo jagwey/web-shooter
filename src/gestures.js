@@ -223,7 +223,9 @@ export function isFist(points, { ar = 1.0, stay = false } = {}) {
   const wrist = points[0];
   if (FINGERS.some((f) => isFingerExtended(points[f.tip], points[f.pip], wrist, points[f.pip - 1], { ar }))) return false;
   const closed = FINGERS.filter((f) => isFingerClosed(points[f.tip], points[f.pip], wrist, points[f.pip - 1], { ar })).length;
-  if (closed >= 3) return true;
+  // Entering needs all four fingers curled; the loose 3-finger/reach fallback only keeps an already-held fist.
+  if (closed >= (stay ? 3 : 4)) return true;
+  if (!stay) return false;
   const palm = palmReferenceScale(points, ar);
   if (palm < 1e-4) return false;
   const reach = FINGERS.reduce((sum, f) => sum + spanMetric(points[f.tip], wrist, ar), 0) / (FINGERS.length * palm);
@@ -755,39 +757,8 @@ export function isHandClap(hand0, hand1, dualHistory = [], options = {}) {
 
   // MediaPipe 1-frame hand merge / occlusion tolerance (symmetric for both hands):
   // When hands collide, MediaPipe often momentarily drops one hand or outputs only one merged hand.
-  if (isOneHandMissing) {
-    const survivingHand = hand0 || hand1;
-    const survivingTraj = hand0 ? traj0 : traj1;
-    const missingTraj = hand0 ? traj1 : traj0;
-
-    if (!missingTraj || missingTraj.length < 1) return false;
-    const lastMissing = missingTraj[missingTraj.length - 1];
-
-    if (tLatest - lastMissing.t > 140 || tLatest - lastMissing.t < 0) {
-      return false;
-    }
-
-    const kSurviving = survivingHand && Array.isArray(survivingHand) ? motionScale(survivingHand) : 0.15;
-    const kMissing = lastMissing.points && Array.isArray(lastMissing.points) ? motionScale(lastMissing.points) : kSurviving;
-    const K = (kSurviving + kMissing) / 2 || 0.15;
-
-    for (let i = 0; i < survivingTraj.length; i += 1) {
-      const s0 = survivingTraj[i];
-      const s1 = missingTraj.find((item) => Math.abs(item.t - s0.t) <= 40);
-      if (!s1) continue;
-      const dt = (tLatest - s0.t) / 1000;
-      if (dt < 0.03 || dt > 0.35) continue;
-      const d0 = Math.hypot(s0.x - s1.x, s0.y - s1.y) / K;
-      if (d0 > 0.6) {
-        const vApproach = d0 / dt;
-        if (vApproach >= minVelocity - 1e-5) {
-          if (options) options.lastClapAt = now;
-          return true;
-        }
-      }
-    }
-    return false;
-  }
+  // A clap needs two visible hands; a merged/dropped hand never counts.
+  if (isOneHandMissing) return false;
 
   // Both hands detected in current frame:
   const pts0 = hand0 || traj0[traj0.length - 1]?.points;

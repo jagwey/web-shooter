@@ -146,14 +146,14 @@ export function handSpeed(f, idx = 9) {
 // Grab prediction lead (ms) from hand speed: small at rest, capped so fast moves do not overshoot.
 export function leadMs(speed, maxLead = 20) {
   if (maxLead > 20) {
-    return Math.min(maxLead, Math.max(16, Math.round(16 + (speed || 0) * 26)));
+    return Math.min(maxLead, Math.max(16, Math.round(16 + (speed || 0) * 38)));
   }
   return Math.min(20, Math.max(8, 8 + (speed || 0) * 12));
 }
 
 // Adaptive Kinematic Predictive Lead expanding dynamically up to 55ms for high-speed tracking compensation.
 export function adaptiveLeadMs(speed, maxLead = 55) {
-  return Math.min(maxLead, Math.max(16, Math.round(16 + (speed || 0) * 26)));
+  return Math.min(maxLead, Math.max(16, Math.round(16 + (speed || 0) * 38)));
 }
 
 // Rope deadzone: ignore target jitter inside r px; r shrinks each update (12 -> 3) once the grab settles.

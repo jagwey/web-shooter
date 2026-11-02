@@ -461,10 +461,10 @@ function drawOutline(win, { x, y, w, h }) {
   ctx.globalAlpha = win.grabbed ? 1 : 0.6;
   ctx.lineWidth = lw;
   ctx.strokeStyle = "rgba(0, 0, 0, 0.75)";
-  pathRoundRect(x - half, y - half, w + lw, h + lw, 6 + half);
+  pathRoundRect(x - half, y - half, w + lw, h + lw, 8 + half);
   ctx.stroke();
   ctx.strokeStyle = getThemeColor();
-  pathRoundRect(x + half, y + half, Math.max(0, w - lw), Math.max(0, h - lw), Math.max(0, 6 - half));
+  pathRoundRect(x + half, y + half, Math.max(0, w - lw), Math.max(0, h - lw), Math.max(0, 8 - half));
   ctx.stroke();
   ctx.globalAlpha = 1;
   markDirty(x - 2 * lw, y - 2 * lw, w + 4 * lw, h + 4 * lw);

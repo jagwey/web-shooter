@@ -30,7 +30,7 @@ mod platform {
     use std::time::Duration;
     use windows::core::BOOL;
     use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT, TRUE, WPARAM};
-    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS};
     use windows::Win32::Graphics::Gdi::ClientToScreen;
     use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentProcessId};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -220,6 +220,19 @@ mod platform {
         let mut rect = RECT::default();
         if unsafe { GetWindowRect(hwnd, &mut rect) }.is_err() {
             return None;
+        }
+        // Visible frame without the invisible resize border, so overlay outlines fit the window.
+        let mut frame = RECT::default();
+        let ok = unsafe {
+            DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_EXTENDED_FRAME_BOUNDS,
+                &mut frame as *mut RECT as *mut _,
+                std::mem::size_of::<RECT>() as u32,
+            )
+        };
+        if ok.is_ok() && frame.right > frame.left && frame.bottom > frame.top {
+            rect = frame;
         }
         let width = rect.right - rect.left;
         let height = rect.bottom - rect.top;

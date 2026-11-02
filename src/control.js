@@ -1,8 +1,8 @@
 import { FilesetResolver, HandLandmarker, PoseLandmarker } from "@mediapipe/tasks-vision";
 import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, migrateBindings, removeBinding, upsertBinding } from "./bindings.js";
 import { chatWithAi } from "./ai.js";
-import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen, mediaPlayPause } from "./desktop.js";
-import { classifyGesture, worldShape, fingerStates, isFist, isInFaceDeadzone, voteGesture, isHandClap, isFlickRelease } from "./gestures.js";
+import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen, mediaNextTrack } from "./desktop.js";
+import { classifyGesture, worldShape, fingerStates, isFist, isInFaceDeadzone, voteGesture, isAirMediaFlick, isFlickRelease } from "./gestures.js";
 import { cloneLandmarks, createHandFilter, filterLandmarks, handSpeed, leadMs, adaptiveLeadMs, predict, predictPalmAnchor, ropeDeadzone } from "./filter.js";
 import { ACTION_COOLDOWN_MS, CLOSE_DWELL_MS, GRAB_CONFIRM_FRAMES, MINIMIZE_DWELL_MS, RELEASE_CONFIRM_FRAMES, createDwell, alignHandSlots, trimHistory } from "./gesture-runtime.js";
 import { registerCustomLook } from "./effects.js";
@@ -126,7 +126,7 @@ const POSE_FRESH_MS = 300;
 const WORKER_BOOT_MS = 4000;
 // A fist that stops being seen for this long ends the grab even without a clean palm.
 const FIST_LOST_MS = 350;
-const LEAD_CAP_MS = 85;
+const LEAD_CAP_MS = 110;
 // The hand must rest within DWELL_MOVE_PX this long before the minimize/close ring starts filling.
 const PRE_HOVER_MS = 300;
 // Above this hand speed (screen widths/s) a closing fist is a swipe, not a grab.
@@ -1634,6 +1634,18 @@ function onHands(hands, detectMs, handedness, frameTime) {
         runActionForHand(i, action, aimPoint, true);
       }
 
+      // Fast open-palm swipe (either direction, so camera mirroring never matters) = next track.
+      if (state.settings?.airMediaToggle !== false && !handState.grab && gesture === "palm"
+        && now - (handState.lastSwipeAt || -Infinity) >= 1200
+        && [false, true].some((mirrored) => isAirMediaFlick(landmarks, handState.history, { now, mirrored, minDx: 1.3, minVx: 6 }))) {
+        handState.lastSwipeAt = now;
+        mediaNextTrack().catch(() => {});
+        const msg = "⏭️ " + (t("toastMediaNext") || "Sonraki parça");
+        setMessage("shellBanner", msg);
+        airToast(msg);
+        playThwip();
+      }
+
       // Flick gesture for active tab close (0ms dwell)
       if (!handState.grab && isFlickRelease(handState.history, { now, ar })) {
         if (now - (handState.lastFlickAt || -Infinity) >= ACTION_COOLDOWN_MS) {
@@ -1652,39 +1664,6 @@ function onHands(hands, detectMs, handedness, frameTime) {
     }
 
     badge?.style.setProperty("--arm", armMax);
-
-    // Hand Clap for Media Play/Pause (R1)
-    if (state.settings?.airMediaToggle !== false) {
-      state.dualHistory ||= [];
-      if (present[0] && present[1]) {
-        state.dualHistory.push({
-          t: ft,
-          hand0: cloneLandmarks(state.hands[0].landmarks),
-          hand1: cloneLandmarks(state.hands[1].landmarks),
-        });
-      } else if ((present[0] || present[1]) && state.dualHistory.length > 0) {
-        state.dualHistory.push({
-          t: ft,
-          hand0: present[0] ? cloneLandmarks(state.hands[0].landmarks) : null,
-          hand1: present[1] ? cloneLandmarks(state.hands[1].landmarks) : null,
-        });
-      }
-      trimHistory(state.dualHistory, ft, 1600);
-
-      const h0 = present[0] ? state.hands[0].landmarks : null;
-      const h1 = present[1] ? state.hands[1].landmarks : null;
-      state.clapOptions ||= { lastClapAt: null };
-      state.clapOptions.now = ft;
-
-      if (isHandClap(h0, h1, state.dualHistory, state.clapOptions)) {
-        mediaPlayPause().catch(() => {});
-        const msg = "👏 " + (t("toastMediaPlayPause") || "Medya Oynat / Durdur");
-        setMessage("shellBanner", msg);
-        airToast(msg);
-        playThwip();
-        triggerAnimeReaction("clap");
-      }
-    }
   }
 
   const gap = nextGap(hands.length > 0, detectMs);
@@ -2499,6 +2478,7 @@ function render() {
   setText("fpsValue", String(state.renderFps));
 
   renderFpsChips();
+  renderOutlineColor();
   renderMonitors(document.getElementById("monitorList"));
   renderBindings();
   syncBindForm();
@@ -2585,12 +2565,24 @@ function overlayLook() {
   const charData = ANIME_CHARACTERS[s.animeCharacter] || ANIME_CHARACTERS.satoru;
   const activePreset = s.theme === "anime" ? (charData.fxPreset || "classic") : (s.fxPreset || "classic");
   const preset = s.showWebs && s.fxPreset && s.fxPreset !== "off" ? activePreset : "off";
-  const accent = s.theme === "anime" ? (charData.accent || "#ff4fa3") : "#ffffff";
+  const accent = s.theme === "anime" ? (charData.accent || "#ff4fa3") : (s.outlineColor || "#ffffff");
   return { preset, accent };
 }
 
 function fxOff() {
   return overlayLook().preset === "off";
+}
+
+function renderOutlineColor() {
+  const input = document.getElementById("outlineColor");
+  if (!input || input.dataset.bound) return;
+  input.dataset.bound = "1";
+  input.value = state.settings.outlineColor || "#ffffff";
+  input.addEventListener("input", () => {
+    state.settings.outlineColor = input.value;
+    emitTo("overlay", "overlay-settings", { accent: overlayLook().accent });
+  });
+  input.addEventListener("change", () => persist());
 }
 
 function renderFpsChips() {

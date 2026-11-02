@@ -21,6 +21,7 @@ export function fallbackSettings() {
     bodyTracking: false,
     customFx: null,
     theme: "minimal",
+    outlineColor: "#ffffff",
     sniperTarget: "gemini_web",
     airVolumeToggle: true,
     airMediaToggle: true,

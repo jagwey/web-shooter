@@ -115,8 +115,8 @@ console.log("[2/4] Testing Dynamic Predictive Lead & Jerk-Limiting...");
 
 // Speed scaling tests
 assert.equal(adaptiveLeadMs(0, 55), 16, "Rest lead must be 16ms");
-assert.equal(adaptiveLeadMs(0.5, 55), 29, "Speed 0.5 lead must scale to 29ms");
-assert.equal(adaptiveLeadMs(1.0, 55), 42, "Speed 1.0 lead must scale to 42ms");
+assert.equal(adaptiveLeadMs(0.5, 55), 35, "Speed 0.5 lead must scale to 35ms");
+assert.equal(adaptiveLeadMs(1.0, 55), 54, "Speed 1.0 lead must scale to 54ms");
 assert.equal(adaptiveLeadMs(2.0, 55), 55, "Speed 2.0+ lead must cap cleanly at 55ms");
 assert.equal(adaptiveLeadMs(15.0, 55), 55, "Extreme high speed lead must not exceed maxLead");
 

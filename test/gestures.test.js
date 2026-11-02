@@ -250,15 +250,14 @@ function knuckles(tipY) {
   return p;
 }
 
-test("tolerant fist: a loose finger or foreshortened knuckles still grab", () => {
+test("strict fist: only fully curled fingers start a grab, a loose one only keeps a held grab", () => {
   const loose = makeHand({ index: false, middle: false, ring: false, pinky: false });
   loose[19] = { x: 0.66, y: 0.6, z: 0 };
   loose[20] = { x: 0.7, y: 0.6, z: 0 };
-  assert.equal(classifyGesture(loose), "fist");
-  assert.equal(classifyGesture(mirror(loose)), "fist");
-  assert.equal(classifyGesture(rotate(loose, 180)), "fist");
+  assert.equal(classifyGesture(loose), null);
+  assert.equal(classifyGesture(loose, null, [], { lastGesture: "fist" }), "fist");
   // No finger reads as closed here; tips pulled in toward the wrist decide it.
-  assert.equal(classifyGesture(knuckles(0.585)), "fist");
+  assert.equal(classifyGesture(knuckles(0.585)), null);
   // Looser claw: not a fresh grab, but a held fist does not drop.
   assert.equal(classifyGesture(knuckles(0.56)), null);
   assert.equal(classifyGesture(knuckles(0.56), null, [], { lastGesture: "fist" }), "fist");

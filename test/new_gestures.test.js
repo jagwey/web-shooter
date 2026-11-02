@@ -288,7 +288,7 @@ test("Hand Clap: refractory period (800ms) prevents double-triggering", () => {
   assert.equal(isHandClap(h0_end, h1_end, dualHistory2, optsPassed), true, "Allowed after 900ms");
 });
 
-test("Hand Clap: MediaPipe 1-frame hand merge tolerance triggers clap when one hand disappears upon impact", () => {
+test("Hand Clap: a single visible hand never claps", () => {
   const palm = makeOpenPalm();
   const h0_start = translateHand(palm, -0.3, 0);
   const h0_mid = translateHand(palm, -0.03, 0);
@@ -302,7 +302,7 @@ test("Hand Clap: MediaPipe 1-frame hand merge tolerance triggers clap when one h
 
   // At t = 100, only hand0 is present
   const clapActive = isHandClap(h0_mid, null, dualHistory, { now: 100 });
-  assert.equal(clapActive, true);
+  assert.equal(clapActive, false);
 });
 
 test("Flick Release: OK pose held >= 120ms then index snaps open at high speed triggers flick", () => {

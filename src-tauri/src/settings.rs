@@ -48,6 +48,8 @@ pub struct Settings {
     pub custom_fx: Option<serde_json::Value>,
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default = "default_outline_color")]
+    pub outline_color: String,
     #[serde(default = "default_anime_character")]
     pub anime_character: String,
     #[serde(default)]
@@ -126,6 +128,10 @@ fn default_ai_model() -> String {
     "gemini-2.5-flash".into()
 }
 
+fn default_outline_color() -> String {
+    "#ffffff".into()
+}
+
 fn default_theme() -> String {
     "minimal".into()
 }
@@ -155,6 +161,7 @@ impl Default for Settings {
             dual_hands: true,
             custom_fx: None,
             theme: "minimal".into(),
+            outline_color: default_outline_color(),
             anime_character: "satoru".into(),
             hollow_purple_enabled: false,
             close_mode: "window".into(),
@@ -212,6 +219,10 @@ impl Settings {
         }
         if !matches!(self.fx_preset.as_str(), "classic" | "mint" | "neon" | "low" | "light" | "spiderman" | "miles" | "symbiote" | "gojo" | "custom" | "off") {
             self.fx_preset = "off".into();
+        }
+        let c = self.outline_color.as_bytes();
+        if !(c.len() == 7 && c[0] == b'#' && c[1..].iter().all(u8::is_ascii_hexdigit)) {
+            self.outline_color = default_outline_color();
         }
         if !matches!(self.theme.as_str(), "minimal" | "anime") {
             self.theme = "minimal".into();
