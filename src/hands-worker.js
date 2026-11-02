@@ -76,7 +76,7 @@ self.onmessage = async (event) => {
       for (const src of message.sources || []) {
         try {
           const vision = await FilesetResolver.forVisionTasks(src.wasm);
-          for (const delegate of ["GPU", "CPU"]) {
+          for (const delegate of (message.cpuOnly ? ["CPU"] : ["GPU", "CPU"])) {
             try {
               landmarker = await createHands(vision, src.model, delegate);
               currentNumHands = 2;
@@ -166,11 +166,11 @@ self.onmessage = async (event) => {
 
       self.postMessage({
         type: "hands",
+        frameId: message.frameId,
+        session: message.session,
         landmarkFlat,
         worldFlat,
         numHands: numDetected,
-        hands: result.landmarks || [],
-        world: result.worldLandmarks || [],
         pose: body,
         ms: performance.now() - started,
         handedness: (result.handedness || result.handednesses || []).map((c) => (c && c[0] && c[0].categoryName) || ""),
@@ -179,6 +179,8 @@ self.onmessage = async (event) => {
     } catch (error) {
       self.postMessage({
         type: "hands",
+        frameId: message.frameId,
+        session: message.session,
         landmarkFlat: null,
         worldFlat: null,
         numHands: 0,

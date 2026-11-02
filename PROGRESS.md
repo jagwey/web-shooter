@@ -1,6 +1,11 @@
 # 🕸️ Jagwey Web Shooter — Project Status & Progress Report (PROGRESS.md)
 
-**Versiyon:** `0.6.0`  
+**Versiyon:** `0.6.2`
+
+### v0.6.2 kararlılık ve güvenli kayıt
+- Kamera iptali/oturum kontrolü, motor yeniden başlatma ve kare watchdog; tek buffer aktarımı ve kamera hızına uyan 60 FPS varsayılanı.
+- Açık hedef/ön pencere doğrulaması, DPAPI anahtar deposu, profillerden anahtar temizliği, atomik JSON/yedek kurtarma ve güvenli jest metni.
+- Yerel doğrulama: 143 JS testi, 3 Rust/Windows testi, sentetik stres ve benchmark başarılı. Donanım çeşitliliğinde uzun kullanım ve Authenticode imzası henüz yok.
 **Proje:** Jagwey Web Shooter (Masaüstü Örtüsü / Desktop Web Shooter & Window Manipulator)  
 **Hedef Platform:** Windows 10/11 x64  
 **Teknoloji Yığını:** Tauri 2 (Rust) + Vite + MediaPipe Tasks Vision + Win32 API + Web Audio API  

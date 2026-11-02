@@ -123,7 +123,8 @@ const MISS_GRACE_MS = 500;
 // Pointer lead along hand velocity; roughly one camera frame of hidden latency.
 const POSE_GAP_MS = 80;
 const POSE_FRESH_MS = 300;
-const WORKER_BOOT_MS = 4000;
+const WORKER_BOOT_MS = 15000;
+const WORKER_FRAME_MS = 3000;
 // A fist that stops being seen for this long ends the grab even without a clean palm.
 const FIST_LOST_MS = 350;
 const LEAD_CAP_MS = 110;
@@ -153,6 +154,10 @@ let profileSaveTimer = 0;
 let aiMsgSeq = 0;
 let landmarker = null;
 let landmarkerPromise = null;
+let workerFrameTimer = 0;
+let activeFrame = 0;
+let workerFailures = 0;
+let cancelWorkerBoot = null;
 let poseLandmarker = null;
 let poseLoading = false;
 let lastCamW = -1;
@@ -204,7 +209,7 @@ function wireChrome() {
       cancelDetect();
       stopTracks();
       const ok = await startCamera();
-      if (!ok && previous && previous !== deviceId) {
+      if (!ok && state.cameraWanted && previous && previous !== deviceId) {
         state.settings.cameraDeviceId = previous;
         await startCamera();
       }
@@ -527,6 +532,7 @@ function applySettingsEffects() {
 
 function syncProfilesToStorage() {
   if (!profiles) return;
+  profiles = sanitizeProfiles(profiles);
   saveProfiles(localStorage, profiles);
   invoke("save_profiles_cmd", { data: JSON.stringify(profiles) }).catch(() => {});
 }
@@ -546,6 +552,8 @@ const V060_KEYS = ["closeMode", "showWebs", "fxPreset", "hollowPurpleEnabled", "
 function profileSettings(saved) {
   if (!saved) return {};
   const copy = structuredClone(saved);
+  delete copy.aiApiKey;
+  delete copy.ai_api_key;
   if (!copy.migratedV060) {
     for (const key of V060_KEYS) delete copy[key];
     copy.migratedV060 = true;
@@ -561,6 +569,7 @@ function profileSettings(saved) {
 function snapshotProfile() {
   if (!profiles || !state.settings) return;
   activeProfile(profiles).settings = structuredClone(state.settings);
+  delete activeProfile(profiles).settings.aiApiKey;
   syncProfilesToStorage();
 }
 
@@ -652,6 +661,7 @@ async function boot() {
       saveProfiles(localStorage, profiles);
     }
   } catch {}
+  syncProfilesToStorage(); // Scrub secrets left in profiles by older versions.
   const startProfile = activeProfile(profiles);
   if (startProfile.settings) {
     state.settings = { ...state.settings, ...profileSettings(startProfile.settings) };
@@ -733,7 +743,7 @@ function fallbackSettings() {
     fxPreset: "off",
     bindings: defaultBindings(),
     cameraDeviceId: "",
-    targetFps: 120,
+    targetFps: 60,
     soundEnabled: true,
     showWebs: false,
     showFocusFrame: true,
@@ -905,6 +915,40 @@ async function ensurePose() {
 }
 
 /** Resolves {tag} once the worker's model is ready, or null (then the main-thread path runs). */
+function stopWorker() {
+  cancelWorkerBoot?.();
+  cancelWorkerBoot = null;
+  clearTimeout(workerFrameTimer);
+  workerFrameTimer = 0;
+  activeFrame += 1;
+  state.worker?.terminate();
+  state.worker = null;
+  state.workerReady = false;
+  state.inFlight = false;
+}
+
+function recoverWorker(worker, why) {
+  if (state.worker !== worker) return;
+  console.warn("[MediaPipe] Restarting worker:", why);
+  stopWorker();
+  for (let i = 0; i < state.hands.length; i += 1) cancelGrab(i, false);
+  if (!state.stream) return;
+  workerFailures += 1;
+  if (workerFailures > 2) {
+    stopCamera(false);
+    setMessage("cameraMessage", t("trackingStopped"));
+    document.getElementById("cameraRetry").hidden = false;
+    return;
+  }
+  ensureLandmarker().then((lm) => {
+    if (lm && state.stream) scheduleDetect(0);
+  }).catch(() => {
+    stopCamera(false);
+    setMessage("cameraMessage", t("trackingStopped"));
+    document.getElementById("cameraRetry").hidden = false;
+  });
+}
+
 function startWorker(sources) {
   return new Promise((resolve) => {
     let worker;
@@ -918,6 +962,7 @@ function startWorker(sources) {
     const fail = (why) => {
       console.warn("[MediaPipe] Worker failed, main thread fallback:", why);
       clearTimeout(timer);
+      cancelWorkerBoot = null;
       worker.terminate();
       if (state.worker === worker) state.worker = null;
       state.workerReady = false;
@@ -925,29 +970,38 @@ function startWorker(sources) {
       resolve(null);
     };
     const timer = setTimeout(() => fail("timeout"), WORKER_BOOT_MS);
+    cancelWorkerBoot = () => fail("cancelled");
     worker.onerror = (event) => fail(event.message || "error");
     worker.onmessage = (event) => {
       const msg = event.data;
       if (msg.type === "ready") {
         clearTimeout(timer);
+        cancelWorkerBoot = null;
+        if (!state.stream) {
+          worker.terminate();
+          resolve(null);
+          return;
+        }
         state.worker = worker;
         state.workerReady = true;
         state.delegate = msg.delegate;
         worker.onerror = (e) => {
-          // A crash after boot: drop to the main thread and keep the camera loop alive.
-          console.warn("[MediaPipe] Worker crashed", e.message);
-          worker.terminate();
-          state.worker = null;
-          state.workerReady = false;
-          state.inFlight = false;
-          ensureLandmarker().then((lm) => lm && scheduleDetect(0));
+          recoverWorker(worker, e.message);
         };
         resolve({ tag: msg.tag });
       } else if (msg.type === "error") {
         fail(msg.message);
       } else if (msg.type === "hands") {
-        if (state.worker !== worker) return;
+        if (state.worker !== worker || msg.frameId !== activeFrame || msg.session !== state.cameraToken) return;
+        clearTimeout(workerFrameTimer);
+        workerFrameTimer = 0;
         state.inFlight = false;
+        state.frameErrors = msg.failed ? (state.frameErrors || 0) + 1 : 0;
+        if (state.frameErrors >= 3) {
+          state.frameErrors = 0;
+          recoverWorker(worker, "inference errors");
+          return;
+        }
         let hands = msg.hands;
         if (!Array.isArray(hands) && msg.landmarkFlat) {
           hands = unpackFlatLandmarks(msg.landmarkFlat, landmarkPool, msg.numHands || 0);
@@ -965,7 +1019,7 @@ function startWorker(sources) {
         onHands(hands || [], performance.now() - state.sentAt, msg.handedness, msg.time);
       }
     };
-    worker.postMessage({ type: "init", sources });
+    worker.postMessage({ type: "init", sources, cpuOnly: workerFailures > 0 });
   });
 }
 
@@ -998,6 +1052,8 @@ async function ensureLandmarker() {
       if (modelLabel) modelLabel.textContent = `${t("modelReady")} · ${state.delegate} (${ready.tag}, worker)`;
       return state.worker;
     }
+
+    if (!state.stream || !state.cameraWanted) return null;
 
     for (const src of sources) {
       try {
@@ -1035,6 +1091,11 @@ async function ensureLandmarker() {
         }
 
         if (landmarker) {
+          if (!state.stream || !state.cameraWanted) {
+            landmarker.close();
+            landmarker = null;
+            return null;
+          }
           state.workerReady = true;
           if (modelLabel) {
             modelLabel.textContent = `${t("modelReady")} · ${state.delegate} (${src.tag})`;
@@ -1053,9 +1114,7 @@ async function ensureLandmarker() {
   try {
     return await landmarkerPromise;
   } finally {
-    if (!landmarker && !(state.worker && state.workerReady)) {
-      landmarkerPromise = null;
-    }
+    landmarkerPromise = null;
   }
 }
 
@@ -1152,10 +1211,12 @@ async function preferRealCamera(stream) {
 }
 
 async function startCamera() {
+  if (state.stream?.active && (!state.settings?.cameraDeviceId || state.settings.cameraDeviceId === state.activeDeviceId)) return true;
   // Rapid switches: only the latest call may attach its stream.
   const token = (state.cameraToken = (state.cameraToken || 0) + 1);
   state.cameraWanted = true;
   state.cameraPaused = false;
+  workerFailures = 0;
   setMessage("cameraMessage", "");
   setMessage("onboardCameraMessage", "");
   try {
@@ -1170,11 +1231,14 @@ async function startCamera() {
       stream = await openStream(null);
       state.settings.cameraDeviceId = "";
     }
-    if (!state.settings?.cameraDeviceId) stream = await preferRealCamera(stream);
-    if (token !== state.cameraToken) {
+    if (token !== state.cameraToken || !state.cameraWanted) {
       stream.getTracks().forEach((track) => track.stop());
-      return true; // superseded, not failed: the caller must not revert the newer choice
-
+      return false;
+    }
+    if (!state.settings?.cameraDeviceId) stream = await preferRealCamera(stream);
+    if (token !== state.cameraToken || !state.cameraWanted) {
+      stream.getTracks().forEach((track) => track.stop());
+      return false;
     }
     cancelDetect();
     stopTracks();
@@ -1182,12 +1246,20 @@ async function startCamera() {
     state.lastVideoTime = -1;
     video.srcObject = stream;
     await video.play();
+    if (token !== state.cameraToken || state.stream !== stream || !state.cameraWanted) return false;
+    stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+      if (state.stream !== stream) return;
+      stopCamera(false);
+      setMessage("cameraMessage", t("cameraMissing"));
+      document.getElementById("cameraRetry").hidden = false;
+    }, { once: true });
     document.getElementById("cameraRetry").hidden = true;
     await describeCamera();
+    if (token !== state.cameraToken || state.stream !== stream || !state.cameraWanted) return false;
     render();
 
     ensureLandmarker().then((lm) => {
-      if (lm) {
+      if (lm && token === state.cameraToken && state.stream === stream && state.cameraWanted) {
         scheduleDetect(0);
       }
     }).catch((e) => {
@@ -1196,6 +1268,7 @@ async function startCamera() {
 
     return true;
   } catch (error) {
+    if (token !== state.cameraToken) return false;
     // A failed switch keeps the camera that is already running.
     if (!state.stream) state.cameraWanted = false;
     await listCameras();
@@ -1220,6 +1293,7 @@ function cameraErrorKey(error) {
 }
 
 function stopCamera(user) {
+  state.cameraToken = (state.cameraToken || 0) + 1;
   if (user) state.cameraWanted = false;
   state.cameraPaused = !user && state.cameraWanted;
   cancelDetect();
@@ -1233,6 +1307,10 @@ function stopCamera(user) {
 }
 
 function stopTracks() {
+  clearTimeout(workerFrameTimer);
+  workerFrameTimer = 0;
+  activeFrame += 1;
+  state.inFlight = false;
   if (state.stream) {
     state.stream.getTracks().forEach((track) => {
       try {
@@ -1287,20 +1365,25 @@ async function detectTick() {
   if (useWorker) {
     // One frame in flight; the worker's reply runs onHands, which schedules the next tick.
     state.inFlight = true;
+    const worker = state.worker;
+    const session = state.cameraToken;
+    const frameId = ++activeFrame;
     try {
       // Full-resolution bitmap is transferred (not copied); the GPU path rescales it for the model.
       const bitmap = await createImageBitmap(video);
-      if (!state.worker) {
+      if (state.worker !== worker || session !== state.cameraToken || !state.stream || frameId !== activeFrame) {
         bitmap.close();
-        state.inFlight = false;
         return;
       }
       state.sentAt = performance.now();
-      state.worker.postMessage(
-        { type: "frame", bitmap, time: state.sentAt, body: Boolean(state.settings?.bodyTracking), numHands: state.settings?.dualHands === false ? 1 : 2 },
+      workerFrameTimer = setTimeout(() => recoverWorker(worker, "frame timeout"), WORKER_FRAME_MS);
+      worker.postMessage(
+        { type: "frame", bitmap, frameId, session, time: state.sentAt, body: Boolean(state.settings?.bodyTracking), numHands: state.settings?.dualHands === false ? 1 : 2 },
         [bitmap]
       );
     } catch {
+      if (session !== state.cameraToken || frameId !== activeFrame) return;
+      clearTimeout(workerFrameTimer);
       state.inFlight = false;
       scheduleDetect(30);
     }
@@ -1796,13 +1879,13 @@ function updateFingerPills(landmarks) {
 function nextGap(hand, detectMs) {
   // Right after losing the hand, re-detect on the very next camera frame.
   if (!hand) return state.missStreak > 6 ? 120 : 4;
-  const targetFps = state.settings?.targetFps || 120;
-  if (targetFps < 60 || state.settings?.fxPreset === "low" || state.settings?.fxPreset === "light") {
+  const targetFps = Math.min(state.settings?.targetFps || 60, state.cameraFps || 60);
+  if (state.settings?.fxPreset === "low" || state.settings?.fxPreset === "light") {
     return Math.max(33, detectMs * 1.5);
   }
   // Zero artificial delay when a hand is present: detectTick uses requestVideoFrameCallback
   // to synchronize directly with the camera's hardware frame delivery.
-  return 0;
+  return Math.max(0, 1000 / Math.max(1, targetFps) - detectMs);
 }
 
 function armIdleRelease() {
@@ -1940,8 +2023,12 @@ async function minimizeAt(x, y) {
 }
 
 async function closeActiveTabAt(x, y, handIndex = 0) {
-  const hs = state.hands[handIndex];
-  const found = hs?.lastTargetWindow || state.lastTargetWindow;
+  const session = state.cameraToken;
+  let found;
+  try {
+    found = await invoke("window_at", { x: Math.round(x), y: Math.round(y) });
+  } catch { return; }
+  if (!found?.hwnd || found.unsupported || session !== state.cameraToken || !state.stream || state.gesturesPaused || state.practiceMode) return;
   let targetHwnd = found?.hwnd || 0;
   let title = found?.title || "";
 
@@ -2056,8 +2143,14 @@ function renderCustomGesturesList() {
     row.style.fontSize = "0.78rem";
     row.style.padding = "4px 0";
     row.style.borderBottom = "1px solid rgba(255,255,255,0.06)";
-    row.innerHTML = `<span>✨ ${item.name} (${item.action})</span><button type="button" class="btn ghost danger" style="padding:2px 6px; font-size:0.7rem;">Sil</button>`;
-    row.querySelector("button").addEventListener("click", () => {
+    const label = document.createElement("span");
+    label.textContent = `${item.name} (${item.action})`;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "btn ghost danger";
+    remove.textContent = "Sil";
+    row.append(label, remove);
+    remove.addEventListener("click", () => {
       const [gone] = state.settings.customGestures.splice(idx, 1);
       state.settings.bindings = removeBinding(state.settings.bindings, `b-custom-${gone.name}`);
       persist();
@@ -2070,6 +2163,7 @@ function renderCustomGesturesList() {
 async function beginGrab(handIndex, point) {
   // One window_at lookup at a time; moveGrab calls this every frame until it lands.
   const handState = state.hands[handIndex];
+  const session = state.cameraToken;
   if (handState.grabbing) return;
   handState.grabbing = true;
   let found;
@@ -2078,7 +2172,7 @@ async function beginGrab(handIndex, point) {
   } finally {
     handState.grabbing = false;
   }
-  if (!found || found.unsupported || !found.hwnd) return;
+  if (!found || found.unsupported || !found.hwnd || session !== state.cameraToken || !state.stream || state.gesturesPaused || state.practiceMode) return;
   const box = clientOf(found);
   const currentPoint = handState.lastPoint || point;
   handState.grab = {
@@ -2390,12 +2484,11 @@ function considerCold() {
   if (!overlayOn && !state.controlVisible) {
     stopCamera(false);
     state.cameraPaused = state.cameraWanted;
-    if (state.worker) {
-      state.worker.terminate();
-      state.worker = null;
-      state.workerReady = false;
-      state.inFlight = false;
-    }
+    stopWorker();
+    landmarker?.close();
+    landmarker = null;
+    poseLandmarker?.close();
+    poseLandmarker = null;
   }
 }
 

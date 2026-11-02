@@ -1,17 +1,27 @@
 # Jagwey Web Shooter 🕸️⚡🟣
 
+## Güncel sürüm: 0.6.2
+
+Kamera/worker yeniden başlatma, güvenli pencere hedefleme, DPAPI anahtar saklama ve kesintiye dayanıklı ayar kaydı düzeltmeleri için [sürüm notlarına](RELEASE_NOTES_v0.6.2.md) bakın. [Windows kurulum paketleri](https://github.com/jagwey/web-shooter/releases) GitHub Releases üzerinden dağıtılır.
+
+Doğrulama: `npm test`, `npm run test:bench`, `npm run test:challenger` ve Windows üzerinde `cargo test --locked --manifest-path src-tauri/Cargo.toml --lib`. Benchmarklar sentetiktir; gerçek kamera, GPU, Win32 ve ekran gecikmesini temsil etmez. Donanıma bağlı FPS/RAM/gecikme için henüz doğrulanmış kullanıcı ölçümleri yoktur.
+
+`scripts/build.bat`, depo dışında saklanan mevcut updater anahtarıyla paketi imzalar; `dist-win/` içine güncel kurulum, updater `.sig`, `latest.json`, SHA-256 özeti ve güncel EXE kopyasını hazırlar. Windows Authenticode yayıncı sertifikası ayrıca gerekir; mevcut paket bu sertifikayı içermez.
+
+Aşağıdaki sürüm tarihçesi eski özellik ve tasarım kararlarını da içerir; güncel davranış için 0.6.2 notlarını esas alın.
+
 <p align="center">
   <img src="assets/app-icon.png" width="160" height="160" alt="Jagwey Web Shooter Icon" />
 </p>
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-0.6.0-emerald?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-0.6.2-emerald?style=for-the-badge)
 ![Tauri 2](https://img.shields.io/badge/Tauri_2-Rust_%2B_Vite-blue?style=for-the-badge)
-![MediaPipe](https://img.shields.io/badge/MediaPipe_Hands-120_FPS_Float16-orange?style=for-the-badge)
+![MediaPipe](https://img.shields.io/badge/MediaPipe_Hands-local_Float16-orange?style=for-the-badge)
 ![Filter](https://img.shields.io/badge/Filter-1_Euro_%2B_14--42ms_Adaptive_Lead-cyan?style=for-the-badge)
-![Win32](https://img.shields.io/badge/Win32_Native-SWP__ASYNCWINDOWPOS_Zero_Lag-purple?style=for-the-badge)
-![Tests](https://img.shields.io/badge/Tests-131%2F131_Passed-brightgreen?style=for-the-badge)
+![Win32](https://img.shields.io/badge/Win32_Native-SWP__ASYNCWINDOWPOS-purple?style=for-the-badge)
+![Tests](https://img.shields.io/badge/Tests-automated_checks-brightgreen?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
 **Windows Masaüstü El Takibi ve Akıllı Pencere Yönetim Katmanı**  
@@ -226,9 +236,9 @@ Sıfır gecikme sağlamak ve yanlış algılamaları önlemek amacıyla aşağı
 
 | Kriter | Geleneksel Electron Çözümleri | Jagwey Web Shooter (v0.6.0) |
 |---|---|---|
-| **Bellek Tüketimi (RAM)** | ~450 MB – 850 MB | **~35 MB – 55 MB** (Rust + WebView2) |
-| **Kamera & Takip Gecikmesi** | ~80 ms – 140 ms | **< 1 ms – 12 ms** (60 FPS + Kinematik Filtre) |
-| **Kare Hızı (FPS)** | 30 – 60 FPS | **60 / 120 FPS Donanım Vsync** |
+| **Bellek Tüketimi (RAM)** | Ölçülmedi | Toplam Rust + WebView2 süreç ağacı gerçek cihazda ölçülmeli |
+| **Kamera & Takip Gecikmesi** | Ölçülmedi | Uçtan uca kamera → ekran gecikmesi henüz doğrulanmadı |
+| **Kare Hızı (FPS)** | Donanıma bağlı | Kamera kapasitesine bağlı; yeni kurulumlarda üst sınır 60 FPS |
 | **İşlem Başlatma Çakışması** | Çift tıklamada çökme riski | **Tek Süreç Kilidi (Single Instance)** |
 | **Pencere Çizim Katmanı** | Opak / gecikmeli örtüler | **100% Saydam Click-Through (`WS_EX_TRANSPARENT`)** |
 | **Otomasyon & Testler** | Sınırlı | **126 / 126 Başarılı Test (100% Geçiş)** |
@@ -237,7 +247,7 @@ Sıfır gecikme sağlamak ve yanlış algılamaları önlemek amacıyla aşağı
 
 ## 🇬🇧 English Documentation
 
-**Jagwey Web Shooter** is an ultra-fast, zero-latency transparent desktop overlay built with Tauri 2, MediaPipe Hands (Float16 SIMD), and native Win32 window management APIs.
+**Jagwey Web Shooter** is a real-time transparent desktop overlay built with Tauri 2, MediaPipe Hands (Float16 SIMD), and native Win32 window management APIs. Hardware-dependent performance must be measured on the target device.
 
 ### 🚀 Highlights
 - **1 Euro Filter & 12ms Prediction (`src/filter.js`):** Adaptive jitter damping during rest, zero latency during fast gestures, and a 12ms predictive lead for snapping to targets.

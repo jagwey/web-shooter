@@ -5,13 +5,12 @@ import test from "node:test";
 import { createHandFilter, filterLandmarks, handSpeed, predict } from "../src/filter.js";
 import { activeProfile, createProfile, loadProfiles, recordMs, recordShot, sanitizeProfiles } from "../src/profiles.js";
 
-test("v0.6.0 version parity across package.json, Cargo.toml, and tauri.conf.json", () => {
+test("version parity across package.json, Cargo.toml, and tauri.conf.json", () => {
   const pkg = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf8"));
   const tauriConf = JSON.parse(fs.readFileSync(path.resolve("src-tauri/tauri.conf.json"), "utf8"));
   const cargoToml = fs.readFileSync(path.resolve("src-tauri/Cargo.toml"), "utf8");
-  assert.equal(pkg.version, "0.6.0");
-  assert.equal(tauriConf.version, "0.6.0");
-  assert.match(cargoToml, /version\s*=\s*"0.6.0"/);
+  assert.equal(tauriConf.version, pkg.version);
+  assert.equal(cargoToml.match(/^version\s*=\s*"([^"]+)"/m)?.[1], pkg.version);
 });
 
 test("v0.3.0 desktop.toml grants permissions for move_window_fast and profile commands", () => {
@@ -28,8 +27,6 @@ test("v0.3.0 index.html and control.js audit fixes are in place", () => {
   assert.doesNotMatch(html, /id="modelLabel"[^>]*data-i18n="modelLoading"/);
   // Required DOM elements for camera holders exist
   assert.match(html, /id="holderLabel"/);
-  // Worker boot timeout is 4000ms (fast fallback to main thread)
-  assert.match(control, /const WORKER_BOOT_MS = 4000;/);
   // scanCameraDocument uses #video instead of nonexistent #cameraVideo
   assert.doesNotMatch(control, /getElementById\("cameraVideo"\)/);
   // appendAiMessage and updateAiMessage are defined

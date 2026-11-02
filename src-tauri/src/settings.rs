@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
+use crate::storage;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -101,7 +102,7 @@ fn default_sniper_target() -> String {
 }
 
 fn default_target_fps() -> u32 {
-    120
+    60
 }
 
 fn default_sound_enabled() -> bool {
@@ -153,7 +154,7 @@ impl Default for Settings {
             fx_preset: "off".into(),
             bindings: default_bindings(),
             camera_device_id: String::new(),
-            target_fps: 120,
+            target_fps: 60,
             sound_enabled: true,
             focus_frame_only: false,
             show_webs: false,
@@ -241,7 +242,7 @@ impl Settings {
             self.ai_provider = "none".into();
         }
         if self.target_fps != 60 && self.target_fps != 120 {
-            self.target_fps = 120;
+            self.target_fps = 60;
         }
         self.idle_release_secs = self.idle_release_secs.clamp(5, 300);
         if !self.smoothing.is_finite() {
@@ -288,12 +289,23 @@ pub fn load_settings(app: &AppHandle) -> Settings {
     let Ok(path) = settings_path(app) else {
         return Settings::default();
     };
-    let Ok(text) = fs::read_to_string(path) else {
+    let Some(value) = storage::read_json(&path) else {
         return Settings::default();
     };
-    let Ok(mut settings) = serde_json::from_str::<Settings>(&text).map(Settings::normalize) else {
+    let Ok(mut settings) = serde_json::from_value::<Settings>(value).map(Settings::normalize) else {
         return Settings::default();
     };
+    if !settings.ai_api_key.is_empty() {
+        // Move legacy plaintext into current-user DPAPI storage before scrubbing JSON.
+        if store_settings(app, &settings).is_err() {
+            eprintln!("[settings] API key migration could not be completed");
+        }
+    } else if let Ok(bytes) = fs::read(path.with_file_name("ai-key.bin")) {
+        match storage::protect(&bytes, false).and_then(|p| String::from_utf8(p).map_err(|_| "invalid key encoding".into())) {
+            Ok(key) => settings.ai_api_key = key,
+            Err(_) => eprintln!("[settings] Protected API key unavailable; re-enter it in Settings"),
+        }
+    }
     if !settings.migrated_v060 {
         settings = settings.migrate_v060();
         let _ = store_settings(app, &settings);
@@ -309,9 +321,19 @@ pub fn load_settings(app: &AppHandle) -> Settings {
 }
 
 pub fn store_settings(app: &AppHandle, settings: &Settings) -> Result<(), String> {
+    let _guard = storage::WRITE_LOCK.lock().map_err(|_| "settings storage unavailable")?;
     let path = settings_path(app)?;
-    let text = serde_json::to_string_pretty(settings).map_err(|err| err.to_string())?;
-    fs::write(path, text).map_err(|err| err.to_string())
+    let secret = path.with_file_name("ai-key.bin");
+    if settings.ai_api_key.is_empty() {
+        match fs::remove_file(secret) {
+            Ok(()) => {},
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+            Err(e) => return Err(e.to_string()),
+        }
+    } else {
+        storage::atomic_write(&secret, &storage::protect(settings.ai_api_key.as_bytes(), true)?)?;
+    }
+    storage::write_json(&path, &serde_json::to_value(settings).map_err(|e| e.to_string())?)
 }
 
 pub fn profiles_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -322,10 +344,17 @@ pub fn profiles_path(app: &AppHandle) -> Result<PathBuf, String> {
 
 pub fn load_profiles_json(app: &AppHandle) -> Option<String> {
     let path = profiles_path(app).ok()?;
-    fs::read_to_string(path).ok()
+    let mut value = storage::read_json(&path)?;
+    storage::remove_secrets(&mut value);
+    // Persist sanitization, including the backup created from legacy profiles.
+    let _guard = storage::WRITE_LOCK.lock().ok()?;
+    if let Err(err) = storage::write_json(&path, &value) { eprintln!("[profiles] {err}"); }
+    serde_json::to_string(&value).ok()
 }
 
 pub fn store_profiles_json(app: &AppHandle, json: &str) -> Result<(), String> {
+    let _guard = storage::WRITE_LOCK.lock().map_err(|_| "profile storage unavailable")?;
     let path = profiles_path(app)?;
-    fs::write(path, json).map_err(|err| err.to_string())
+    let value = serde_json::from_str(json).map_err(|e| e.to_string())?;
+    storage::write_json(&path, &value)
 }

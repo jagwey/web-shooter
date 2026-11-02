@@ -2,6 +2,7 @@
 // Upload the three files in dist-win/ to GitHub Release tag v<version>.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 
 const conf = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
 const version = conf.version;
@@ -19,7 +20,7 @@ if (!existsSync(sigPath)) {
 const assetName = setup.replaceAll(" ", ".");
 const latest = {
   version,
-  notes: process.env.RELEASE_NOTES || "",
+  notes: process.env.RELEASE_NOTES || (existsSync(`RELEASE_NOTES_v${version}.md`) ? readFileSync(`RELEASE_NOTES_v${version}.md`, "utf8") : ""),
   pub_date: new Date().toISOString(),
   platforms: {
     "windows-x86_64": {
@@ -32,5 +33,8 @@ const latest = {
 mkdirSync("dist-win", { recursive: true });
 copyFileSync(join(nsisDir, setup), join("dist-win", assetName));
 copyFileSync(sigPath, join("dist-win", `${assetName}.sig`));
+copyFileSync(join(target, "release", "jagwey-web-shooter.exe"), join("dist-win", "jagwey-web-shooter.exe"));
 writeFileSync(join("dist-win", "latest.json"), JSON.stringify(latest, null, 2));
+const checksum = createHash("sha256").update(readFileSync(join("dist-win", assetName))).digest("hex");
+writeFileSync(join("dist-win", "SHA256SUMS.txt"), `${checksum}  ${assetName}\n`);
 console.log(`dist-win/ ready for v${version}: ${assetName}, .sig, latest.json`);

@@ -3,6 +3,14 @@ const KEY = "jagwey-profiles";
 
 const blankStats = () => ({ shots: 0, bestMs: null, sessions: 0 });
 
+export function profileSnapshot(settings) {
+  if (!settings || typeof settings !== "object") return null;
+  const copy = structuredClone(settings);
+  delete copy.aiApiKey;
+  delete copy.ai_api_key;
+  return copy;
+}
+
 export function sanitizeProfiles(data) {
   if (!data || !Array.isArray(data.list) || data.list.length === 0) {
     return { activeId: "default", list: [{ id: "default", name: "Oyuncu 1", settings: null, stats: blankStats() }] };
@@ -12,7 +20,7 @@ export function sanitizeProfiles(data) {
     .map((p, idx) => ({
       id: String(p.id || `p${idx}`),
       name: String(p.name || "").trim().slice(0, 32) || `Oyuncu ${idx + 1}`,
-      settings: p.settings && typeof p.settings === "object" ? p.settings : null,
+      settings: profileSnapshot(p.settings),
       stats: {
         shots: Number(p.stats?.shots) || 0,
         bestMs: p.stats?.bestMs != null && Number.isFinite(Number(p.stats.bestMs)) ? Number(p.stats.bestMs) : null,
@@ -38,7 +46,7 @@ export function loadProfiles(storage) {
 
 export function saveProfiles(storage, data) {
   try {
-    storage?.setItem?.(KEY, JSON.stringify(data));
+    storage?.setItem?.(KEY, JSON.stringify(sanitizeProfiles(data)));
   } catch {
     // Storage full or blocked: profiles stay in memory for this session.
   }
@@ -52,7 +60,7 @@ export function activeProfile(data) {
 
 export function createProfile(data, name, settings) {
   const id = `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-  const profile = { id, name: String(name || "").trim().slice(0, 32) || `Oyuncu ${data.list.length + 1}`, settings: settings ? structuredClone(settings) : null, stats: blankStats() };
+  const profile = { id, name: String(name || "").trim().slice(0, 32) || `Oyuncu ${data.list.length + 1}`, settings: profileSnapshot(settings), stats: blankStats() };
   data.list.push(profile);
   return profile;
 }

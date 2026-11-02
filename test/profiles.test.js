@@ -39,3 +39,16 @@ test("last profile cannot be removed; removing active falls back", () => {
   assert.equal(removeProfile(data, p.id), true);
   assert.equal(data.activeId, "default");
 });
+
+test("legacy secrets are removed from profile snapshots and persisted profiles", () => {
+  const s = memory();
+  const data = loadProfiles(s);
+  const settings = { aiApiKey: "test-key", ai_api_key: "legacy-test", theme: "minimal" };
+  const p = createProfile(data, "test", settings);
+  assert.equal(p.settings.aiApiKey, undefined);
+  assert.equal(p.settings.ai_api_key, undefined);
+  p.settings.aiApiKey = "old-profile-secret";
+  saveProfiles(s, data);
+  assert.equal(s.getItem("jagwey-profiles").includes("old-profile-secret"), false);
+  assert.equal(settings.aiApiKey, "test-key");
+});

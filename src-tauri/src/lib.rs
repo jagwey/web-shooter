@@ -1,4 +1,5 @@
 mod settings;
+mod storage;
 mod win32;
 
 use settings::{load_profiles_json, load_settings, store_profiles_json, store_settings, Settings};

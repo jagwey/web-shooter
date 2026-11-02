@@ -13,7 +13,7 @@ export function fallbackSettings() {
     fxPreset: "off",
     bindings: typeof defaultBindings === "function" ? defaultBindings() : [],
     cameraDeviceId: "",
-    targetFps: 120,
+    targetFps: 60,
     soundEnabled: true,
     showWebs: false,
     showFocusFrame: true,

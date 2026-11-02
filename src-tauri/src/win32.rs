@@ -1,5 +1,14 @@
 use serde::Serialize;
 
+#[cfg(all(test, windows))]
+mod safety_tests {
+    #[test]
+    fn close_tab_rejects_missing_and_invalid_target_without_keyboard_input() {
+        assert!(super::close_active_tab(0).is_err());
+        assert!(super::close_active_tab(-1).is_err());
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopWindow {
@@ -623,15 +632,7 @@ mod platform {
     /// Ctrl+W only to `raw`, and only if it is (or can become) the foreground window.
     /// Held Shift/Alt/Win are released first so the stroke never becomes Ctrl+Shift+W.
     pub fn close_active_tab(raw: i64) -> Result<(), String> {
-        let hwnd = if raw == 0 {
-            let fg = unsafe { GetForegroundWindow() };
-            if fg.0.is_null() || unsafe { !IsWindow(Some(fg)).as_bool() } {
-                return Err("no foreground window".into());
-            }
-            root_of(fg)
-        } else {
-            action_target(raw)?
-        };
+        let hwnd = action_target(raw)?;
 
         let fg = unsafe { GetForegroundWindow() };
         if root_of(fg) != hwnd {
@@ -651,6 +652,11 @@ mod platform {
                 let _ = unsafe { SetForegroundWindow(hwnd) };
             }
         }
+        if root_of(unsafe { GetForegroundWindow() }) != hwnd {
+            return Err("target is not foreground".into());
+        }
+        // Validate again after focus activation: the original target may have closed.
+        action_target(raw)?;
         let mut inputs = Vec::with_capacity(10);
         for vk in [VK_LSHIFT, VK_RSHIFT, VK_LMENU, VK_RMENU, VK_LWIN, VK_RWIN] {
             if unsafe { GetAsyncKeyState(vk.0 as i32) } < 0 {
@@ -663,6 +669,9 @@ mod platform {
             key(VK_W, true),
             key(VK_CONTROL, true),
         ]);
+        if root_of(unsafe { GetForegroundWindow() }) != hwnd {
+            return Err("foreground changed".into());
+        }
         let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
         if sent as usize != inputs.len() {
             return Err("input blocked".into());
