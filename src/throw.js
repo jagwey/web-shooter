@@ -62,7 +62,8 @@ export function throwToMonitor(monitors, win, vx, vy) {
   let best = null;
   let bestDot = 0.45;
   for (const monitor of monitors) {
-    if (monitor === home || !adjacent(home, monitor)) continue;
+    if (monitor === home) continue;
+    if (monitors.length > 2 && !adjacent(home, monitor)) continue;
     const mx = monitor.x + monitor.width / 2 - cx;
     const my = monitor.y + monitor.height / 2 - cy;
     const mag = Math.hypot(mx, my) || 1;

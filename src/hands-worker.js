@@ -29,8 +29,8 @@ async function createHands(vision, model, delegate) {
     runningMode: "VIDEO",
     numHands: 1,
     minHandDetectionConfidence: 0.4,
-    minHandPresenceConfidence: 0.35,
-    minTrackingConfidence: 0.35,
+    minHandPresenceConfidence: 0.28,
+    minTrackingConfidence: 0.28,
   };
   if (delegate === "GPU") {
     // When delegate === "GPU", pass options.canvas = new OffscreenCanvas(1, 1)

@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" fill="none">
+  <defs>
+    <radialGradient id="kuroGlow" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.5"/>
+      <stop offset="55%" stop-color="#1e1b4b" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#130f1e" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="darkHair" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#312e81"/>
+      <stop offset="50%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#090d16"/>
+    </linearGradient>
+    <linearGradient id="skinKuro" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fdf4ec"/>
+      <stop offset="100%" stop-color="#f3d5be"/>
+    </linearGradient>
+    <linearGradient id="goldEyes" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#d97706"/>
+      <stop offset="55%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#fef08a"/>
+    </linearGradient>
+    <filter id="cyanNeon" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4.5" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Thunder Shinobi Aura -->
+  <circle cx="160" cy="155" r="145" fill="url(#kuroGlow)"/>
+  <circle cx="160" cy="155" r="120" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="14 6" opacity="0.45"/>
+
+  <!-- Diagonal Katana Behind Back -->
+  <g filter="url(#cyanNeon)">
+    <line x1="58" y1="265" x2="268" y2="48" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/>
+    <line x1="58" y1="265" x2="268" y2="48" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
+  </g>
+  <!-- Katana Hilt (Tsuka) -->
+  <path d="M236 80 L272 44" stroke="#1e293b" stroke-width="10" stroke-linecap="round"/>
+  <path d="M236 80 L272 44" stroke="#f43f5e" stroke-width="6" stroke-dasharray="5 5"/>
+  <ellipse cx="234" cy="82" rx="11" ry="4" transform="rotate(-45 234 82)" fill="#fbbf24" stroke="#fef08a" stroke-width="1.2"/>
+
+  <!-- Shinobi Cloak & High Mask Scarf -->
+  <path d="M54 310 C62 246 96 214 160 214 C224 214 258 246 266 310 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
+  <path d="M142 182 L142 216 L178 216 L178 182 Z" fill="url(#skinKuro)"/>
+
+  <!-- Anime Face -->
+  <path d="M116 112 C116 148 128 176 160 192 C192 176 204 148 204 112 C204 82 186 68 160 68 C134 68 116 82 116 112 Z" fill="url(#skinKuro)" stroke="#dfc0a8" stroke-width="1.2"/>
+
+  <!-- Cyber Shinobi Half-Mask / Scarf Over Lower Face -->
+  <path d="M114 156 Q160 144 206 156 L216 232 Q160 248 104 232 Z" fill="#1e1b4b" stroke="#6366f1" stroke-width="1.8"/>
+  <path d="M126 168 Q160 158 194 168" stroke="#38bdf8" stroke-width="1.5" opacity="0.7" filter="url(#cyanNeon)"/>
+
+  <!-- Sharp Golden-Amber Anime Eyes -->
+  <g filter="url(#cyanNeon)">
+    <path d="M122 132 L150 135 L146 141 L124 139 Z" fill="#090d16"/>
+    <ellipse cx="137" cy="136" rx="5.5" ry="4.5" fill="url(#goldEyes)"/>
+    <circle cx="137" cy="136" r="2" fill="#451a03"/>
+    <circle cx="135" cy="134.5" r="1.5" fill="#ffffff"/>
+
+    <path d="M198 132 L170 135 L174 141 L196 139 Z" fill="#090d16"/>
+    <ellipse cx="183" cy="136" rx="5.5" ry="4.5" fill="url(#goldEyes)"/>
+    <circle cx="183" cy="136" r="2" fill="#451a03"/>
+    <circle cx="181" cy="134.5" r="1.5" fill="#ffffff"/>
+  </g>
+  <path d="M122 124 L150 129" stroke="#0f172a" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M198 124 L170 129" stroke="#0f172a" stroke-width="2.4" stroke-linecap="round"/>
+
+  <!-- Windswept Dark Indigo Anime Hair -->
+  <path d="M100 130 L76 92 L108 88 L88 48 L132 64 L132 24 L162 56 L192 22 L192 60 L232 42 L212 84 L244 92 L216 130 C210 98 196 84 182 82 L192 128 L174 92 L158 136 L144 92 L128 128 L136 84 C120 86 108 100 100 130 Z" fill="url(#darkHair)" stroke="#6366f1" stroke-width="1.4" stroke-linejoin="round"/>
+
+  <!-- Crackling Lightning Sparks -->
+  <polyline points="52,135 72,148 60,162 84,180" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#cyanNeon)"/>
+  <polyline points="268,145 248,160 260,174 238,192" stroke="#fbbf24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#cyanNeon)"/>
+</svg>

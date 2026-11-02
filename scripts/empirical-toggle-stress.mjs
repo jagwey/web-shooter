@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import {
   isAirKnobGrip,
-  isAirMediaHold,
+  isHandClap,
   isAirMediaFlick,
   isNinjaShield,
   isPinchZoom,
@@ -258,6 +258,14 @@ class MockControlLoop {
     h0.history.push({ t: now, points: h0Landmarks });
     if (h0.history.length > 30) h0.history.shift();
 
+    // Hand 1 tracking
+    const h1 = this.state.hands[1];
+    if (h1Landmarks) {
+      h1.landmarks = h1Landmarks;
+      h1.history.push({ t: now, points: h1Landmarks });
+      if (h1.history.length > 30) h1.history.shift();
+    }
+
     const raw0 = classifyGesture(h0Landmarks);
     const gesture0 = raw0;
 
@@ -354,26 +362,27 @@ class MockControlLoop {
       h0.pinchState = null;
     }
 
-    // 4. Air Media Control
-    if (this.state.settings?.airMediaToggle !== false && !h0.grab && gesture0 === "palm") {
-      if (isAirMediaHold(h0Landmarks, h0.history, { now })) {
-        if (!h0.mediaHoldFired && now - (h0.lastMediaHoldAt || 0) > 1500) {
-          h0.mediaHoldFired = true;
-          h0.lastMediaHoldAt = now;
-          this.actionsTriggered.mediaPlayPause += 1;
+    // 4. Air Media Control (Hand Clap)
+    if (this.state.settings?.airMediaToggle !== false) {
+      if (h0Landmarks && h1Landmarks) {
+        const dualHistory = [h0.history, h1.history];
+        if (isHandClap(h0Landmarks, h1Landmarks, dualHistory, { now })) {
+          if (!this.state.clapFired && now - (this.state.lastClapAt || 0) > 800) {
+            this.state.clapFired = true;
+            this.state.lastClapAt = now;
+            this.actionsTriggered.mediaPlayPause += 1;
+          }
+        } else if (this.state.clapFired && now - (this.state.lastClapAt || 0) > 800) {
+          this.state.clapFired = false;
         }
-      } else if (h0.mediaHoldFired && now - (h0.lastMediaHoldAt || 0) > 1500) {
-        h0.mediaHoldFired = false;
       }
 
-      if (isAirMediaFlick(h0Landmarks, h0.history, { now, mirrored: this.state.cameraMirrored })) {
+      if (gesture0 === "palm" && isAirMediaFlick(h0Landmarks, h0.history, { now, mirrored: this.state.cameraMirrored })) {
         if (now - (h0.lastMediaFlickAt || 0) > 800) {
           h0.lastMediaFlickAt = now;
           this.actionsTriggered.mediaNextTrack += 1;
         }
       }
-    } else if (gesture0 !== "palm") {
-      h0.mediaHoldFired = false;
     }
 
     // Core actions dispatch
@@ -382,21 +391,13 @@ class MockControlLoop {
     else if (action0 === "close_tab") this.actionsTriggered.close_tab += 1;
     else if (action0 === "minimize") this.actionsTriggered.minimize += 1;
 
-    // Hand 1 (if present)
-    if (h1Landmarks) {
-      const h1 = this.state.hands[1];
-      h1.landmarks = h1Landmarks;
-      h1.history.push({ t: now, points: h1Landmarks });
-      if (h1.history.length > 30) h1.history.shift();
-
-      // Ninja Shield Stance
-      if (handCount >= 2 && this.state.settings?.ninjaShieldToggle !== false) {
-        if (now - (this.state.lastNinjaShieldAt || 0) >= 1200) {
-          const dualHistory = [h0.history, h1.history];
-          if (isNinjaShield(h0.landmarks, h1.landmarks, dualHistory, { now })) {
-            this.state.lastNinjaShieldAt = now;
-            this.actionsTriggered.showDesktop += 1;
-          }
+    // Ninja Shield Stance
+    if (h1Landmarks && handCount >= 2 && this.state.settings?.ninjaShieldToggle !== false) {
+      if (now - (this.state.lastNinjaShieldAt || 0) >= 1200) {
+        const dualHistory = [h0.history, h1.history];
+        if (isNinjaShield(h0.landmarks, h1.landmarks, dualHistory, { now })) {
+          this.state.lastNinjaShieldAt = now;
+          this.actionsTriggered.showDesktop += 1;
         }
       }
     }
@@ -435,13 +436,14 @@ console.log("\n>>> SUITE 1: 32-Permutation Exhaustive Toggle Gating Verification
     if (volEnabled && loop.actionsTriggered.adjustVolume !== 1) allPermutationsPassed = false;
     if (!volEnabled && loop.actionsTriggered.adjustVolume !== 0) allPermutationsPassed = false;
 
-    // 2. Test Air Media Hold
+    // 2. Test Air Media (Hand Clap)
     loop.resetTriggers();
-    loop.state.hands[0].history = [];
-    const palm = makeOpenPalm();
-    for (let t = 2000; t <= 3450; t += 50) {
-      loop.processFrame(palm, null, t);
-    }
+    const h0_clap1 = translateHand(makeOpenPalm(), -0.3, 0);
+    const h1_clap1 = translateHand(makeOpenPalm(), 0.3, 0);
+    const h0_clap2 = translateHand(makeOpenPalm(), -0.03, 0);
+    const h1_clap2 = translateHand(makeOpenPalm(), 0.03, 0);
+    loop.processFrame(h0_clap1, h1_clap1, 2000);
+    loop.processFrame(h0_clap2, h1_clap2, 2100);
     if (mediaEnabled && loop.actionsTriggered.mediaPlayPause !== 1) allPermutationsPassed = false;
     if (!mediaEnabled && loop.actionsTriggered.mediaPlayPause !== 0) allPermutationsPassed = false;
 
@@ -526,12 +528,13 @@ console.log("\n>>> SUITE 2: Single-Toggle Orthogonal Independence");
     loop.processFrame(makeKnobHand(0.0), null, 100);
     loop.processFrame(makeKnobHand(0.40), null, 150);
 
-    // 2. Media
-    loop.state.hands[0].history = [];
-    const palm = makeOpenPalm();
-    for (let t = 2000; t <= 3450; t += 50) {
-      loop.processFrame(palm, null, t);
-    }
+    // 2. Media (Hand Clap)
+    const h0_c1 = translateHand(makeOpenPalm(), -0.3, 0);
+    const h1_c1 = translateHand(makeOpenPalm(), 0.3, 0);
+    const h0_c2 = translateHand(makeOpenPalm(), -0.03, 0);
+    const h1_c2 = translateHand(makeOpenPalm(), 0.03, 0);
+    loop.processFrame(h0_c1, h1_c1, 2000);
+    loop.processFrame(h0_c2, h1_c2, 2100);
 
     // 3. Shield
     const h0_s = makeOpenPalm();

@@ -32,7 +32,7 @@ mod platform {
     use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT, TRUE, WPARAM};
     use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
     use windows::Win32::Graphics::Gdi::ClientToScreen;
-    use windows::Win32::System::Threading::GetCurrentProcessId;
+    use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentProcessId};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT,
         KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, MOUSEINPUT, MOUSEEVENTF_WHEEL, VIRTUAL_KEY,
@@ -48,6 +48,7 @@ mod platform {
         ShowWindow, ShowWindowAsync, WindowFromPoint, SC_CLOSE, SC_MINIMIZE, SW_MAXIMIZE,
         SW_MINIMIZE, SW_RESTORE, SWP_ASYNCWINDOWPOS, SWP_DEFERERASE, SWP_NOACTIVATE,
         SWP_NOSENDCHANGING, SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE, WM_SYSCOMMAND, WS_EX_TOOLWINDOW,
+        GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
     };
     use windows_registry::CURRENT_USER;
 
@@ -502,18 +503,24 @@ mod platform {
         }
 
         // Safe screen clamp so flung window is not lost off-screen:
-        if !monitors.is_empty() {
-            let margin = 100;
-            let min_x = monitors.iter().map(|(mx, _, _, _)| *mx).min().unwrap_or(0);
-            let max_x = monitors.iter().map(|(mx, _, mw, _)| mx + mw).max().unwrap_or(1920);
-            let min_y = monitors.iter().map(|(_, my, _, _)| *my).min().unwrap_or(0);
-            let max_y = monitors.iter().map(|(_, my, _, mh)| my + mh).max().unwrap_or(1080);
+        let (vx, vy, vcx, vcy) = unsafe {
+            (
+                GetSystemMetrics(SM_XVIRTUALSCREEN),
+                GetSystemMetrics(SM_YVIRTUALSCREEN),
+                GetSystemMetrics(SM_CXVIRTUALSCREEN),
+                GetSystemMetrics(SM_CYVIRTUALSCREEN),
+            )
+        };
+        let min_x = monitors.iter().map(|(mx, _, _, _)| *mx).min().unwrap_or(vx).min(vx);
+        let max_x = monitors.iter().map(|(mx, _, mw, _)| mx + mw).max().unwrap_or(vx + vcx).max(vx + vcx);
+        let min_y = monitors.iter().map(|(_, my, _, _)| *my).min().unwrap_or(vy).min(vy);
+        let max_y = monitors.iter().map(|(_, my, _, mh)| my + mh).max().unwrap_or(vy + vcy).max(vy + vcy);
 
-            let clamped_x = x.clamp(min_x - width + margin, max_x - margin);
-            let clamped_y = y.clamp(min_y, max_y - margin);
-            if clamped_x != x || clamped_y != y {
-                let _ = move_window(raw, clamped_x, clamped_y);
-            }
+        let margin = 100;
+        let clamped_x = x.clamp(min_x - width + margin, max_x - margin);
+        let clamped_y = y.clamp(min_y, max_y - margin);
+        if clamped_x != x || clamped_y != y {
+            let _ = move_window(raw, clamped_x, clamped_y);
         }
     }
 
@@ -603,15 +610,32 @@ mod platform {
     /// Ctrl+W only to `raw`, and only if it is (or can become) the foreground window.
     /// Held Shift/Alt/Win are released first so the stroke never becomes Ctrl+Shift+W.
     pub fn close_active_tab(raw: i64) -> Result<(), String> {
-        let (hwnd, _) = checked_target(raw)?;
-        let is_front = || root_of(unsafe { GetForegroundWindow() }) == hwnd;
-        if !is_front() {
-            let _ = unsafe { SetForegroundWindow(hwnd) };
-            std::thread::sleep(Duration::from_millis(60));
-            if !is_front() {
-                // If focus cannot be captured in time, fallback to posting WM_CLOSE directly
-                let _ = unsafe { PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)) };
-                return Ok(());
+        let hwnd = if raw == 0 {
+            let fg = unsafe { GetForegroundWindow() };
+            if fg.0.is_null() || unsafe { !IsWindow(Some(fg)).as_bool() } {
+                return Err("no foreground window".into());
+            }
+            root_of(fg)
+        } else {
+            action_target(raw)?
+        };
+
+        let fg = unsafe { GetForegroundWindow() };
+        if root_of(fg) != hwnd {
+            let mut fg_thread = 0u32;
+            let mut target_thread = 0u32;
+            unsafe {
+                GetWindowThreadProcessId(fg, Some(&mut fg_thread));
+                GetWindowThreadProcessId(hwnd, Some(&mut target_thread));
+            }
+            if fg_thread != 0 && target_thread != 0 && fg_thread != target_thread {
+                unsafe {
+                    let _ = AttachThreadInput(fg_thread, target_thread, true);
+                    let _ = SetForegroundWindow(hwnd);
+                    let _ = AttachThreadInput(fg_thread, target_thread, false);
+                }
+            } else {
+                let _ = unsafe { SetForegroundWindow(hwnd) };
             }
         }
         let mut inputs = Vec::with_capacity(10);

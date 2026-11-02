@@ -28,7 +28,7 @@ function writePool(pool, xs) {
   return pool;
 }
 
-export function filterLandmarks(f, raw, t, { minCutoff = 1.8, beta = 18.0, dCutoff = 3.0, aCutoff = 4.0 } = {}) {
+export function filterLandmarks(f, raw, t, { minCutoff = 1.8, beta = 18.0, dCutoff = 4.5, aCutoff = 6.0 } = {}) {
   const n = raw.length * 3;
   const dt = (t - f.t) / 1000;
   f.t = t;
@@ -70,7 +70,7 @@ const MAX_ACCEL = 100.0;
 // Braking-aware 2nd-order kinematic extrapolation along filtered velocity & acceleration to hide pipeline latency.
 export function predict(f, idx, point, ms) {
   if (!f?.dx) return point;
-  const s = Math.max(0, Math.min(0.08, ms / 1000));
+  const s = Math.max(0, Math.min(0.10, ms / 1000));
   const j = idx * 3;
   const vx = f.dx[j] || 0;
   const vy = f.dx[j + 1] || 0;
@@ -109,7 +109,7 @@ export function predictPalmAnchor(f, landmarks, ms) {
     z: ((p0.z || 0) + (p9.z || 0)) * 0.5,
   };
   if (!f?.dx) return anchor;
-  const s = Math.max(0, Math.min(0.08, ms / 1000));
+  const s = Math.max(0, Math.min(0.10, ms / 1000));
   const vx = (f.dx[0] + f.dx[27]) * 0.5;
   const vy = (f.dx[1] + f.dx[28]) * 0.5;
   const rawAx = f.ddx ? (f.ddx[0] + f.ddx[27]) * 0.5 : 0;

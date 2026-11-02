@@ -4,11 +4,15 @@ import {
   isAirKnobGrip,
   AIR_KNOB_MIN_GRIP,
   AIR_KNOB_MAX_GRIP,
-  isAirMediaHold,
+  isHandClap,
+  HAND_CLAP_MIN_APPROACH_VELOCITY,
+  HAND_CLAP_MAX_CONTACT_DISTANCE,
+  HAND_CLAP_REFRACTORY_MS,
+  isFlickRelease,
+  FLICK_RELEASE_MIN_HOLD_MS,
+  FLICK_RELEASE_WINDOW_MS,
+  FLICK_RELEASE_MIN_SPEED,
   isAirMediaFlick,
-  AIR_MEDIA_HOLD_RADIUS,
-  AIR_MEDIA_HOLD_MAX_VELOCITY,
-  AIR_MEDIA_HOLD_MIN_DURATION,
   AIR_MEDIA_FLICK_MIN_DX,
   AIR_MEDIA_FLICK_MIN_VX,
   AIR_MEDIA_FLICK_MAX_DRIFT,
@@ -120,6 +124,38 @@ function makeScrollHand(gapRatio = 0.20) {
   return hand;
 }
 
+function makeFlickPoseHand() {
+  const points = makeBaseHand({ index: false, middle: true, ring: true, pinky: true });
+  const openFingers = [
+    [9, 10, 11, 12, 0.46],
+    [13, 14, 15, 16, 0.54],
+    [17, 18, 19, 20, 0.62],
+  ];
+  for (const [mcp, pip, dip, tip, x] of openFingers) {
+    points[mcp] = { x, y: 0.7, z: 0 };
+    points[pip] = { x, y: 0.55, z: 0 };
+    points[dip] = { x, y: 0.42, z: 0 };
+    points[tip] = { x, y: 0.28, z: 0 };
+  }
+  points[5] = { x: 0.4, y: 0.72, z: 0 };
+  points[6] = { x: 0.34, y: 0.64, z: 0 };
+  points[7] = { x: 0.3, y: 0.68, z: 0 };
+  points[8] = { x: 0.33, y: 0.74, z: 0 };
+  points[1] = { x: 0.4, y: 0.8, z: 0 };
+  points[2] = { x: 0.33, y: 0.76, z: 0 };
+  points[3] = { x: 0.31, y: 0.74, z: 0 };
+  points[4] = { x: 0.335, y: 0.735, z: 0 };
+  return points;
+}
+
+function makeFlickReleaseHand() {
+  const pts = makeFlickPoseHand();
+  pts[6] = { x: 0.38, y: 0.55, z: 0 };
+  pts[7] = { x: 0.36, y: 0.42, z: 0 };
+  pts[8] = { x: 0.34, y: 0.15, z: 0 };
+  return pts;
+}
+
 // ============================================================================
 // 1. DJ Air Knob (isAirKnobGrip) Unit Tests
 // ============================================================================
@@ -174,56 +210,147 @@ test("DJ Air Knob: rejected when grip distance is outside [0.08, 0.65] L_palm", 
 });
 
 // ============================================================================
-// 2. Air Media Control (isAirMediaHold, isAirMediaFlick) Unit Tests
+// 2. Air Media Control (isHandClap, isFlickRelease, isAirMediaFlick) Unit Tests
 // ============================================================================
 
-test("Air Media Hold: open palm held steady within radius for >=1.0s triggers hold", () => {
+test("Hand Clap: rapid approach within contact distance triggers clap", () => {
   const palm = makeOpenPalm();
-  const history = [];
-  for (let t = 0; t <= 1400; t += 50) { // hold needs >= 1300 ms
-    history.push({ t, points: palm });
-  }
-  const holdActive = isAirMediaHold(palm, history, { now: 1400 });
-  assert.equal(holdActive, true);
+  const h0_start = translateHand(palm, -0.3, 0);
+  const h0_end = translateHand(palm, -0.03, 0);
+  const h1_start = translateHand(palm, 0.3, 0);
+  const h1_end = translateHand(palm, 0.03, 0);
+
+  const dualHistory = [
+    { t: 0, hand0: h0_start, hand1: h1_start },
+    { t: 100, hand0: h0_end, hand1: h1_end },
+  ];
+
+  const clapActive = isHandClap(h0_end, h1_end, dualHistory, { now: 100 });
+  assert.equal(clapActive, true);
 });
 
-test("Air Media Hold: rejected if held for less than 1.0s (e.g. 600ms)", () => {
+test("Hand Clap: rejected when hands are stationary or moving away", () => {
   const palm = makeOpenPalm();
-  const history = [];
-  for (let t = 0; t <= 600; t += 50) {
-    history.push({ t, points: palm });
-  }
-  const holdActive = isAirMediaHold(palm, history, { now: 600 });
-  assert.equal(holdActive, false);
+  const h0 = translateHand(palm, -0.1, 0);
+  const h1 = translateHand(palm, 0.1, 0);
+
+  // Stationary
+  const stationaryHistory = [
+    { t: 0, hand0: h0, hand1: h1 },
+    { t: 100, hand0: h0, hand1: h1 },
+  ];
+  assert.equal(isHandClap(h0, h1, stationaryHistory, { now: 100 }), false);
+
+  // Moving away
+  const movingAwayHistory = [
+    { t: 0, hand0: h0, hand1: h1 },
+    { t: 100, hand0: translateHand(h0, -0.2, 0), hand1: translateHand(h1, 0.2, 0) },
+  ];
+  assert.equal(isHandClap(translateHand(h0, -0.2, 0), translateHand(h1, 0.2, 0), movingAwayHistory, { now: 100 }), false);
 });
 
-test("Air Media Hold: rejected if hand drifts beyond max radius or moves too fast", () => {
+test("Hand Clap: rejected when contact distance is too large (> 0.7 palm)", () => {
   const palm = makeOpenPalm();
-  // Hand drifts far (> 0.045 screen radius)
-  const driftingHistory = [];
-  for (let t = 0; t <= 1200; t += 50) {
-    const shift = (t / 1200) * 0.10;
-    driftingHistory.push({ t, points: translateHand(palm, shift, 0) });
-  }
-  const driftingPalm = translateHand(palm, 0.10, 0);
-  assert.equal(isAirMediaHold(driftingPalm, driftingHistory, { now: 1200 }), false);
+  const h0_start = translateHand(palm, -0.5, 0);
+  const h0_end = translateHand(palm, -0.35, 0);
+  const h1_start = translateHand(palm, 0.5, 0);
+  const h1_end = translateHand(palm, 0.35, 0);
 
-  // Hand moves with high velocity (> 0.12 s^-1)
-  const fastHistory = [];
-  for (let t = 0; t <= 1200; t += 50) {
-    const wobble = Math.sin(t) * 0.03;
-    fastHistory.push({ t, points: translateHand(palm, wobble, 0) });
-  }
-  assert.equal(isAirMediaHold(palm, fastHistory, { now: 1200 }), false);
+  const dualHistory = [
+    { t: 0, hand0: h0_start, hand1: h1_start },
+    { t: 100, hand0: h0_end, hand1: h1_end },
+  ];
+
+  assert.equal(isHandClap(h0_end, h1_end, dualHistory, { now: 100 }), false);
 });
 
-test("Air Media Hold: rejected if hand is not an open palm (fist or web)", () => {
-  const fist = makeBaseHand({ index: false, middle: false, ring: false, pinky: false });
-  const history = [];
-  for (let t = 0; t <= 1200; t += 50) {
-    history.push({ t, points: fist });
-  }
-  assert.equal(isAirMediaHold(fist, history, { now: 1200 }), false);
+test("Hand Clap: refractory period (800ms) prevents double-triggering", () => {
+  const palm = makeOpenPalm();
+  const h0_start = translateHand(palm, -0.3, 0);
+  const h0_end = translateHand(palm, -0.03, 0);
+  const h1_start = translateHand(palm, 0.3, 0);
+  const h1_end = translateHand(palm, 0.03, 0);
+
+  // Clap at t = 1400 (400ms after lastClapAt: 1000)
+  const dualHistory1 = [
+    { t: 1300, hand0: h0_start, hand1: h1_start },
+    { t: 1400, hand0: h0_end, hand1: h1_end },
+  ];
+  const opts = { lastClapAt: 1000, now: 1400 };
+  assert.equal(isHandClap(h0_end, h1_end, dualHistory1, opts), false, "Blocked within 400ms");
+
+  // Clap at t = 1900 (900ms after lastClapAt: 1000)
+  const dualHistory2 = [
+    { t: 1800, hand0: h0_start, hand1: h1_start },
+    { t: 1900, hand0: h0_end, hand1: h1_end },
+  ];
+  const optsPassed = { lastClapAt: 1000, now: 1900 };
+  assert.equal(isHandClap(h0_end, h1_end, dualHistory2, optsPassed), true, "Allowed after 900ms");
+});
+
+test("Hand Clap: MediaPipe 1-frame hand merge tolerance triggers clap when one hand disappears upon impact", () => {
+  const palm = makeOpenPalm();
+  const h0_start = translateHand(palm, -0.3, 0);
+  const h0_mid = translateHand(palm, -0.03, 0);
+  const h1_start = translateHand(palm, 0.3, 0);
+  const h1_mid = translateHand(palm, 0.03, 0);
+
+  const dualHistory = [
+    { t: 0, hand0: h0_start, hand1: h1_start },
+    { t: 80, hand0: h0_mid, hand1: h1_mid },
+  ];
+
+  // At t = 100, only hand0 is present
+  const clapActive = isHandClap(h0_mid, null, dualHistory, { now: 100 });
+  assert.equal(clapActive, true);
+});
+
+test("Flick Release: OK pose held >= 120ms then index snaps open at high speed triggers flick", () => {
+  const okPose = makeFlickPoseHand();
+  const history = [
+    { t: 0, points: okPose },
+    { t: 60, points: okPose },
+    { t: 140, points: okPose },
+  ];
+  const released = makeFlickReleaseHand();
+  history.push({ t: 170, points: released });
+
+  assert.equal(isFlickRelease(history, { now: 170 }), true);
+});
+
+test("Flick Release: rejected if OK pose held < 120ms", () => {
+  const okPose = makeFlickPoseHand();
+  const history = [
+    { t: 90, points: okPose },
+    { t: 140, points: okPose },
+  ];
+  const released = makeFlickReleaseHand();
+  history.push({ t: 170, points: released });
+
+  assert.equal(isFlickRelease(history, { now: 170 }), false);
+});
+
+test("Flick Release: rejected if release speed is too slow (< 3.0 palm/s)", () => {
+  const okPose = makeFlickPoseHand();
+  const history = [
+    { t: 0, points: okPose },
+    { t: 140, points: okPose },
+  ];
+  const released = makeFlickReleaseHand();
+  history.push({ t: 800, points: released }); // dt = 660ms
+
+  assert.equal(isFlickRelease(history, { now: 800 }), false);
+});
+
+test("Flick Release: rejected if index finger remains closed", () => {
+  const okPose = makeFlickPoseHand();
+  const history = [
+    { t: 0, points: okPose },
+    { t: 140, points: okPose },
+    { t: 170, points: okPose },
+  ];
+
+  assert.equal(isFlickRelease(history, { now: 170 }), false);
 });
 
 test("Air Media Flick: rapid rightward displacement triggers next track flick", () => {
@@ -572,8 +699,7 @@ test("UI Toggle Gating: disabling toggles prevents gesture action evaluation", (
   let mediaExecuted = false;
   if (settings.airMediaToggle !== false) {
     const palm = makeOpenPalm();
-    const history = [{ t: 0, points: palm }, { t: 1200, points: palm }];
-    if (isAirMediaHold(palm, history, { now: 1200 })) mediaExecuted = true;
+    if (isHandClap(palm, palm, [])) mediaExecuted = true;
   }
   assert.equal(mediaExecuted, false, "Disabled airMediaToggle must bypass media controls");
 

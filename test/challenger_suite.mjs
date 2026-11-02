@@ -14,7 +14,7 @@ import {
   isFlickPose,
   isOpenPalm,
   isNinjaShield,
-  isAirMediaHold,
+  isHandClap,
   isAirMediaFlick,
   isFingerGun,
   isGojoSign,

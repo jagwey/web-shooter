@@ -1,14 +1,14 @@
 import { FilesetResolver, HandLandmarker, PoseLandmarker } from "@mediapipe/tasks-vision";
 import { BUILTIN_ACTIONS, GESTURES, actionFor, defaultBindings, migrateBindings, removeBinding, upsertBinding } from "./bindings.js";
 import { chatWithAi } from "./ai.js";
-import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen } from "./desktop.js";
-import { classifyGesture, worldShape, fingerStates, isFist, isInFaceDeadzone, voteGesture } from "./gestures.js";
+import { checkForUpdate, emitTo, inDesktop, installUpdate, invoke, listen, mediaPlayPause } from "./desktop.js";
+import { classifyGesture, worldShape, fingerStates, isFist, isInFaceDeadzone, voteGesture, isHandClap, isFlickRelease } from "./gestures.js";
 import { cloneLandmarks, createHandFilter, filterLandmarks, handSpeed, leadMs, adaptiveLeadMs, predict, predictPalmAnchor, ropeDeadzone } from "./filter.js";
 import { ACTION_COOLDOWN_MS, CLOSE_DWELL_MS, GRAB_CONFIRM_FRAMES, MINIMIZE_DWELL_MS, RELEASE_CONFIRM_FRAMES, createDwell, alignHandSlots, trimHistory } from "./gesture-runtime.js";
 import { registerCustomLook } from "./effects.js";
 import { clientOf } from "./target.js";
 import { snapToEdge, throwToMonitor, validThrow } from "./throw.js";
-import { applyTheme as applyUiTheme } from "./theme.js";
+import { ANIME_CHARACTERS, applyTheme as applyUiTheme } from "./theme.js";
 import { getLang, initI18n, setLang, t } from "./i18n.js";
 import { activeProfile, createProfile, loadProfiles, recordMs, recordShot, removeProfile, sanitizeProfiles, saveProfiles } from "./profiles.js";
 import {
@@ -119,19 +119,19 @@ const GESTURE_KEYS = {
   pinch: "gesturePinch",
 };
 // Fast motion blurs the hand for a few frames; keep grabs alive instead of dropping the window.
-const MISS_GRACE_MS = 300;
+const MISS_GRACE_MS = 500;
 // Pointer lead along hand velocity; roughly one camera frame of hidden latency.
 const POSE_GAP_MS = 80;
 const POSE_FRESH_MS = 300;
 const WORKER_BOOT_MS = 4000;
 // A fist that stops being seen for this long ends the grab even without a clean palm.
-const FIST_LOST_MS = 150;
-const LEAD_CAP_MS = 55;
+const FIST_LOST_MS = 350;
+const LEAD_CAP_MS = 85;
 // The hand must rest within DWELL_MOVE_PX this long before the minimize/close ring starts filling.
 const PRE_HOVER_MS = 300;
 // Above this hand speed (screen widths/s) a closing fist is a swipe, not a grab.
-const GRAB_MAX_SPEED = 1.2;
-const COAST_FRAMES = 2;
+const GRAB_MAX_SPEED = 4.0;
+const COAST_FRAMES = 6;
 const DWELL_MOVE_PX = 60;
 // How long the last open-hand aim point stays the grab target while a fist forms.
 const AIM_HOLD_MS = 400;
@@ -140,6 +140,8 @@ const SNAP_EDGE_PX = 24;
 const EMIT_GAP_MS = 16;
 const dwell = createDwell();
 const VIRTUAL_CAMERA = /droidcam|obs|virtual|manycam|xsplit|snap camera|iriun|epoccam|camo/i;
+const SENSITIVE_WINDOW_RE =
+  /github|gitlab|google docs|google sheets|sheets\.google|docs\.google|notion|figma|visual studio|code|vscode|jira|trello|bank|pay|checkout|save|unsaved|draft|taslak|kaydedilmedi/i;
 
 export function isVirtualCamera(label) {
   if (!label || typeof label !== "string") return false;
@@ -155,6 +157,8 @@ let poseLandmarker = null;
 let poseLoading = false;
 let lastCamW = -1;
 let lastCamH = -1;
+let grabLoopId = 0;
+let animeReactionTimer = 0;
 
 initI18n();
 window.finishOnboarding = finishOnboarding;
@@ -285,6 +289,28 @@ function wireChrome() {
     state.settings.theme = applyUiTheme(e.target.value);
     emitTo("overlay", "overlay-preset", overlayLook());
     persist();
+  });
+
+  document.getElementById("quickAnimeBtn")?.addEventListener("click", () => {
+    if (!state.settings) return;
+    const nextTheme = state.settings.theme === "anime" ? "minimal" : "anime";
+    state.settings.theme = applyUiTheme(nextTheme);
+    state.settings.animeCharacter ||= "satoru";
+    emitTo("overlay", "overlay-preset", overlayLook());
+    persist();
+    render();
+  });
+
+  document.querySelectorAll("[data-anime-char]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const charId = btn.dataset.animeChar;
+      if (!charId || !ANIME_CHARACTERS[charId] || !state.settings) return;
+      state.settings.animeCharacter = charId;
+      state.settings.theme = applyUiTheme("anime");
+      emitTo("overlay", "overlay-preset", overlayLook());
+      persist();
+      render();
+    });
   });
 
   document.getElementById("effectsSelect")?.addEventListener("change", (e) => {
@@ -710,6 +736,7 @@ function fallbackSettings() {
     bodyTracking: false,
     customFx: null,
     theme: "minimal",
+    animeCharacter: "satoru",
     sniperTarget: "gemini_web",
     smoothing: 0.75,
   };
@@ -980,8 +1007,8 @@ async function ensureLandmarker() {
             runningMode: "VIDEO",
             numHands: 2,
             minHandDetectionConfidence: 0.4,
-            minHandPresenceConfidence: 0.35,
-            minTrackingConfidence: 0.35,
+            minHandPresenceConfidence: 0.28,
+            minTrackingConfidence: 0.28,
           });
           state.delegate = "GPU";
         } catch (gpuErr) {
@@ -994,8 +1021,8 @@ async function ensureLandmarker() {
             runningMode: "VIDEO",
             numHands: 2,
             minHandDetectionConfidence: 0.4,
-            minHandPresenceConfidence: 0.35,
-            minTrackingConfidence: 0.35,
+            minHandPresenceConfidence: 0.28,
+            minTrackingConfidence: 0.28,
           });
           state.delegate = "CPU";
         }
@@ -1341,10 +1368,19 @@ function resetHandSlot(i, ft) {
   });
 }
 
-// Hand vanished mid-grab: stop the window (no throw) and keep the grab for MISS_GRACE_MS so a returning fist resumes it.
+// Hand vanished mid-grab: if moving at throw speed toward another monitor, complete the throw; otherwise park for MISS_GRACE_MS.
 function parkGrab(i, now) {
   const hs = state.hands[i];
   if (!hs.grab) return;
+  const win = { x: hs.grab.winX, y: hs.grab.winY, width: hs.grab.width, height: hs.grab.height };
+  const v =
+    validThrow(hs.samples, now, state.lastThrowAt) ||
+    validThrow(hs.samples, now, state.lastThrowAt, { windowMs: 280, minTravel: 150, minSpeed: 1.15 });
+  const dest = v ? throwToMonitor(state.monitors, win, v.vx * 16 * 1.35, v.vy * 16 * 1.35) : null;
+  if (dest) {
+    releaseGrab(i);
+    return;
+  }
   hs.parked = { ...hs.grab, at: now };
   hs.grab = null;
   hs.pendingMove = null;
@@ -1358,7 +1394,9 @@ function resumeGrab(i, point) {
   // Re-anchor: the window stays put and follows the hand from where it reappeared.
   hs.grab = { ...p, anchorWinX: p.winX, anchorWinY: p.winY, anchorHandSx: point.sx, anchorHandSy: point.sy };
   hs.rope = {};
-  hs.samples = [{ t: performance.now(), x: point.sx, y: point.sy }];
+  const now = performance.now();
+  hs.samples = (hs.samples || []).filter((s) => now - s.t <= 260);
+  hs.samples.push({ t: now, x: point.sx, y: point.sy });
   startGrabLoop();
 }
 
@@ -1373,11 +1411,14 @@ function hoverTarget(i, point) {
       hs.hoverBusy = false;
       if (hs.grab || hs.parked) return;
       if (found && !found.unsupported && found.hwnd) {
+        hs.lastTargetWindow = found;
+        state.lastTargetWindow = found;
         emitTo("overlay", "overlay-target-window", {
           id: i,
           window: { ...(clientOf(found) || found), hwnd: found.hwnd, title: found.title, grabbed: false },
         });
       } else {
+        hs.lastTargetWindow = null;
         emitTo("overlay", "overlay-target-window", { id: i, clear: true });
       }
     });
@@ -1410,7 +1451,7 @@ function onHands(hands, detectMs, handedness, frameTime) {
           const dt = Math.max(8, last.t - prev.t);
           const stepSx = Math.round(hs.lastPoint.sx + ((last.x - prev.x) / dt) * 14);
           const stepSy = Math.round(hs.lastPoint.sy + ((last.y - prev.y) / dt) * 14);
-          const frame = state.overlay || { x: 0, y: 0, width: window.screen.width, height: window.screen.height };
+          const frame = state.overlay || virtualScreenFrame();
           const coastPoint = {
             sx: stepSx,
             sy: stepSy,
@@ -1444,8 +1485,18 @@ function onHands(hands, detectMs, handedness, frameTime) {
     const paused = state.gesturesPaused;
     const maxHands = state.settings?.dualHands === true ? Math.min(hands.length, 2) : 1;
     const aligned = alignHandSlots(state.slotLabels, hands, handedness);
-    for (const s of aligned.resetSlots) resetHandSlot(s, ft);
-    const present = [0, 1].map((s) => aligned.slots[s] != null && aligned.slots[s] < maxHands);
+    for (const s of aligned.resetSlots) {
+      if (maxHands > 1) {
+        const hs = state.hands[s];
+        const prevWrist = state.slotLabels[s]?.wrist;
+        const curWrist = hands[aligned.slots[s]]?.[0];
+        const d = prevWrist && curWrist ? Math.hypot(prevWrist.x - curWrist.x, prevWrist.y - curWrist.y) : 1.0;
+        if (!hs.grab && d > 0.35) {
+          resetHandSlot(s, ft);
+        }
+      }
+    }
+    const present = [0, 1].map((s) => s < maxHands && aligned.slots[s] != null);
     let armMax = 0;
 
     for (let i = 0; i < 2; i += 1) {
@@ -1468,7 +1519,8 @@ function onHands(hands, detectMs, handedness, frameTime) {
       const landmarks = filterLandmarks(handState.filter, rawLandmarks, now, {
         minCutoff: 2.2 * smoothing,
         beta: 18.0,
-        dCutoff: 3.0,
+        dCutoff: 4.5,
+        aCutoff: 6.0,
       });
 
       handState.landmarks = landmarks;
@@ -1522,6 +1574,13 @@ function onHands(hands, detectMs, handedness, frameTime) {
         handState.fistStreak = action === "grab" ? (handState.fistStreak || 0) + 1 : 0;
         if (handState.parked && action === "grab") {
           resumeGrab(i, grabPoint);
+        } else if (handState.parked && gesture === "palm") {
+          const { at, ...p } = handState.parked;
+          handState.parked = null;
+          handState.grab = p;
+          handState.samples ||= [];
+          handState.samples.push({ t: now, x: grabPoint.sx, y: grabPoint.sy });
+          releaseGrab(i);
         } else if (handState.fistStreak >= GRAB_CONFIRM_FRAMES && speed <= GRAB_MAX_SPEED) {
           handState.lastPoint = grabPoint;
           runActionForHand(i, "grab", targetPoint, true);
@@ -1570,11 +1629,57 @@ function onHands(hands, detectMs, handedness, frameTime) {
         runActionForHand(i, action, aimPoint, true);
       }
 
+      // Flick gesture for active tab close (0ms dwell)
+      if (!handState.grab && isFlickRelease(handState.history, { now, ar })) {
+        if (now - (handState.lastFlickAt || -Infinity) >= ACTION_COOLDOWN_MS) {
+          handState.lastFlickAt = now;
+          closeActiveTabAt(aimPoint.sx, aimPoint.sy, i);
+          const msg = "✂️ " + (t("toastTabClosed") || "Sekme kapatıldı");
+          setMessage("shellBanner", msg);
+          airToast(msg);
+          playThwip();
+          triggerAnimeReaction("flick");
+        }
+      }
+
       if (!handState.grab && !handState.parked && !paused) hoverTarget(i, targetPoint);
       handState.lastGesture = gesture;
     }
 
     badge?.style.setProperty("--arm", armMax);
+
+    // Hand Clap for Media Play/Pause (R1)
+    if (state.settings?.airMediaToggle !== false) {
+      state.dualHistory ||= [];
+      if (present[0] && present[1]) {
+        state.dualHistory.push({
+          t: ft,
+          hand0: cloneLandmarks(state.hands[0].landmarks),
+          hand1: cloneLandmarks(state.hands[1].landmarks),
+        });
+      } else if ((present[0] || present[1]) && state.dualHistory.length > 0) {
+        state.dualHistory.push({
+          t: ft,
+          hand0: present[0] ? cloneLandmarks(state.hands[0].landmarks) : null,
+          hand1: present[1] ? cloneLandmarks(state.hands[1].landmarks) : null,
+        });
+      }
+      trimHistory(state.dualHistory, ft, 1600);
+
+      const h0 = present[0] ? state.hands[0].landmarks : null;
+      const h1 = present[1] ? state.hands[1].landmarks : null;
+      state.clapOptions ||= { lastClapAt: null };
+      state.clapOptions.now = ft;
+
+      if (isHandClap(h0, h1, state.dualHistory, state.clapOptions)) {
+        mediaPlayPause().catch(() => {});
+        const msg = "👏 " + (t("toastMediaPlayPause") || "Medya Oynat / Durdur");
+        setMessage("shellBanner", msg);
+        airToast(msg);
+        playThwip();
+        triggerAnimeReaction("clap");
+      }
+    }
   }
 
   const gap = nextGap(hands.length > 0, detectMs);
@@ -1725,8 +1830,19 @@ function armIdleRelease() {
   }, wait);
 }
 
+function virtualScreenFrame() {
+  if (state.monitors && state.monitors.length > 0) {
+    const minX = Math.min(...state.monitors.map((m) => m.x));
+    const minY = Math.min(...state.monitors.map((m) => m.y));
+    const maxX = Math.max(...state.monitors.map((m) => m.x + m.width));
+    const maxY = Math.max(...state.monitors.map((m) => m.y + m.height));
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  }
+  return { x: 0, y: 0, width: window.screen.width, height: window.screen.height };
+}
+
 function screenPoint(landmark) {
-  const frame = state.overlay || { x: 0, y: 0, width: window.screen.width, height: window.screen.height };
+  const frame = state.overlay || virtualScreenFrame();
   const xNorm = 1 - landmark.x;
   const yNorm = landmark.y;
   return {
@@ -1795,7 +1911,7 @@ function runActionForHand(handIndex, action, point, edge) {
     return;
   }
   if ((action === "close" || action === "close_tab") && point) {
-    closeActiveTabAt(point.sx, point.sy);
+    closeActiveTabAt(point.sx, point.sy, handIndex);
     return;
   }
   if (action === "scan_document") {
@@ -1839,29 +1955,23 @@ async function minimizeAt(x, y) {
   }
 }
 
-async function closeActiveTabAt(x, y) {
-  let found = null;
-  try {
-    found = await invoke("window_at", { x: Math.round(x), y: Math.round(y) });
-  } catch {
-    found = null;
-  }
-  if (!found || found.unsupported || !found.hwnd) {
-    setMessage("shellBanner", "Kapatılacak aktif pencere / sekme bulunamadı.");
+async function closeActiveTabAt(x, y, handIndex = 0) {
+  const hs = state.hands[handIndex];
+  const found = hs?.lastTargetWindow || state.lastTargetWindow;
+  let targetHwnd = found?.hwnd || 0;
+  let title = found?.title || "";
+
+  if (targetHwnd && state.settings?.safetyGuard !== false && title && SENSITIVE_WINDOW_RE.test(title)) {
+    setMessage("shellBanner", `🛡️ Hassas Koruma: "${title}" açık, kapatma engellendi.`);
     return;
   }
-  if (state.settings?.safetyGuard !== false && SENSITIVE_WINDOW_RE.test(found.title)) {
-    setMessage("shellBanner", `🛡️ Hassas Koruma: "${found.title}" açık, kapatma engellendi.`);
-    return;
-  }
-  const tabMode = state.settings?.closeMode === "tab";
+
+  const tabMode = state.settings?.closeMode !== "window";
   try {
-    await invoke(tabMode ? "close_active_tab" : "close_window", { hwnd: found.hwnd });
-    setMessage("shellBanner", `✂️ ${tabMode ? "Sekme" : "Pencere"} kapatıldı: ${found.title}`);
+    await invoke(tabMode ? "close_active_tab" : "close_window", { hwnd: targetHwnd || 0 });
+    setMessage("shellBanner", `✂️ ${tabMode ? "Sekme" : "Pencere"} kapatıldı: ${title || "Aktif"}`);
   } catch (err) {
-    {
-      setMessage("shellBanner", `Kapatılamadı: ${err}`);
-    }
+    setMessage("shellBanner", `Kapatılamadı: ${err}`);
   }
 }
 
@@ -2012,11 +2122,10 @@ async function beginGrab(handIndex, point) {
     window: { ...handState.grab.shown, title: found.title, grabbed: true },
   });
   playGrab();
+  triggerAnimeReaction("grab");
   render();
   startGrabLoop();
 }
-
-let grabLoopId = 0;
 
 // Interpolates grabbed windows at display rate between ~33ms camera frames.
 function startGrabLoop() {
@@ -2160,7 +2269,9 @@ async function releaseGrab(handIndex) {
   const now = performance.now();
   const win = { x: grab.winX, y: grab.winY, width: grab.width, height: grab.height };
   // Only a fast, straight stroke toward an adjacent monitor throws; anything else drops in place (edge-snapped).
-  const v = validThrow(handState.samples, now, state.lastThrowAt);
+  const v =
+    validThrow(handState.samples, now, state.lastThrowAt) ||
+    validThrow(handState.samples, now, state.lastThrowAt, { windowMs: 280, minTravel: 150, minSpeed: 1.15 });
   const dest = v ? throwToMonitor(state.monitors, win, v.vx * 16 * 1.35, v.vy * 16 * 1.35) : null;
   try {
     if (dest) {
@@ -2168,6 +2279,8 @@ async function releaseGrab(handIndex) {
       playFling(Math.hypot(v.vx, v.vy) * 16);
       await invoke("place_window", { hwnd: grab.hwnd, ...dest });
       setMessage("shellBanner", "Pencere diğer ekrana atıldı.");
+      airToast("🚀 Pencere diğer ekrana atıldı");
+      triggerAnimeReaction("throw");
     } else if (grab.winX !== grab.anchorWinX || grab.winY !== grab.anchorWinY) {
       // A fist opened over an untouched window is not a drop; leave it exactly where it was.
       const snap = snapToEdge(state.monitors, win, SNAP_EDGE_PX);
@@ -2206,7 +2319,7 @@ function cancelGrab(handIndex, clearWeb) {
 }
 
 async function hitAt(x, y, nudge) {
-  let found = await invoke("window_at", { x: Math.round(x), y: Math.max(35, Math.round(y)) });
+  let found = await invoke("window_at", { x: Math.round(x), y: Math.round(y) });
   if (!found || found.unsupported || !found.hwnd) {
     const list = await invoke("list_windows");
     if (Array.isArray(list) && list.length > 0) {
@@ -2321,6 +2434,7 @@ function render() {
   const uiTheme = applyUiTheme(state.settings.theme);
   const themeSelect = document.getElementById("themeSelect");
   if (themeSelect) themeSelect.value = uiTheme;
+  renderAnimeCompanion();
   const effectsSelect = document.getElementById("effectsSelect");
   if (effectsSelect) effectsSelect.value = fxOff() ? "off" : "classic";
   renderProfiles();
@@ -2387,6 +2501,77 @@ function render() {
 
 function applyTheme(themeId) {
   return applyUiTheme(themeId);
+}
+
+function renderAnimeCompanion() {
+  const charId = state.settings?.animeCharacter && ANIME_CHARACTERS[state.settings.animeCharacter]
+    ? state.settings.animeCharacter
+    : "satoru";
+  const charData = ANIME_CHARACTERS[charId] || ANIME_CHARACTERS.satoru;
+  const isAnime = state.settings?.theme === "anime";
+  const lang = getLang() === "en" ? "en" : "tr";
+
+  const quickBtn = document.getElementById("quickAnimeBtn");
+  if (quickBtn) {
+    quickBtn.setAttribute("aria-pressed", String(isAnime));
+    quickBtn.classList.toggle("active", isAnime);
+  }
+
+  const heroAvatar = document.getElementById("animeHeroAvatar");
+  if (heroAvatar && heroAvatar.getAttribute("src") !== charData.avatar) {
+    heroAvatar.setAttribute("src", charData.avatar);
+  }
+
+  const camAvatar = document.getElementById("animeCameraAvatar");
+  if (camAvatar && camAvatar.getAttribute("src") !== charData.avatar) {
+    camAvatar.setAttribute("src", charData.avatar);
+  }
+
+  const heroName = document.getElementById("animeHeroName");
+  if (heroName) {
+    heroName.textContent = t(charData.nameKey) || charData.id;
+  }
+
+  const heroQuote = document.getElementById("animeHeroQuote");
+  if (heroQuote && !animeReactionTimer) {
+    heroQuote.textContent = charData.quotes?.[lang]?.idle || t("animeQuoteIdle");
+  }
+
+  document.querySelectorAll("[data-anime-char]").forEach((btn) => {
+    const active = btn.dataset.animeChar === charId;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", String(active));
+  });
+}
+
+function triggerAnimeReaction(kind) {
+  if (!state.settings) return;
+  const charId = state.settings.animeCharacter && ANIME_CHARACTERS[state.settings.animeCharacter]
+    ? state.settings.animeCharacter
+    : "satoru";
+  const charData = ANIME_CHARACTERS[charId] || ANIME_CHARACTERS.satoru;
+  const lang = getLang() === "en" ? "en" : "tr";
+  const quote = charData.quotes?.[lang]?.[kind] || charData.quotes?.[lang]?.idle;
+  const heroQuote = document.getElementById("animeHeroQuote");
+  const heroBanner = document.getElementById("animeHeroBanner");
+  const camCompanion = document.getElementById("animeCameraCompanion");
+
+  if (heroQuote && quote) {
+    heroQuote.textContent = quote;
+  }
+  heroBanner?.classList.add("reacting");
+  camCompanion?.classList.add("reacting");
+
+  clearTimeout(animeReactionTimer);
+  animeReactionTimer = window.setTimeout(() => {
+    animeReactionTimer = 0;
+    heroBanner?.classList.remove("reacting");
+    camCompanion?.classList.remove("reacting");
+    if (heroQuote) {
+      const currentLang = getLang() === "en" ? "en" : "tr";
+      heroQuote.textContent = charData.quotes?.[currentLang]?.idle || t("animeQuoteIdle");
+    }
+  }, 3200);
 }
 
 // Overlay look: effects off = outline only; accent follows the UI theme.

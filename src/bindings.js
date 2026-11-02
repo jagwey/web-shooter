@@ -1,11 +1,11 @@
 export const BUILTIN_ACTIONS = ["grab", "cancel", "minimize", "close", "none", "overlay_toggle", "show_control", "gestures_pause"];
 
-export const GESTURES = ["fist", "palm", "peace", "web", "custom"];
+export const GESTURES = ["fist", "palm", "peace", "web", "flick", "custom"];
 
 // Gesture bindings may only point at these; anything else is a removed v0.5 feature.
-const GESTURE_ACTIONS = ["grab", "cancel", "minimize", "close", "none"];
+export const GESTURE_ACTIONS = ["grab", "cancel", "minimize", "close", "none"];
 const HOTKEY_ACTIONS = ["overlay_toggle", "show_control", "gestures_pause"];
-const REMOVED_GESTURES = ["flick", "gojo", "finger_gun", "point", "pinch"];
+const REMOVED_GESTURES = ["gojo", "finger_gun", "point", "pinch"];
 
 const PAUSE_BINDING = {
   id: "b-pause",

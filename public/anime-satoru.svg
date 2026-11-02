@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" fill="none">
+  <defs>
+    <radialGradient id="bgGlow" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.55"/>
+      <stop offset="55%" stop-color="#3b0764" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#130f1e" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="hairGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="55%" stop-color="#e2e8f0"/>
+      <stop offset="100%" stop-color="#94a3b8"/>
+    </linearGradient>
+    <linearGradient id="hairShadow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#cbd5e1"/>
+      <stop offset="100%" stop-color="#64748b"/>
+    </linearGradient>
+    <linearGradient id="skinGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff1eb"/>
+      <stop offset="100%" stop-color="#fde2d2"/>
+    </linearGradient>
+    <linearGradient id="coatGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="60%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#090d16"/>
+    </linearGradient>
+    <radialGradient id="purpleOrb" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="28%" stop-color="#f0abfc"/>
+      <stop offset="62%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#6b21a8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sixEyes" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="50%" stop-color="#e0f2fe"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+    <filter id="neonGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Cursed Energy Aura Backdrop -->
+  <circle cx="160" cy="155" r="145" fill="url(#bgGlow)"/>
+  <circle cx="160" cy="155" r="122" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="10 6" opacity="0.45"/>
+  <circle cx="160" cy="155" r="134" stroke="#38bdf8" stroke-width="1" stroke-dasharray="4 12" opacity="0.35"/>
+
+  <!-- Speed & Energy Arcs -->
+  <path d="M35 190 Q70 110 115 70" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" opacity="0.5" filter="url(#neonGlow)"/>
+  <path d="M285 175 Q250 100 205 65" stroke="#f472b6" stroke-width="2" stroke-linecap="round" opacity="0.55" filter="url(#neonGlow)"/>
+
+  <!-- High-Collar Sorcerer Coat & Shoulders -->
+  <path d="M52 310 C58 245 92 215 160 215 C228 215 262 245 268 310 Z" fill="url(#coatGrad)" stroke="#4c1d95" stroke-width="2"/>
+  <path d="M104 225 L94 175 L128 192 L160 238 L192 192 L226 175 L216 225 Z" fill="#17153b" stroke="#6366f1" stroke-width="1.5"/>
+  <!-- Gold Sorcerer Button -->
+  <circle cx="122" cy="252" r="5.5" fill="#fbbf24" stroke="#fef08a" stroke-width="1.2"/>
+  <circle cx="198" cy="252" r="5.5" fill="#fbbf24" stroke="#fef08a" stroke-width="1.2"/>
+
+  <!-- Neck & Chin Shadow -->
+  <path d="M142 182 L142 218 L178 218 L178 182 Z" fill="#f3cbb6"/>
+  <path d="M144 190 Q160 204 176 190 L176 184 L144 184 Z" fill="#d9a58d"/>
+
+  <!-- Anime Face Base (Sharp Jawline) -->
+  <path d="M116 112 C116 148 128 176 160 192 C192 176 204 148 204 112 C204 82 186 70 160 70 C134 70 116 82 116 112 Z" fill="url(#skinGrad)" stroke="#e2b49a" stroke-width="1.2"/>
+
+  <!-- Subtle Anime Blush / Cheek Glow -->
+  <ellipse cx="132" cy="150" rx="8" ry="3.5" fill="#fda4af" opacity="0.35"/>
+  <ellipse cx="188" cy="150" rx="8" ry="3.5" fill="#fda4af" opacity="0.35"/>
+
+  <!-- Sleek Dark Cyber-Blindfold (Tilted down to reveal glowing Six-Eyes) -->
+  <path d="M113 118 Q160 128 207 114 L205 129 Q160 140 115 130 Z" fill="#0f172a" stroke="#334155" stroke-width="1.2" opacity="0.88"/>
+
+  <!-- Glowing Six-Eyes (Cyan / Infinity Eyes) -->
+  <g filter="url(#neonGlow)">
+    <!-- Left Eye -->
+    <path d="M124 134 Q137 126 149 134 Q137 141 124 134 Z" fill="#0f172a"/>
+    <ellipse cx="137" cy="134" rx="6.5" ry="5" fill="url(#sixEyes)"/>
+    <circle cx="137" cy="134" r="2.3" fill="#0284c7"/>
+    <circle cx="134.5" cy="132" r="1.8" fill="#ffffff"/>
+    <!-- Right Eye -->
+    <path d="M171 134 Q183 126 196 134 Q183 141 171 134 Z" fill="#0f172a"/>
+    <ellipse cx="183" cy="134" rx="6.5" ry="5" fill="url(#sixEyes)"/>
+    <circle cx="183" cy="134" r="2.3" fill="#0284c7"/>
+    <circle cx="180.5" cy="132" r="1.8" fill="#ffffff"/>
+  </g>
+  <!-- Silver Eyelashes & Brows -->
+  <path d="M122 132 Q137 123 151 132" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M169 132 Q183 123 198 132" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M125 122 Q138 117 149 122" stroke="#cbd5e1" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M171 122 Q182 117 195 122" stroke="#cbd5e1" stroke-width="1.8" stroke-linecap="round"/>
+
+  <!-- Nose & Confident Smirk -->
+  <path d="M159 144 L157 154 L161 155" stroke="#cfa088" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M148 168 Q161 173 173 165" stroke="#b47b62" stroke-width="2" stroke-linecap="round"/>
+  <path d="M171 166 L175 163" stroke="#b47b62" stroke-width="1.6" stroke-linecap="round"/>
+
+  <!-- Iconic Spiky White/Silver Anime Hair (Back Layer) -->
+  <path d="M95 128 L72 95 L105 90 L82 54 L124 68 L118 28 L152 56 L166 22 L182 56 L214 30 L204 70 L242 58 L216 94 L248 104 L218 130 Z" fill="url(#hairShadow)"/>
+
+  <!-- Spiky White/Silver Anime Hair (Front & Bangs) -->
+  <path d="M104 122 L82 86 L114 88 L98 46 L134 68 L138 24 L162 58 L184 22 L188 64 L224 44 L208 86 L238 88 L214 122 C208 96 196 84 182 82 L188 124 L172 90 L160 128 L148 88 L132 124 L138 84 C122 86 112 98 104 122 Z" fill="url(#hairGrad)" stroke="#cbd5e1" stroke-width="1.2" stroke-linejoin="round"/>
+
+  <!-- Hollow Purple / Infinity Energy Orb in Foreground Hand -->
+  <g filter="url(#neonGlow)">
+    <circle cx="242" cy="238" r="38" fill="url(#purpleOrb)"/>
+    <circle cx="242" cy="238" r="20" stroke="#f0abfc" stroke-width="2" stroke-dasharray="8 4"/>
+    <circle cx="242" cy="238" r="10" fill="#ffffff"/>
+    <path d="M214 238 Q242 208 270 238 Q242 268 214 238 Z" stroke="#38bdf8" stroke-width="1.5" fill="none"/>
+  </g>
+
+  <!-- Floating Sakura Petals -->
+  <g fill="#f472b6" opacity="0.85">
+    <path d="M52 74 C58 68 66 72 62 80 C56 84 48 80 52 74 Z"/>
+    <path d="M262 68 C268 62 276 66 272 74 C266 78 258 74 262 68 Z"/>
+    <path d="M46 235 C52 229 60 233 56 241 C50 245 42 241 46 235 Z"/>
+    <path d="M278 136 C283 131 289 134 286 140 C281 143 275 140 278 136 Z" fill="#c084fc"/>
+  </g>
+</svg>

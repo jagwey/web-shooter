@@ -11,7 +11,7 @@
 ![MediaPipe](https://img.shields.io/badge/MediaPipe_Hands-120_FPS_Float16-orange?style=for-the-badge)
 ![Filter](https://img.shields.io/badge/Filter-1_Euro_%2B_14--42ms_Adaptive_Lead-cyan?style=for-the-badge)
 ![Win32](https://img.shields.io/badge/Win32_Native-SWP__ASYNCWINDOWPOS_Zero_Lag-purple?style=for-the-badge)
-![Tests](https://img.shields.io/badge/Tests-126%2F126_Passed-brightgreen?style=for-the-badge)
+![Tests](https://img.shields.io/badge/Tests-131%2F131_Passed-brightgreen?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
 **Windows Masaüstü El Takibi ve Akıllı Pencere Yönetim Katmanı**  
@@ -199,10 +199,12 @@ Ağ veya yumrukla pencere tutulduğunda, tarayıcı veya uygulamanın sayfa yüz
 
 | Hareket / Jest | Parmak Duruşu | Eylem | Açıklama |
 |---|---|---|---|
-| ✊ **Yumruk (Fist)** | Tüm parmaklar kapalı | **Pencereyi Tut & Taşı** (`grab`) | Pencereyi yakalar, elinizle serbestçe taşır. Diğer monitöre doğru hızlı bırakırsanız pencereyi oraya fırlatır. |
+| ✊ **Yumruk (Fist)** | Tüm parmaklar kapalı | **Pencereyi Tut & Taşı** (`grab`) | Pencereyi yakalar, elinizle serbestçe taşır. Diğer monitöre doğru hızlı savurursanız (el kameradan çıksa bile) pencereyi yan ekrana fırlatır. |
+| 👌 **Fiske (OK Flick)** | Başparmak + işaret parmağı halkasından fiske atma | **Aktif Sekmeyi Anında Kapat** (`close_tab`) | 0ms bekleme süresiyle aktif tarayıcı/uygulama sekmesini (`Ctrl+W`) anında kapatır. |
+| 👏 **Alkış (Hand Clap)** | İki eli hızla birbirine vurma | **Medya Oynat / Durdur** (`media_play_pause`) | Arka planda çalan müzik veya videoyu anında başlatır ya da duraklatır. |
 | 🖐️ **Açık Avuç (Palm)** | Tüm parmaklar açık ve rahat | **Bırak / İptal Et** (`cancel`) | Tutulan pencereyi hemen serbest bırakır, sürüklemeyi veya eylemi iptal eder. |
 | ✌️ **Zafer İşareti (Peace)** | İşaret ve orta parmak açık, diğerleri kapalı | **Pencereyi Küçült** (`minimize`) | Hedef pencereyi görev çubuğuna simge durumuna küçültür. |
-| 🤟 **Örümcek Ağı (Web)** | İşaret ve serçe parmak açık | **Sekmeyi / Pencereyi Kapat** (`close`) | Klasik Spider-Man el pozu; aktif pencere veya sekmeyi (`Ctrl+W` / `WM_CLOSE`) güvenle kapatır. |
+| 🤟 **Örümcek Ağı (Web)** | İşaret ve serçe parmak açık | **Sekmeyi / Pencereyi Kapat** (`close`) | Klasik Spider-Man el pozu (~0,8 sn basılı tutma); aktif pencere veya sekmeyi güvenle kapatır. |
 | 📸 **Özel Hareket (Custom)** | Kullanıcı tanımlı poz | **Özel Eylem** | Stüdyoda kameraya bir poz tanıtıp ad vererek istediğiniz eyleme bağlayabilirsiniz. |
 
 ### ⌨️ Klavye Kısayolları (Global Hotkeys)
@@ -212,7 +214,7 @@ Ağ veya yumrukla pencere tutulduğunda, tarayıcı veya uygulamanın sayfa yüz
 
 ### 🗑️ Kaldırılan / Temizlenen Eski Özellikler (Removed Features)
 Sıfır gecikme sağlamak ve yanlış algılamaları önlemek amacıyla aşağıdaki karmaşık/kararsız jestler kaldırılmıştır:
-- ❌ **`flick` (OK Fiske Hareketi)**: Yanlış tetiklemeler nedeniyle kaldırıldı.
+- ❌ **`isAirMediaHold` (Avuç İçi Havada Bekletme ile Medya Aç/Kapa)**: Yerine çok daha hızlı ve doğal olan **👏 İki El Alkış (`isHandClap`)** hareketi getirildi.
 - ❌ **`gojo` (İki El Hollow Purple)**: Aşırı CPU yükü ve çift el derinlik karmaşası nedeniyle kaldırıldı.
 - ❌ **`finger_gun` (Parmak Tabancası)** & **`point`**: İstem dışı tetiklenmeleri önlemek için kaldırıldı.
 - ❌ **`pinch` & `air_scroll`**: Kararsız eksen okumaları nedeniyle temizlendi.

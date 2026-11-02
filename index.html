@@ -18,6 +18,7 @@
           </div>
         </div>
         <div class="top-actions">
+          <button type="button" class="btn ghost small anime-quick-btn" id="quickAnimeBtn"><span data-i18n="animeQuickBtn">🌸 Anime Modu</span></button>
           <button type="button" class="btn ghost small" id="checkUpdateBtn"><span data-i18n="checkUpdate">Güncellemeleri denetle</span></button>
           <button type="button" class="btn ghost small" id="fullscreenToggleBtn"><span data-i18n="fullscreen">Tam ekran</span></button>
           <div class="lang" role="group" aria-label="Language">
@@ -64,6 +65,35 @@
         <p class="banner" id="shellBanner" hidden data-i18n="shellOnly">Bu sayfa kontrol yüzü. Örtü ve pencere tutma Windows uygulamasında.</p>
         <p class="banner warn" id="monitorBanner" hidden></p>
 
+        <div class="anime-hero-banner" id="animeHeroBanner">
+          <div class="anime-hero-character">
+            <div class="anime-avatar-ring">
+              <img src="/anime-satoru.svg" alt="Anime Companion" id="animeHeroAvatar" class="anime-hero-img" />
+            </div>
+            <div class="anime-hero-info">
+              <div class="anime-hero-badge-row">
+                <span class="anime-tag">⚡ ANIME EDITION</span>
+                <strong id="animeHeroName" data-i18n="animeCharSatoru">Satoru • Sonsuzluk Büyücüsü</strong>
+              </div>
+              <p class="anime-speech-bubble" id="animeHeroQuote" data-i18n="animeQuoteIdle">「Hazırım!」 Yumrukla pencere tut, fiskeyle sekme kapat, alkışla medyayı yönet!</p>
+            </div>
+          </div>
+          <div class="anime-char-switcher" role="group" aria-label="Anime Characters">
+            <button type="button" class="anime-char-btn active" data-anime-char="satoru" title="Satoru">
+              <img src="/anime-satoru.svg" alt="Satoru" />
+              <span>Satoru</span>
+            </button>
+            <button type="button" class="anime-char-btn" data-anime-char="akari" title="Akari">
+              <img src="/anime-akari.svg" alt="Akari" />
+              <span>Akari</span>
+            </button>
+            <button type="button" class="anime-char-btn" data-anime-char="kuro" title="Kuro">
+              <img src="/anime-kuro.svg" alt="Kuro" />
+              <span>Kuro</span>
+            </button>
+          </div>
+        </div>
+
         <div class="dashboard-grid">
           <div class="dashboard-left">
             <section class="card camera-studio-card">
@@ -81,6 +111,9 @@
               <div class="camera-stage mirrored" id="cameraStage">
                 <video id="video" autoplay playsinline muted></video>
                 <canvas id="cameraCanvas"></canvas>
+                <div class="anime-camera-companion" id="animeCameraCompanion" aria-hidden="true">
+                  <img src="/anime-satoru.svg" alt="" id="animeCameraAvatar" />
+                </div>
                 <div class="camera-hud">
                   <div class="gesture-badge" id="gestureBadge">
                     <span class="gesture-icon">•</span>
@@ -151,6 +184,8 @@
                 <li><strong data-i18n="gestThrowTitle">Hızlı bırak</strong><span data-i18n="gestThrowDesc">Taşırken elini hızla aç: pencere yandaki monitöre gider.</span></li>
                 <li><strong data-i18n="gestSnapTitle">Kenara bırak</strong><span data-i18n="gestSnapDesc">Üst kenar tam ekran yapar, sol/sağ kenar yarım ekrana yaslar.</span></li>
                 <li><strong data-i18n="gestReleaseTitle">Açık avuç</strong><span data-i18n="gestReleaseDesc">Bırakır veya işlemi iptal eder.</span></li>
+                <li><strong data-i18n="gestFlickTitle">Fiske (OK hareketi)</strong><span data-i18n="gestFlickDesc">Başparmak ve işaret parmağıyla fiske at: aktif sekmeyi anında kapatır.</span></li>
+                <li><strong data-i18n="gestClapTitle">Alkış (İki el)</strong><span data-i18n="gestClapDesc">İki elini hızla birbirine vur: medyayı oynatır veya durdurur.</span></li>
                 <li><strong data-i18n="gestMinTitle">V işareti (basılı tut)</strong><span data-i18n="gestMinDesc">Halka dolunca (~0,6 sn) pencere küçülür.</span></li>
                 <li><strong data-i18n="gestCloseTitle">Rock işareti (basılı tut)</strong><span data-i18n="gestCloseDesc">İşaret + serçe ~0,8 sn: pencereyi kapatır.</span></li>
               </ol>
@@ -267,6 +302,33 @@
                   <option value="classic" data-i18n="effectsClassic">Klasik</option>
                 </select>
                 <small class="hint" data-i18n="effectsHint">Örtüdeki hedef ve hareket efektleri. Kapalı en hızlısıdır.</small>
+              </div>
+              <div class="setting">
+                <label data-i18n="animeCompanionLabel">Anime Karakter Eşlikçisi</label>
+                <div class="anime-roster-cards" id="animeRosterCards">
+                  <button type="button" class="anime-roster-card active" data-anime-char="satoru">
+                    <img src="/anime-satoru.svg" alt="Satoru" />
+                    <div>
+                      <strong>Satoru Ren</strong>
+                      <small data-i18n="animeCharSatoru">Satoru • Sonsuzluk Büyücüsü</small>
+                    </div>
+                  </button>
+                  <button type="button" class="anime-roster-card" data-anime-char="akari">
+                    <img src="/anime-akari.svg" alt="Akari" />
+                    <div>
+                      <strong>Akari Kumo</strong>
+                      <small data-i18n="animeCharAkari">Akari • Neon Örümcek Kunoichi</small>
+                    </div>
+                  </button>
+                  <button type="button" class="anime-roster-card" data-anime-char="kuro">
+                    <img src="/anime-kuro.svg" alt="Kuro" />
+                    <div>
+                      <strong>Raiden Kuro</strong>
+                      <small data-i18n="animeCharKuro">Kuro • Yıldırım Shinobi</small>
+                    </div>
+                  </button>
+                </div>
+                <small class="hint" data-i18n="animeBannerSub">Karakterini seç — el hareketlerine canlı tepki verir!</small>
               </div>
             </section>
 

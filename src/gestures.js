@@ -480,7 +480,7 @@ export function isFlickRelease(history, { now, ar = 1.0 } = {}) {
   const dt = (newest.t - best.end.t) / 1000;
   if (dt <= 0) return false;
   const speed = spanMetric(best.end.points[8], pts[8], ar) / palm / dt;
-  return speed >= FLICK_RELEASE_MIN_SPEED;
+  return speed >= FLICK_RELEASE_MIN_SPEED - 1e-5;
 }
 
 function pinchOffAxis(points, palm) {
@@ -596,9 +596,9 @@ export const AIR_KNOB_MAX_GRIP = 0.65;
 
 // Motion thresholds are in palm units (displacement / palm length, speed in palm lengths per second),
 // so a far-away small hand and a close big hand behave the same.
-export const AIR_MEDIA_HOLD_RADIUS = 0.25;
-export const AIR_MEDIA_HOLD_MAX_VELOCITY = 0.7;
-export const AIR_MEDIA_HOLD_MIN_DURATION = 1300;
+export const HAND_CLAP_MIN_APPROACH_VELOCITY = 3.0; // palm / s
+export const HAND_CLAP_MAX_CONTACT_DISTANCE = 0.7; // palm
+export const HAND_CLAP_REFRACTORY_MS = 800; // ms
 
 export const AIR_MEDIA_FLICK_MIN_DX = 0.9;
 export const AIR_MEDIA_FLICK_MIN_VX = 4.0;
@@ -727,61 +727,120 @@ function buildTrajectory(points, history = [], options = {}) {
 }
 
 /**
- * Air Media Hold: Open palm held steady in the air for 1 second.
- * - isOpenPalm(points) must be satisfied.
- * - Palm center p9 held steady within R <= 0.25 palm lengths, v < 0.7 palm/s, for >= 1300 ms.
+ * Hand Clap for Media Play/Pause (R1):
+ * - Calculates palm distance D(t) = ||P_0 - P_1|| / K, where P_0, P_1 are palm centers (landmark 9)
+ *   and K is average palm scale ((k0 + k1) / 2).
+ * - Triggers when v_approach >= 3.0 palm/s, contact distance D <= 0.7 palm,
+ *   with opposing velocity vectors and MediaPipe 1-frame hand merge/occlusion tolerance.
+ * - Applies ~800ms refractory debounce.
  * - Returns boolean.
  */
-export function isAirMediaHold(points, history = [], options = {}) {
-  if (!points || !isOpenPalm(points)) return false;
-
-  const minDuration = options.minDuration ?? options.duration ?? AIR_MEDIA_HOLD_MIN_DURATION;
-  const maxRadius = options.maxRadius ?? options.radius ?? AIR_MEDIA_HOLD_RADIUS;
-  const maxVelocity = options.maxVelocity ?? options.velocity ?? AIR_MEDIA_HOLD_MAX_VELOCITY;
-
-  const k = motionScale(points);
-  const trajectory = buildTrajectory(points, history, options).map((s) => ({ ...s, x: s.x / k, y: s.y / k }));
-  if (trajectory.length < 2) return false;
-
-  const tEnd = trajectory[trajectory.length - 1].t;
-  const tStart = trajectory[0].t;
-  const totalDuration = tEnd - tStart;
-  if (totalDuration < minDuration) return false;
-
-  const windowSamples = trajectory.filter((s) => s.t >= tEnd - minDuration);
-  if (windowSamples.length < 2) return false;
-
-  const anchor = windowSamples[0];
-
-  // 1. Spatial radius check
-  for (const s of windowSamples) {
-    const dist = Math.hypot(s.x - anchor.x, s.y - anchor.y);
-    if (dist > maxRadius) return false;
+export function isHandClap(hand0, hand1, dualHistory = [], options = {}) {
+  const now = options.now ?? performance.now();
+  const refractoryMs = options.refractoryMs ?? options.debounceMs ?? HAND_CLAP_REFRACTORY_MS;
+  if (options.lastClapAt != null && now - options.lastClapAt < refractoryMs - 1e-5) {
+    return false;
   }
 
-  // 2. Velocity check
-  const dtSec = (tEnd - windowSamples[0].t) / 1000;
-  if (dtSec <= 0) return false;
+  const minVelocity = options.minApproachVelocity ?? options.minVelocity ?? HAND_CLAP_MIN_APPROACH_VELOCITY;
+  const maxContactDist = options.maxContactDistance ?? options.maxDistance ?? HAND_CLAP_MAX_CONTACT_DISTANCE;
 
-  const totalDist = Math.hypot(
-    windowSamples[windowSamples.length - 1].x - windowSamples[0].x,
-    windowSamples[windowSamples.length - 1].y - windowSamples[0].y
-  );
-  const avgVelocity = totalDist / dtSec;
-  if (avgVelocity >= maxVelocity) return false;
+  const [traj0, traj1] = extractDualTrajectories(hand0, hand1, dualHistory, options);
+  if (!traj0 || !traj1 || (traj0.length < 1 && traj1.length < 1)) return false;
 
-  for (let i = 0; i < windowSamples.length - 1; i += 1) {
-    const segDt = (windowSamples[i + 1].t - windowSamples[i].t) / 1000;
-    if (segDt > 0.01) {
-      const segDist = Math.hypot(windowSamples[i + 1].x - windowSamples[i].x, windowSamples[i + 1].y - windowSamples[i].y);
-      const segV = segDist / segDt;
-      if (segV >= maxVelocity * 1.5) {
-        return false;
+  const tLatest = now;
+  const isOneHandMissing = (!hand0 && hand1) || (!hand1 && hand0);
+
+  if (!hand0 && !hand1) return false;
+
+  // MediaPipe 1-frame hand merge / occlusion tolerance (symmetric for both hands):
+  // When hands collide, MediaPipe often momentarily drops one hand or outputs only one merged hand.
+  if (isOneHandMissing) {
+    const survivingHand = hand0 || hand1;
+    const survivingTraj = hand0 ? traj0 : traj1;
+    const missingTraj = hand0 ? traj1 : traj0;
+
+    if (!missingTraj || missingTraj.length < 1) return false;
+    const lastMissing = missingTraj[missingTraj.length - 1];
+
+    if (tLatest - lastMissing.t > 140 || tLatest - lastMissing.t < 0) {
+      return false;
+    }
+
+    const kSurviving = survivingHand && Array.isArray(survivingHand) ? motionScale(survivingHand) : 0.15;
+    const kMissing = lastMissing.points && Array.isArray(lastMissing.points) ? motionScale(lastMissing.points) : kSurviving;
+    const K = (kSurviving + kMissing) / 2 || 0.15;
+
+    for (let i = 0; i < survivingTraj.length; i += 1) {
+      const s0 = survivingTraj[i];
+      const s1 = missingTraj.find((item) => Math.abs(item.t - s0.t) <= 40);
+      if (!s1) continue;
+      const dt = (tLatest - s0.t) / 1000;
+      if (dt < 0.03 || dt > 0.35) continue;
+      const d0 = Math.hypot(s0.x - s1.x, s0.y - s1.y) / K;
+      if (d0 > 0.6) {
+        const vApproach = d0 / dt;
+        if (vApproach >= minVelocity - 1e-5) {
+          if (options) options.lastClapAt = now;
+          return true;
+        }
       }
+    }
+    return false;
+  }
+
+  // Both hands detected in current frame:
+  const pts0 = hand0 || traj0[traj0.length - 1]?.points;
+  const pts1 = hand1 || traj1[traj1.length - 1]?.points;
+
+  const k0 = pts0 && Array.isArray(pts0) ? motionScale(pts0) : 0.15;
+  const k1 = pts1 && Array.isArray(pts1) ? motionScale(pts1) : k0;
+  const K = (k0 + k1) / 2 || 0.15;
+
+  const p0Latest = pts0 ? (pts0[9] || pts0[0] || (typeof pts0.x === "number" ? pts0 : null)) : (traj0.length > 0 ? { x: traj0[traj0.length - 1].x, y: traj0[traj0.length - 1].y } : null);
+  const p1Latest = pts1 ? (pts1[9] || pts1[0] || (typeof pts1.x === "number" ? pts1 : null)) : (traj1.length > 0 ? { x: traj1[traj1.length - 1].x, y: traj1[traj1.length - 1].y } : null);
+  if (!p0Latest || !p1Latest) return false;
+
+  const currentDist = Math.hypot(p0Latest.x - p1Latest.x, p0Latest.y - p1Latest.y) / K;
+  if (currentDist > maxContactDist + 1e-5) return false;
+
+  let foundValidClap = false;
+  for (let i = 0; i < traj0.length; i += 1) {
+    const s0 = traj0[i];
+    const s1 = traj1.find((item) => Math.abs(item.t - s0.t) <= 40);
+    if (!s1) continue;
+
+    const dt = (tLatest - s0.t) / 1000;
+    if (dt < 0.03 || dt > 0.35) continue;
+
+    const dPast = Math.hypot(s0.x - s1.x, s0.y - s1.y) / K;
+    const vApproach = (dPast - currentDist) / dt;
+    if (vApproach < minVelocity - 1e-5) continue;
+
+    const v0x = (p0Latest.x - s0.x) / dt;
+    const v0y = (p0Latest.y - s0.y) / dt;
+    const v1x = (p1Latest.x - s1.x) / dt;
+    const v1y = (p1Latest.y - s1.y) / dt;
+
+    const r01x = s1.x - s0.x;
+    const r01y = s1.y - s0.y;
+    const r10x = -r01x;
+    const r10y = -r01y;
+
+    const dot0 = v0x * r01x + v0y * r01y;
+    const dot1 = v1x * r10x + v1y * r10y;
+
+    if (dot0 > 0 && dot1 > 0) {
+      foundValidClap = true;
+      break;
     }
   }
 
-  return true;
+  if (foundValidClap && options) {
+    options.lastClapAt = now;
+  }
+
+  return foundValidClap;
 }
 
 /**
@@ -851,11 +910,19 @@ function extractDualTrajectories(hand0, hand1, history = [], options = {}) {
       for (const item of history) {
         if (!item) continue;
         if (item.hand0 || item.hand1) {
-          if (item.hand0) hist0.push({ t: item.t, ...(extractPointSample(item.hand0) || item.hand0) });
-          if (item.hand1) hist1.push({ t: item.t, ...(extractPointSample(item.hand1) || item.hand1) });
+          if (item.hand0) {
+            const s0 = extractPointSample(item.hand0) || item.hand0;
+            hist0.push({ ...s0, t: item.t ?? s0.t });
+          }
+          if (item.hand1) {
+            const s1 = extractPointSample(item.hand1) || item.hand1;
+            hist1.push({ ...s1, t: item.t ?? s1.t });
+          }
         } else if (Array.isArray(item.hands) && item.hands.length >= 2) {
-          hist0.push({ t: item.t, ...(extractPointSample(item.hands[0]) || item.hands[0]) });
-          hist1.push({ t: item.t, ...(extractPointSample(item.hands[1]) || item.hands[1]) });
+          const s0 = extractPointSample(item.hands[0]) || item.hands[0];
+          const s1 = extractPointSample(item.hands[1]) || item.hands[1];
+          hist0.push({ ...s0, t: item.t ?? s0.t });
+          hist1.push({ ...s1, t: item.t ?? s1.t });
         } else if (item.handIndex === 0) {
           hist0.push(item);
         } else if (item.handIndex === 1) {

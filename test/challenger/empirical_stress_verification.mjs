@@ -11,7 +11,7 @@ import {
   isAirKnobGrip,
   AIR_KNOB_MIN_GRIP,
   AIR_KNOB_MAX_GRIP,
-  isAirMediaHold,
+  isHandClap,
   isAirMediaFlick,
   isNinjaShield,
   isPinchZoom,
@@ -118,6 +118,14 @@ function addNoise(points, sigma = 0.002) {
     x: p.x + (Math.random() - 0.5) * 2 * sigma,
     y: p.y + (Math.random() - 0.5) * 2 * sigma,
     z: (p.z || 0) + (Math.random() - 0.5) * 2 * sigma,
+  }));
+}
+
+function translateHand(points, dx, dy, dz = 0) {
+  return points.map((p) => ({
+    x: p.x + dx,
+    y: p.y + dy,
+    z: (p.z || 0) + dz,
   }));
 }
 
@@ -474,24 +482,31 @@ console.log("\n>>> SECTION 4: Aspect Ratio Invariance & Isotropic Metric Correct
 console.log("\n>>> SECTION 5: Media Control & Ninja Shield Kinematic Boundary Stress-Testing");
 
 {
-  // 1. Media Control Hold Duration Boundary
+  // 1. Hand Clap Velocity & Contact Distance Boundary
   const openPalm = makeOpenPalm();
-  const palmTrajectory = [];
-  // 950ms hold (insufficient by 50ms)
-  for (let t = 0; t <= 950; t += 33) {
-    palmTrajectory.push({ t, x: 0.5, y: 0.5, points: openPalm });
-  }
-  const hold950 = isAirMediaHold(openPalm, palmTrajectory, { now: 950, minDuration: 1000 });
+  const h0_start = translateHand(openPalm, -0.3, 0);
+  const h0_end = translateHand(openPalm, -0.03, 0);
+  const h1_start = translateHand(openPalm, 0.3, 0);
+  const h1_end = translateHand(openPalm, 0.03, 0);
 
-  // 1050ms hold (sufficient by 50ms)
-  palmTrajectory.push({ t: 1000, x: 0.5, y: 0.5, points: openPalm });
-  palmTrajectory.push({ t: 1050, x: 0.5, y: 0.5, points: openPalm });
-  const hold1050 = isAirMediaHold(openPalm, palmTrajectory, { now: 1050, minDuration: 1000 });
+  // Slow approach (rejected: 800ms)
+  const slowDualHist = [
+    { t: 0, hand0: h0_start, hand1: h1_start },
+    { t: 800, hand0: h0_end, hand1: h1_end },
+  ];
+  const clapSlow = isHandClap(h0_end, h1_end, slowDualHist, { now: 800 });
+
+  // Fast approach (triggered: 100ms)
+  const fastDualHist = [
+    { t: 0, hand0: h0_start, hand1: h1_start },
+    { t: 100, hand0: h0_end, hand1: h1_end },
+  ];
+  const clapFast = isHandClap(h0_end, h1_end, fastDualHist, { now: 100 });
 
   recordTest(
-    "Air Media Hold duration boundary: 950ms rejected, 1050ms triggered",
-    hold950 === false && hold1050 === true,
-    `hold@950ms=${hold950}, hold@1050ms=${hold1050}`
+    "Hand Clap approach velocity boundary: slow approach rejected, fast approach triggered",
+    clapSlow === false && clapFast === true,
+    `slow=${clapSlow}, fast=${clapFast}`
   );
 
   // 2. Ninja Shield Synchronicity Gap Boundary
