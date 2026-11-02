@@ -266,7 +266,7 @@ scripts\build.bat
 - Removed the dead hollowPurpleReady HUD branch (it threw a ReferenceError) and made scheduleDetect run from a finally block. Grab and hover now use the same target: the last open-hand aim, held for 400ms.
 - settings.rs: dropped the air*/ninja aliases that clashed as duplicate serde fields, plus the JS shims. Profile snapshots taken before 0.6.0 no longer override the migrate_v060 keys (profileSettings).
 - Throw now needs at least 200px in 160ms at 1.5px/ms or more. Snap is skipped for maximized windows and for windows that never moved. A dwell blocked by the cooldown re-arms. A palm within 400ms after release no longer cancels the throw. Tests 107/107, vite build and cargo check pass.
-- v0.6.1 (taslak): yumruk giriş için 4 parmak tam kapalı şart; alkış yalnız iki el görünürken (tek el/merge toleransı kaldırıldı). 131/131 test.
+- v0.6.1 (YAYINLANDI, tag v0.6.1, dist-win/): yumruk giriş için 4 parmak tam kapalı şart; alkış yalnız iki el görünürken (tek el/merge toleransı kaldırıldı). 131/131 test.
 - v0.6.1 (taslak): alkışla medya oynat/duraklat kaldırıldı; açık avuç hızlı swipe = sonraki parça (airMediaToggle ile açık/kapalı).
 - Çerçeve: win32.rs artık DWMWA_EXTENDED_FRAME_BOUNDS kullanıyor (görünmez kenar yok, outline pencereye tam oturur), köşe yarıçapı 8px. Ayarlara renk seçici eklendi (outlineColor, Rust+JS, anime temasında karakter rengi geçerli).
 - Gecikme: öndeyiş (lead) eğimi 26→38, tavan 85→110ms. cargo check, 131/131 test, vite build geçti; gerçek exe'de denenmedi.
